@@ -18,3 +18,4 @@ require KB_DIR . '/inc/customizer.php';
 require KB_DIR . '/inc/enqueue.php';
 require KB_DIR . '/inc/template-tags.php';
 require KB_DIR . '/inc/seo.php';
+require KB_DIR . '/inc/site-setup.php';
