@@ -81,31 +81,14 @@ function kb_setup() {
 add_action( 'after_setup_theme', 'kb_setup' );
 
 /**
- * Zone de widgets facultative dans le pied de page.
- */
-function kb_widgets_init() {
-	register_sidebar(
-		array(
-			'name'          => __( 'Pied de page – colonne libre', 'kasumbalesa' ),
-			'id'            => 'footer-1',
-			'description'   => __( 'Colonne facultative du pied de page (horaires, lien utile…).', 'kasumbalesa' ),
-			'before_widget' => '<section id="%1$s" class="widget %2$s">',
-			'after_widget'  => '</section>',
-			'before_title'  => '<h2 class="site-footer__title">',
-			'after_title'   => '</h2>',
-		)
-	);
-}
-add_action( 'widgets_init', 'kb_widgets_init' );
-
-/**
  * Classes du <body>.
  *
  * @param array $classes Classes.
  * @return array
  */
 function kb_body_classes( $classes ) {
-	$classes[] = kb_is_full_width() ? 'kb-header-solid' : 'kb-header-overlay';
+	// En-tête clair et opaque sur toutes les pages : le contenu commence sous lui.
+	$classes[] = 'kb-header-solid';
 	if ( kb_ticker_is_visible() ) {
 		$classes[] = 'kb-has-ticker';
 	}

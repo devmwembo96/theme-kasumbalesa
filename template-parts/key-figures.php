@@ -35,7 +35,11 @@ $kb_bg = absint( kb_mod( 'figures_image' ) );
 				<div class="kb-figures__item" data-reveal>
 					<dt class="kb-figures__label"><?php echo esc_html( $kb_figure['label'] ); ?></dt>
 					<dd class="kb-figures__value">
-						<span data-count="<?php echo esc_attr( $kb_figure['number'] ); ?>" data-decimals="<?php echo esc_attr( $kb_figure['decimals'] ); ?>"><?php echo esc_html( number_format_i18n( $kb_figure['number'], $kb_figure['decimals'] ) ); ?></span><?php if ( $kb_figure['suffix'] ) : ?><span class="kb-figures__suffix"><?php echo esc_html( $kb_figure['suffix'] ); ?></span><?php endif; ?>
+						<span data-count="<?php echo esc_attr( $kb_figure['number'] ); ?>" data-decimals="<?php echo esc_attr( $kb_figure['decimals'] ); ?>"><?php
+						// Une année (ex. 2018) s'affiche sans séparateur de milliers.
+						$kb_is_year = ! $kb_figure['decimals'] && $kb_figure['number'] > 1900 && $kb_figure['number'] < 2100;
+						echo esc_html( $kb_is_year ? (string) (int) $kb_figure['number'] : number_format_i18n( $kb_figure['number'], $kb_figure['decimals'] ) );
+						?></span><?php if ( $kb_figure['suffix'] ) : ?><span class="kb-figures__suffix"><?php echo esc_html( $kb_figure['suffix'] ); ?></span><?php endif; ?>
 					</dd>
 				</div>
 			<?php endforeach; ?>

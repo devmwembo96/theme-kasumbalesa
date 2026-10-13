@@ -82,6 +82,9 @@ Contrastes vérifiés : tous les textes atteignent au moins 4,5:1 (par exemple o
 - **SEO** : les balises sont désactivées automatiquement si Yoast, Rank Math, AIOSEO ou SEOPress est actif.
 - **FR / EN** : avec Polylang ou WPML, le sélecteur utilise les langues de l'extension, et les textes du Customizer sont traduisibles dans Langues › Traductions des chaînes (Polylang). Sans extension, renseignez l'adresse de la version anglaise. Tant qu'elle est vide, « EN » apparaît comme « bientôt disponible ».
 
+### Authentification de l'API REST
+Le fichier `mu-plugins/kasumbalesa-rest-auth.php` ne fait pas partie du thème. Il se copie dans `wp-content/mu-plugins/`. Il fait valider les mots de passe d'application sur l'API REST même si une extension lit l'utilisateur courant trop tôt, et ajoute un en-tête de diagnostic `X-Kasu-Auth-Etat`. Il ne contient aucun identifiant.
+
 ## Couche design « UI/UX » (v1.1)
 
 Cette couche s'inspire des tendances repérées dans les maquettes Figma et sur Awwwards : verre façon *Liquid Glass*, typographie expressive, grilles *bento*, animations pilotées par le défilement.

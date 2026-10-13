@@ -39,7 +39,7 @@ function kb_defaults() {
 		'hero_btn1_url'         => '#decouvrir',
 		'hero_btn2_label'       => 'Actualités',
 		'hero_btn2_url'         => '',
-		'hero_overlay'          => 55,
+		'hero_overlay'          => 30,
 		'hero_interval'         => 7,
 		'hero_slide_1'          => 0,
 		'hero_slide_2'          => 0,
