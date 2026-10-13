@@ -85,6 +85,21 @@ Contrastes vérifiés : tous les textes atteignent au moins 4,5:1 (par exemple o
 ### Authentification de l'API REST
 Le fichier `mu-plugins/kasumbalesa-rest-auth.php` ne fait pas partie du thème. Il se copie dans `wp-content/mu-plugins/`. Il fait valider les mots de passe d'application sur l'API REST même si une extension lit l'utilisateur courant trop tôt, et ajoute un en-tête de diagnostic `X-Kasu-Auth-Etat`. Il ne contient aucun identifiant.
 
+## Couche design « UI/UX » (v1.1)
+
+Cette couche s'inspire des tendances repérées dans les maquettes Figma et sur Awwwards : verre façon *Liquid Glass*, typographie expressive, grilles *bento*, animations pilotées par le défilement.
+
+- **Header flottant en verre** : au défilement, l'en-tête et la bande d'actualités se détachent en une capsule arrondie et floutée.
+- **Motif signature « courbes de niveau »** (`assets/img/contours.svg`) : une carte topographique, clin d'œil à la ville-montagne, avec un grain photographique sur les fonds sombres.
+- **Titres à mot accentué** : dans le Customizer, entourez un mot d'astérisques (`*Ville de Kasumbalesa*`) pour l'afficher en italique doré. Le titre du héros se révèle mot à mot.
+- **Boutons pilule** avec une pastille d'icône qui pivote au survol. Sur ordinateur, les boutons du héros sont légèrement magnétiques.
+- **Carte « À la une » en verre** dans le héros, avec le dernier article.
+- **Numérotation éditoriale** des sections de l'accueil (01, 02, 03…).
+- **Bento des accès rapides** : une grande tuile (photo réglable dans le Customizer), des cartes en verre et un halo doré qui suit la souris.
+- **Chiffres clés** présentés en cartes de verre.
+- **Bande typographique géante** (texte réglable, mots séparés par « · ») qui défile lentement entre les actualités et les accès rapides.
+- **Animations pilotées par le défilement** (CSS natif, sans bibliothèque) : parallaxe du héros, images qui se dévoilent, carte postale qui pivote, barre de lecture sur les articles. Les navigateurs non compatibles et le mode « mouvement réduit » affichent une version statique.
+
 ## Performance et accessibilité
 - Une seule feuille CSS et un seul script chargé en `defer`, sans jQuery ni bibliothèque d'animation.
 - Images en `srcset` + `loading="lazy"`. Seule la première image du héros est prioritaire, les suivantes sont chargées juste avant leur affichage.

@@ -48,7 +48,7 @@ function kb_site_setup() {
 	$figures = array(
 		1 => array( '1240', ' m', 'd’altitude' ),
 		2 => array( '866', ' km²', 'de superficie' ),
-		3 => array( '1000000', '+', 'habitants' ),
+		3 => array( '1', ' million+', 'd’habitants' ),
 		4 => array( '2018', '', 'création de la ville' ),
 	);
 	foreach ( $figures as $i => $figure ) {

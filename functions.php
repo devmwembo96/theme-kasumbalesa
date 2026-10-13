@@ -7,7 +7,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'KB_VERSION', '1.0.0' );
+define( 'KB_VERSION', '1.1.0' );
 define( 'KB_DIR', get_template_directory() );
 define( 'KB_URI', get_template_directory_uri() );
 

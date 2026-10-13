@@ -420,24 +420,9 @@
 	 * Mise en scène du contenu : apparitions, titres mot à mot,
 	 * compteurs et parallaxe (prépare le DOM avant initReveal)
 	 * ------------------------------------------------------------------ */
-	function splitWords(el) {
-		if (el.getAttribute('data-split') || el.children.length > 2) { return; }
-		var words = el.textContent.trim().split(/\s+/);
-		if (!words[0]) { return; }
-		el.setAttribute('data-split', '1');
-		el.setAttribute('aria-label', el.textContent.trim());
-		el.textContent = '';
-		words.forEach(function (word, i) {
-			var outer = doc.createElement('span');
-			var inner = doc.createElement('span');
-			outer.className = 'kb-title-line';
-			outer.setAttribute('aria-hidden', 'true');
-			outer.style.setProperty('--kb-line', i);
-			inner.textContent = word;
-			outer.appendChild(inner);
-			el.appendChild(outer);
-			if (i < words.length - 1) { el.appendChild(doc.createTextNode(' ')); }
-		});
+	function splitTitle(el) {
+		if (reducedMotion || el.classList.contains('is-split')) { return; }
+		splitWords(el);
 	}
 
 	function prepareStats() {
@@ -476,19 +461,16 @@
 				fig.style.setProperty('--kb-reveal-delay', (i % 5) * 110 + 'ms');
 			});
 			$$(':scope > h2, .kb-band h2, .kb-cover h2', entry).forEach(function (title) {
-				splitWords(title);
+				splitTitle(title);
 				title.setAttribute('data-reveal', 'title');
 			});
 			$$('.kb-timeline, .kb-mountain', entry).forEach(function (el) { el.setAttribute('data-reveal', ''); });
 		});
 
 		$$('.kb-section-title, .kb-mayor__title').forEach(function (title) {
-			splitWords(title);
+			splitTitle(title);
 			title.setAttribute('data-reveal', 'title');
 		});
-
-		var heroTitle = $('.kb-hero__title');
-		if (heroTitle) { splitWords(heroTitle); }
 
 		prepareStats();
 	}
@@ -616,6 +598,81 @@
 			}
 		});
 	});
+
+	/* ------------------------------------------------------------------
+	 * Titres révélés mot à mot (le mot accentué <em> est conservé)
+	 * ------------------------------------------------------------------ */
+	function splitWords(el) {
+		var index = 0;
+		var walk = function (node) {
+			Array.prototype.slice.call(node.childNodes).forEach(function (child) {
+				if (child.nodeType === 1) { walk(child); return; }
+				if (child.nodeType !== 3 || !child.textContent.trim()) { return; }
+				var fragment = doc.createDocumentFragment();
+				child.textContent.split(/(\s+)/).forEach(function (part) {
+					if (!part) { return; }
+					if (/^\s+$/.test(part)) { fragment.appendChild(doc.createTextNode(part)); return; }
+					var word = doc.createElement('span');
+					var inner = doc.createElement('span');
+					word.className = 'kb-split__word';
+					inner.className = 'kb-split__inner';
+					inner.style.setProperty('--w', index++);
+					inner.textContent = part;
+					word.appendChild(inner);
+					fragment.appendChild(word);
+				});
+				node.replaceChild(fragment, child);
+			});
+		};
+		walk(el);
+		el.classList.add('is-split');
+	}
+
+	if (!reducedMotion) {
+		$$('[data-split]').forEach(splitTitle);
+	}
+
+	/* ------------------------------------------------------------------
+	 * Halo qui suit le pointeur (cartes bento) et boutons magnétiques
+	 * ------------------------------------------------------------------ */
+	var finePointer = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+	if (finePointer) {
+		$$('[data-spotlight]').forEach(function (card) {
+			card.addEventListener('pointermove', function (event) {
+				var rect = card.getBoundingClientRect();
+				card.style.setProperty('--mx', (event.clientX - rect.left) + 'px');
+				card.style.setProperty('--my', (event.clientY - rect.top) + 'px');
+			});
+		});
+
+		if (!reducedMotion) {
+			$$('.kb-hero__actions .kb-btn, .kb-news__all .kb-btn').forEach(function (btn) {
+				btn.addEventListener('pointermove', function (event) {
+					var rect = btn.getBoundingClientRect();
+					var x = (event.clientX - rect.left - rect.width / 2) * 0.18;
+					var y = (event.clientY - rect.top - rect.height / 2) * 0.3;
+					btn.style.transform = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px)';
+				});
+				btn.addEventListener('pointerleave', function () { btn.style.transform = ''; });
+				btn.style.transition = 'transform .4s cubic-bezier(.16,1,.3,1), color .35s, border-color .35s';
+			});
+		}
+	}
+
+	/* ------------------------------------------------------------------
+	 * Barre de lecture (repli si le CSS « scroll-timeline » n'est pas pris en charge)
+	 * ------------------------------------------------------------------ */
+	var progress = $('.kb-progress');
+	var nativeTimeline = window.CSS && CSS.supports && CSS.supports('animation-timeline: scroll()');
+	if (progress && (!nativeTimeline || reducedMotion)) {
+		var updateProgress = function () {
+			var max = root.scrollHeight - window.innerHeight;
+			progress.style.setProperty('--kb-progress', max > 0 ? Math.min(window.scrollY / max, 1) : 0);
+		};
+		window.addEventListener('scroll', function () { window.requestAnimationFrame(updateProgress); }, { passive: true });
+		updateProgress();
+	}
 
 	/* ------------------------------------------------------------------
 	 * Démarrage
