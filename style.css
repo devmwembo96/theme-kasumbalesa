@@ -1,0 +1,17 @@
+/*
+Theme Name:        Kasumbalesa
+Theme URI:         https://ville-de-kasumbalesa.cd
+Author:            Translog SARL
+Author URI:        https://ville-de-kasumbalesa.cd
+Description:       Thème officiel de la Ville de Kasumbalesa (Haut-Katanga, RDC) — « Kasumba ka Lesa », la ville-montagne de Dieu. Thème classique sur mesure, sans page builder : apparence entièrement codée, contenu édité avec Gutenberg, réglages dans le Customizer.
+Version:           1.0.0
+Requires at least: 6.3
+Tested up to:      6.8
+Requires PHP:      7.4
+License:           GNU General Public License v2 or later
+License URI:       https://www.gnu.org/licenses/gpl-2.0.html
+Text Domain:       kasumbalesa
+Tags:              custom-logo, custom-menu, editor-style, featured-images, full-width-template, translation-ready, accessibility-ready, block-styles, wide-blocks
+*/
+
+/* Les styles du thème sont dans assets/css/main.css (un seul fichier, chargé une fois). */
