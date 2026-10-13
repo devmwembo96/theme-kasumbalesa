@@ -30,23 +30,30 @@ if ( ! $kb_items ) {
 	return;
 }
 ?>
+<?php $kb_qa_image = absint( kb_mod( 'qa_image' ) ); ?>
 <section class="kb-section kb-section--dark kb-quick" aria-labelledby="kb-quick-title">
 	<div class="kb-container kb-container--wide">
 		<?php kb_section_heading( kb_mod( 'qa_eyebrow' ), kb_mod( 'qa_title' ), 'kb-quick-title', 'center' ); ?>
-		<ul class="kb-quick__grid">
-			<?php foreach ( $kb_items as $kb_item ) : ?>
-				<li class="kb-quick__item" data-reveal>
+		<ul class="kb-bento kb-bento--<?php echo count( $kb_items ); ?>">
+			<?php foreach ( $kb_items as $kb_n => $kb_item ) : ?>
+				<li class="kb-bento__item kb-bento__item--<?php echo (int) $kb_n + 1; ?>" data-reveal>
 					<?php
 					$kb_tag = $kb_item['url'] ? 'a' : 'div';
-					printf( '<%1$s class="kb-quick__card"%2$s>', $kb_tag, $kb_item['url'] ? ' href="' . esc_url( $kb_item['url'] ) . '"' : '' ); // phpcs:ignore
+					printf( '<%1$s class="kb-bento__card%2$s" data-spotlight%3$s>', $kb_tag, ( 0 === $kb_n && $kb_qa_image ) ? ' kb-bento__card--image' : '', $kb_item['url'] ? ' href="' . esc_url( $kb_item['url'] ) . '"' : '' ); // phpcs:ignore
+					if ( 0 === $kb_n && $kb_qa_image ) {
+						echo wp_get_attachment_image( $kb_qa_image, 'kb-wide', false, array( 'class' => 'kb-bento__img', 'alt' => '', 'loading' => 'lazy', 'decoding' => 'async', 'sizes' => '(min-width: 1000px) 50vw, 100vw' ) );
+					}
 					?>
-						<span class="kb-quick__icon"><?php echo kb_icon( $kb_item['icon'] ); // phpcs:ignore ?></span>
-						<h3 class="kb-quick__title"><?php echo esc_html( $kb_item['title'] ); ?></h3>
-						<?php if ( $kb_item['text'] ) : ?>
-							<p class="kb-quick__text"><?php echo esc_html( $kb_item['text'] ); ?></p>
-						<?php endif; ?>
+						<span class="kb-bento__index" aria-hidden="true"><?php echo esc_html( sprintf( '%02d', $kb_n + 1 ) ); ?></span>
+						<span class="kb-bento__icon"><?php echo kb_icon( $kb_item['icon'] ); // phpcs:ignore ?></span>
+						<span class="kb-bento__content">
+							<h3 class="kb-bento__title"><?php echo esc_html( $kb_item['title'] ); ?></h3>
+							<?php if ( $kb_item['text'] ) : ?>
+								<span class="kb-bento__text"><?php echo esc_html( $kb_item['text'] ); ?></span>
+							<?php endif; ?>
+						</span>
 						<?php if ( $kb_item['url'] ) : ?>
-							<span class="kb-quick__arrow"><?php echo kb_icon( 'arrow-right' ); // phpcs:ignore ?></span>
+							<span class="kb-bento__arrow"><?php echo kb_icon( 'arrow-right' ); // phpcs:ignore ?></span>
 						<?php endif; ?>
 					<?php echo '</' . $kb_tag . '>'; // phpcs:ignore ?>
 				</li>

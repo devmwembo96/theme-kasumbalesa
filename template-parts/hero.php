@@ -48,7 +48,7 @@ $kb_btn2    = kb_resolve_url( kb_mod( 'hero_btn2_url' ), kb_news_url() );
 		<?php if ( kb_mod( 'hero_eyebrow' ) ) : ?>
 			<p class="kb-eyebrow kb-eyebrow--light kb-hero__eyebrow"><?php echo esc_html( kb_mod( 'hero_eyebrow' ) ); ?></p>
 		<?php endif; ?>
-		<h1 class="kb-hero__title" id="kb-hero-title"><?php echo esc_html( kb_mod( 'hero_title' ) ); ?></h1>
+		<h1 class="kb-hero__title" id="kb-hero-title" data-split><?php echo kb_rich_title( kb_mod( 'hero_title' ) ); // phpcs:ignore ?></h1>
 		<?php if ( kb_mod( 'hero_subtitle' ) ) : ?>
 			<p class="kb-hero__subtitle"><?php echo esc_html( kb_mod( 'hero_subtitle' ) ); ?></p>
 		<?php endif; ?>
@@ -59,6 +59,23 @@ $kb_btn2    = kb_resolve_url( kb_mod( 'hero_btn2_url' ), kb_news_url() );
 			?>
 		</div>
 	</div>
+
+	<?php
+	$kb_latest = kb_latest_posts();
+	if ( $kb_latest ) :
+		$kb_top = $kb_latest[0];
+		?>
+		<a class="kb-hero__card" href="<?php echo esc_url( get_permalink( $kb_top ) ); ?>">
+			<span class="kb-hero__card-media">
+				<?php kb_thumbnail( 'kb-thumb', array( 'sizes' => '96px', 'alt' => '' ), $kb_top ); ?>
+			</span>
+			<span class="kb-hero__card-body">
+				<span class="kb-hero__card-label"><span class="kb-ticker__dot" aria-hidden="true"></span><?php echo esc_html( kb_mod( 'ticker_label' ) ); ?></span>
+				<span class="kb-hero__card-title"><?php echo esc_html( get_the_title( $kb_top ) ); ?></span>
+			</span>
+			<span class="kb-hero__card-arrow"><?php echo kb_icon( 'arrow-right' ); // phpcs:ignore ?></span>
+		</a>
+	<?php endif; ?>
 
 	<div class="kb-hero__footer kb-container kb-container--wide">
 		<?php if ( count( $kb_slides ) > 1 ) : ?>

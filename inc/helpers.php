@@ -33,7 +33,7 @@ function kb_defaults() {
 
 		// Héros.
 		'hero_eyebrow'          => 'République Démocratique du Congo · Haut-Katanga',
-		'hero_title'            => 'Bienvenue sur le site officiel de la Ville de Kasumbalesa',
+		'hero_title'            => 'Bienvenue sur le site officiel de la *Ville de Kasumbalesa*',
 		'hero_subtitle'         => 'Kasumba ka Lesa — la ville-montagne de Dieu, porte de la RDC vers la Zambie.',
 		'hero_btn1_label'       => 'Découvrir la ville',
 		'hero_btn1_url'         => '#decouvrir',
@@ -60,12 +60,13 @@ function kb_defaults() {
 
 		// Actualités.
 		'news_eyebrow'          => 'Actualités de la Ville',
-		'news_title'            => 'Les dernières nouvelles',
+		'news_title'            => 'Les dernières *nouvelles*',
 		'news_all_label'        => 'Toutes les actualités',
 
 		// Accès rapides.
 		'qa_eyebrow'            => 'Accès rapides',
-		'qa_title'              => 'Vos services en un clic',
+		'qa_title'              => 'Vos services *en un clic*',
+		'qa_image'              => 0,
 		'qa_1_title'            => 'Démarches',
 		'qa_1_text'             => 'État civil, documents administratifs et formalités.',
 		'qa_1_url'              => '',
@@ -89,7 +90,7 @@ function kb_defaults() {
 
 		// Chiffres clés (vides par défaut : rien n'est affiché tant qu'ils ne sont pas renseignés).
 		'figures_eyebrow'       => 'Kasumbalesa en chiffres',
-		'figures_title'         => 'Une ville en mouvement',
+		'figures_title'         => 'Une ville *en mouvement*',
 		'figures_image'         => 0,
 		'fig_1_number'          => '',
 		'fig_1_suffix'          => '',
@@ -114,6 +115,10 @@ function kb_defaults() {
 		'postcard_image'        => 0,
 		'postcard_title'        => 'Souvenir de Kasumbalesa',
 		'postcard_text'         => 'Haut-Katanga · République Démocratique du Congo',
+
+		// Bande typographique.
+		'marquee_enable'        => 1,
+		'marquee_text'          => 'Kasumba ka Lesa · La ville-montagne de Dieu · Haut-Katanga · Porte de la Zambie',
 
 		// Coordonnées & réseaux.
 		'contact_phone'         => '',
@@ -163,7 +168,7 @@ function kb_translatable_mods() {
 		'figures_eyebrow', 'figures_title',
 		'fig_1_label', 'fig_2_label', 'fig_3_label', 'fig_4_label',
 		'topo_eyebrow', 'topo_title', 'topo_text', 'topo_link_label',
-		'postcard_title', 'postcard_text',
+		'postcard_title', 'postcard_text', 'marquee_text',
 		'contact_address', 'contact_hours', 'footer_about', 'footer_credit', 'seo_description',
 	);
 }
@@ -261,6 +266,26 @@ function kb_mayor_excerpt( $page, $words = 60 ) {
 	$text = excerpt_remove_blocks( $text );
 	$text = wp_strip_all_tags( $text );
 	return wp_trim_words( $text, $words, '…' );
+}
+
+/**
+ * Titre avec mise en valeur : les mots entourés d'astérisques (*ainsi*) passent en italique doré.
+ *
+ * @param string $text Texte saisi.
+ * @return string HTML sûr.
+ */
+function kb_rich_title( $text ) {
+	return preg_replace( '/\*([^*]+)\*/u', '<em>$1</em>', esc_html( (string) $text ) );
+}
+
+/**
+ * Texte brut d'un titre enrichi (sans astérisques).
+ *
+ * @param string $text Texte saisi.
+ * @return string
+ */
+function kb_plain_title( $text ) {
+	return str_replace( '*', '', (string) $text );
 }
 
 /**

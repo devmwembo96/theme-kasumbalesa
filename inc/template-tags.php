@@ -132,11 +132,11 @@ function kb_button( $label, $url, $variant = 'primary', $icon = 'arrow-right' ) 
 		return;
 	}
 	printf(
-		'<a class="kb-btn kb-btn--%1$s" href="%2$s"><span>%3$s</span>%4$s</a>',
+		'<a class="kb-btn kb-btn--%1$s" href="%2$s"><span class="kb-btn__label">%3$s</span>%4$s</a>',
 		esc_attr( $variant ),
 		esc_url( $url ),
 		esc_html( $label ),
-		$icon ? kb_icon( $icon ) : '' // phpcs:ignore WordPress.Security.EscapeOutput -- SVG interne.
+		$icon ? '<span class="kb-btn__icon">' . kb_icon( $icon ) . '</span>' : '' // phpcs:ignore WordPress.Security.EscapeOutput -- SVG interne.
 	);
 }
 
@@ -158,7 +158,7 @@ function kb_section_heading( $eyebrow, $title, $id = '', $align = 'left' ) {
 			<p class="kb-eyebrow"><?php echo esc_html( $eyebrow ); ?></p>
 		<?php endif; ?>
 		<?php if ( $title ) : ?>
-			<h2 class="kb-section-title"<?php echo $id ? ' id="' . esc_attr( $id ) . '"' : ''; ?>><?php echo esc_html( $title ); ?></h2>
+			<h2 class="kb-section-title"<?php echo $id ? ' id="' . esc_attr( $id ) . '"' : ''; ?>><?php echo kb_rich_title( $title ); // phpcs:ignore WordPress.Security.EscapeOutput -- échappé dans kb_rich_title(). ?></h2>
 		<?php endif; ?>
 	</header>
 	<?php

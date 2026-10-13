@@ -513,6 +513,81 @@
 	});
 
 	/* ------------------------------------------------------------------
+	 * Titres révélés mot à mot (le mot accentué <em> est conservé)
+	 * ------------------------------------------------------------------ */
+	function splitWords(el) {
+		var index = 0;
+		var walk = function (node) {
+			Array.prototype.slice.call(node.childNodes).forEach(function (child) {
+				if (child.nodeType === 1) { walk(child); return; }
+				if (child.nodeType !== 3 || !child.textContent.trim()) { return; }
+				var fragment = doc.createDocumentFragment();
+				child.textContent.split(/(\s+)/).forEach(function (part) {
+					if (!part) { return; }
+					if (/^\s+$/.test(part)) { fragment.appendChild(doc.createTextNode(part)); return; }
+					var word = doc.createElement('span');
+					var inner = doc.createElement('span');
+					word.className = 'kb-split__word';
+					inner.className = 'kb-split__inner';
+					inner.style.setProperty('--w', index++);
+					inner.textContent = part;
+					word.appendChild(inner);
+					fragment.appendChild(word);
+				});
+				node.replaceChild(fragment, child);
+			});
+		};
+		walk(el);
+		el.classList.add('is-split');
+	}
+
+	if (!reducedMotion) {
+		$$('[data-split]').forEach(splitWords);
+	}
+
+	/* ------------------------------------------------------------------
+	 * Halo qui suit le pointeur (cartes bento) et boutons magnétiques
+	 * ------------------------------------------------------------------ */
+	var finePointer = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+	if (finePointer) {
+		$$('[data-spotlight]').forEach(function (card) {
+			card.addEventListener('pointermove', function (event) {
+				var rect = card.getBoundingClientRect();
+				card.style.setProperty('--mx', (event.clientX - rect.left) + 'px');
+				card.style.setProperty('--my', (event.clientY - rect.top) + 'px');
+			});
+		});
+
+		if (!reducedMotion) {
+			$$('.kb-hero__actions .kb-btn, .kb-news__all .kb-btn').forEach(function (btn) {
+				btn.addEventListener('pointermove', function (event) {
+					var rect = btn.getBoundingClientRect();
+					var x = (event.clientX - rect.left - rect.width / 2) * 0.18;
+					var y = (event.clientY - rect.top - rect.height / 2) * 0.3;
+					btn.style.transform = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px)';
+				});
+				btn.addEventListener('pointerleave', function () { btn.style.transform = ''; });
+				btn.style.transition = 'transform .4s cubic-bezier(.16,1,.3,1), color .35s, border-color .35s';
+			});
+		}
+	}
+
+	/* ------------------------------------------------------------------
+	 * Barre de lecture (repli si le CSS « scroll-timeline » n'est pas pris en charge)
+	 * ------------------------------------------------------------------ */
+	var progress = $('.kb-progress');
+	var nativeTimeline = window.CSS && CSS.supports && CSS.supports('animation-timeline: scroll()');
+	if (progress && (!nativeTimeline || reducedMotion)) {
+		var updateProgress = function () {
+			var max = root.scrollHeight - window.innerHeight;
+			progress.style.setProperty('--kb-progress', max > 0 ? Math.min(window.scrollY / max, 1) : 0);
+		};
+		window.addEventListener('scroll', function () { window.requestAnimationFrame(updateProgress); }, { passive: true });
+		updateProgress();
+	}
+
+	/* ------------------------------------------------------------------
 	 * Démarrage
 	 * ------------------------------------------------------------------ */
 	doc.addEventListener('kb:introdone', function () {

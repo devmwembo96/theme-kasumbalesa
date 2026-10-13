@@ -14,6 +14,10 @@ if ( kb_mod( 'mayor_section_enable' ) && kb_get_mayor_page() ) {
 }
 
 get_template_part( 'template-parts/news-carousel' );
+
+if ( kb_mod( 'marquee_enable' ) && kb_mod( 'marquee_text' ) ) {
+	get_template_part( 'template-parts/marquee' );
+}
 get_template_part( 'template-parts/quick-access' );
 get_template_part( 'template-parts/key-figures' );
 get_template_part( 'template-parts/toponymy' );

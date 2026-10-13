@@ -11,6 +11,7 @@ while ( have_posts() ) :
 	the_post();
 	$kb_has_image = has_post_thumbnail();
 	?>
+	<div class="kb-progress" aria-hidden="true"><span></span></div>
 	<article <?php post_class( 'kb-article' ); ?>>
 		<header class="kb-post-hero<?php echo $kb_has_image ? ' kb-post-hero--image' : ''; ?>">
 			<?php

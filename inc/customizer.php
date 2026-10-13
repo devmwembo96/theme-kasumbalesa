@@ -102,7 +102,8 @@ function kb_customize_register( $wp_customize ) {
 	}
 
 	$wp_customize->get_section( 'kb_figures' )->description = __( 'Seuls les chiffres renseignés (nombre supérieur à zéro ET libellé) sont affichés. Si aucun n’est rempli, la section est masquée.', 'kasumbalesa' );
-	$wp_customize->get_section( 'kb_hero' )->description    = __( 'Choisissez jusqu’à 5 images dans la Médiathèque (format paysage, 2400 px de large conseillé).', 'kasumbalesa' );
+	$wp_customize->get_section( 'kb_news' )->description    = __( 'Astuce : entourez un mot d’astérisques (*ainsi*) pour le mettre en italique doré dans les titres.', 'kasumbalesa' );
+	$wp_customize->get_section( 'kb_hero' )->description    = __( 'Titres : entourez un mot d’astérisques (*ainsi*) pour le mettre en valeur. ', 'kasumbalesa' ) . __( 'Choisissez jusqu’à 5 images dans la Médiathèque (format paysage, 2400 px de large conseillé).', 'kasumbalesa' );
 
 	/**
 	 * Ajoute un réglage + son contrôle.
@@ -227,6 +228,7 @@ function kb_customize_register( $wp_customize ) {
 
 	// Accès rapides.
 	$add( 'qa_eyebrow', 'kb_quick', 'text', __( 'Surtitre', 'kasumbalesa' ) );
+	$add( 'qa_image', 'kb_quick', 'image', __( 'Photo de la grande tuile (accès 1)', 'kasumbalesa' ) );
 	$add( 'qa_title', 'kb_quick', 'text', __( 'Titre', 'kasumbalesa' ) );
 	for ( $i = 1; $i <= 4; $i++ ) {
 		/* translators: %d: numéro de l'accès rapide. */
@@ -266,6 +268,10 @@ function kb_customize_register( $wp_customize ) {
 	$add( 'postcard_image', 'kb_topo', 'image', __( 'Carte postale – photo', 'kasumbalesa' ) );
 	$add( 'postcard_title', 'kb_topo', 'text', __( 'Carte postale – titre', 'kasumbalesa' ) );
 	$add( 'postcard_text', 'kb_topo', 'text', __( 'Carte postale – légende', 'kasumbalesa' ) );
+
+	// Bande typographique.
+	$add( 'marquee_enable', 'kb_topo', 'checkbox', __( 'Bande typographique géante (accueil)', 'kasumbalesa' ) );
+	$add( 'marquee_text', 'kb_topo', 'text', __( 'Texte de la bande (séparer par « · »)', 'kasumbalesa' ) );
 
 	// Coordonnées.
 	$add( 'contact_phone', 'kb_contact', 'text', __( 'Téléphone principal', 'kasumbalesa' ), array( 'description' => __( 'Format international conseillé : +243 …', 'kasumbalesa' ) ) );
