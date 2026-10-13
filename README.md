@@ -82,6 +82,9 @@ Contrastes vérifiés : tous les textes atteignent au moins 4,5:1 (par exemple o
 - **SEO** : les balises sont désactivées automatiquement si Yoast, Rank Math, AIOSEO ou SEOPress est actif.
 - **FR / EN** : avec Polylang ou WPML, le sélecteur utilise les langues de l'extension, et les textes du Customizer sont traduisibles dans Langues › Traductions des chaînes (Polylang). Sans extension, renseignez l'adresse de la version anglaise. Tant qu'elle est vide, « EN » apparaît comme « bientôt disponible ».
 
+### API REST derrière le cache Edge de LWS
+Le cache Edge de LWS supprime l'en-tête `Authorization`, ce qui empêche l'identification par mot de passe d'application. Le fichier `mu-plugins/kasumbalesa-rest-auth.php` ne fait pas partie du thème. Il se copie dans `wp-content/mu-plugins/` et accepte les mêmes identifiants dans l'en-tête `X-Kasu-Auth: Basic <base64(utilisateur:mot-de-passe)>`, uniquement sur l'API REST et en HTTPS. Il ne contient aucun identifiant.
+
 ## Performance et accessibilité
 - Une seule feuille CSS et un seul script chargé en `defer`, sans jQuery ni bibliothèque d'animation.
 - Images en `srcset` + `loading="lazy"`. Seule la première image du héros est prioritaire, les suivantes sont chargées juste avant leur affichage.
