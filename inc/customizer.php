@@ -182,7 +182,7 @@ function kb_customize_register( $wp_customize ) {
 		/* translators: %d: numéro de l'image. */
 		$add( 'hero_slide_' . $i, 'kb_hero', 'image', sprintf( __( 'Image du diaporama n° %d', 'kasumbalesa' ), $i ) );
 	}
-	$add( 'hero_overlay', 'kb_hero', 'range', __( 'Intensité du voile sombre (%)', 'kasumbalesa' ), array( 'input_attrs' => array( 'min' => 20, 'max' => 85, 'step' => 5 ) ) );
+	$add( 'hero_overlay', 'kb_hero', 'range', __( 'Intensité du voile sur les photos (%)', 'kasumbalesa' ), array( 'input_attrs' => array( 'min' => 0, 'max' => 70, 'step' => 5 ) ) );
 	$add( 'hero_interval', 'kb_hero', 'range', __( 'Durée de chaque image (secondes)', 'kasumbalesa' ), array( 'input_attrs' => array( 'min' => 4, 'max' => 15, 'step' => 1 ) ) );
 
 	// Bande défilante.

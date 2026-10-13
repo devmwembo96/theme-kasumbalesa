@@ -7,7 +7,7 @@
  */
 
 $kb_slides  = kb_hero_slide_ids();
-$kb_overlay = min( 85, max( 20, absint( kb_mod( 'hero_overlay' ) ) ) ) / 100;
+$kb_overlay = min( 70, absint( kb_mod( 'hero_overlay' ) ) ) / 100;
 $kb_btn2    = kb_resolve_url( kb_mod( 'hero_btn2_url' ), kb_news_url() );
 ?>
 <section class="kb-hero<?php echo $kb_slides ? '' : ' kb-hero--plain'; ?>" style="--kb-overlay: <?php echo esc_attr( $kb_overlay ); ?>" aria-labelledby="kb-hero-title" data-hero>

@@ -5,8 +5,9 @@
  * @package Kasumbalesa
  */
 
-$kb_about = kb_mod( 'footer_about' );
-$kb_about = $kb_about ? $kb_about : get_bloginfo( 'description' );
+// Texte de présentation : jamais la devise seule, déjà affichée sous le nom.
+$kb_about = trim( (string) kb_mod( 'footer_about' ) );
+$kb_about = ( get_bloginfo( 'description' ) === $kb_about ) ? '' : $kb_about;
 ?>
 </main>
 
@@ -20,18 +21,21 @@ $kb_about = $kb_about ? $kb_about : get_bloginfo( 'description' );
 			<?php kb_social_links( 'kb-social--footer' ); ?>
 		</div>
 
-		<div class="kb-footer__col">
+		<div class="kb-footer__col kb-footer__col--contact">
 			<h2 class="kb-footer__title"><?php esc_html_e( 'Nous contacter', 'kasumbalesa' ); ?></h2>
 			<?php kb_contact_list(); ?>
 		</div>
 
-		<?php if ( has_nav_menu( 'footer' ) ) : ?>
-			<nav class="kb-footer__col" aria-label="<?php esc_attr_e( 'Liens du pied de page', 'kasumbalesa' ); ?>">
-				<h2 class="kb-footer__title"><?php echo esc_html( wp_get_nav_menu_name( 'footer' ) ); ?></h2>
+		<?php
+		$kb_links_location = has_nav_menu( 'footer' ) ? 'footer' : ( has_nav_menu( 'primary' ) ? 'primary' : '' );
+		if ( $kb_links_location ) :
+			?>
+			<nav class="kb-footer__col kb-footer__col--links" aria-label="<?php esc_attr_e( 'Liens utiles', 'kasumbalesa' ); ?>">
+				<h2 class="kb-footer__title"><?php esc_html_e( 'Liens utiles', 'kasumbalesa' ); ?></h2>
 				<?php
 				wp_nav_menu(
 					array(
-						'theme_location' => 'footer',
+						'theme_location' => $kb_links_location,
 						'container'      => false,
 						'menu_class'     => 'kb-footer__menu',
 						'depth'          => 1,
@@ -39,12 +43,6 @@ $kb_about = $kb_about ? $kb_about : get_bloginfo( 'description' );
 				);
 				?>
 			</nav>
-		<?php endif; ?>
-
-		<?php if ( is_active_sidebar( 'footer-1' ) ) : ?>
-			<div class="kb-footer__col kb-footer__widgets">
-				<?php dynamic_sidebar( 'footer-1' ); ?>
-			</div>
 		<?php endif; ?>
 	</div>
 
@@ -55,12 +53,12 @@ $kb_about = $kb_about ? $kb_about : get_bloginfo( 'description' );
 			if ( has_nav_menu( 'legal' ) ) {
 				wp_nav_menu(
 					array(
-						'theme_location'  => 'legal',
-						'container'       => 'nav',
-						'container_class' => 'kb-footer__legal',
+						'theme_location'       => 'legal',
+						'container'            => 'nav',
+						'container_class'      => 'kb-footer__legal',
 						'container_aria_label' => __( 'Mentions légales', 'kasumbalesa' ),
-						'menu_class'      => 'kb-footer__legal-menu',
-						'depth'           => 1,
+						'menu_class'           => 'kb-footer__legal-menu',
+						'depth'                => 1,
 					)
 				);
 			}
