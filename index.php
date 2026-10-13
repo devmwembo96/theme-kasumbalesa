@@ -6,17 +6,16 @@
  */
 
 get_header();
-?>
-<section class="kb-section">
-	<div class="kb-container">
-		<?php
-		while ( have_posts() ) :
-			the_post();
-			the_title( '<h2><a href="' . esc_url( get_permalink() ) . '">', '</a></h2>' );
-			the_excerpt();
-		endwhile;
-		?>
-	</div>
-</section>
-<?php
+
+get_template_part(
+	'template-parts/page-hero',
+	null,
+	array(
+		'eyebrow' => get_bloginfo( 'name' ),
+		'title'   => is_singular() ? get_the_title() : wp_get_document_title(),
+	)
+);
+
+get_template_part( 'template-parts/post-list' );
+
 get_footer();

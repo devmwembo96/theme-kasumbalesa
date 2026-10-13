@@ -388,3 +388,31 @@ function kb_thumbnail( $size = 'kb-card', $attr = array(), $post = null ) {
 		)
 	);
 }
+
+/**
+ * Filtre par catégorie (pastilles) affiché en tête des listes d'actualités.
+ */
+function kb_category_filter() {
+	$cats = get_categories(
+		array(
+			'orderby'    => 'count',
+			'order'      => 'DESC',
+			'number'     => 8,
+			'hide_empty' => true,
+		)
+	);
+	if ( count( $cats ) < 2 ) {
+		return;
+	}
+	$current = is_category() ? get_queried_object_id() : 0;
+	?>
+	<nav class="kb-filter" aria-label="<?php esc_attr_e( 'Filtrer par catégorie', 'kasumbalesa' ); ?>">
+		<ul>
+			<li><a href="<?php echo esc_url( kb_news_url() ); ?>"<?php echo $current ? '' : ' aria-current="page"'; ?>><?php esc_html_e( 'Tout', 'kasumbalesa' ); ?></a></li>
+			<?php foreach ( $cats as $cat ) : ?>
+				<li><a href="<?php echo esc_url( get_category_link( $cat ) ); ?>"<?php echo $current === $cat->term_id ? ' aria-current="page"' : ''; ?>><?php echo esc_html( $cat->name ); ?></a></li>
+			<?php endforeach; ?>
+		</ul>
+	</nav>
+	<?php
+}

@@ -1,0 +1,45 @@
+/* Styles de l'éditeur Gutenberg : même typographie et mêmes couleurs que le site. */
+body {
+	font-family: "Manrope", system-ui, sans-serif;
+	font-size: 18px;
+	line-height: 1.85;
+	color: #1C231F;
+	background: #FFFFFF;
+}
+
+h1, h2, h3, h4,
+.editor-post-title__input,
+.wp-block-post-title {
+	font-family: "Cormorant Garamond", Garamond, serif;
+	font-weight: 600;
+	line-height: 1.1;
+	letter-spacing: -.01em;
+	color: #0A0F0C;
+}
+
+.editor-post-title__input,
+.wp-block-post-title { font-size: 3.2rem; }
+h2 { font-size: 2.4rem; }
+h3 { font-size: 1.8rem; }
+
+a { color: #1F5C43; text-decoration-color: #B87333; }
+
+.wp-block { max-width: 720px; }
+.wp-block[data-align="wide"] { max-width: 1200px; }
+.wp-block[data-align="full"] { max-width: none; }
+
+blockquote,
+.wp-block-quote {
+	border: 0;
+	padding-left: 0;
+	font-family: "Cormorant Garamond", Garamond, serif;
+	font-size: 1.9rem;
+	font-style: italic;
+	line-height: 1.4;
+}
+
+.wp-block-quote cite { font-family: "Manrope", sans-serif; font-size: .75rem; font-style: normal; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: #8E4F1E; }
+
+.has-drop-cap:not(:focus)::first-letter { font-family: "Cormorant Garamond", serif; font-weight: 600; color: #B87333; }
+
+.wp-block-button__link { border-radius: 4px; background: #0B2A1F; font-size: .8125rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
