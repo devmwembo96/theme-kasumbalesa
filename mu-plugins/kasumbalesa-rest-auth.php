@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Kasumbalesa — Authentification REST de secours
  * Description: Le cache Edge de LWS supprime l'en-tête HTTP Authorization. Ce mu-plugin accepte les mêmes identifiants (mot de passe d'application) dans l'en-tête X-Kasu-Auth, uniquement pour l'API REST et en HTTPS.
- * Version: 1.1.0
+ * Version: 1.2.0
  *
  * À déposer dans wp-content/mu-plugins/ (pas dans le thème).
  * Format de l'en-tête : X-Kasu-Auth: Basic base64(utilisateur:mot-de-passe-d-application)
@@ -63,4 +63,21 @@ defined( 'ABSPATH' ) || exit;
 	$_SERVER['PHP_AUTH_USER'] = $user;
 	$_SERVER['PHP_AUTH_PW']   = $password;
 	$state( 'applique' );
+
+	// Une extension peut lire l'utilisateur courant avant que WordPress ne sache qu'il
+	// s'agit d'une requête REST : l'identification serait alors ignorée sans erreur.
+	add_filter( 'application_password_is_api_request', '__return_true' );
+
+	add_action(
+		'application_password_did_authenticate',
+		static function () use ( $state ) {
+			$state( 'reussi' );
+		}
+	);
+	add_action(
+		'application_password_failed_authentication',
+		static function ( $error ) use ( $state ) {
+			$state( 'echec-' . ( is_wp_error( $error ) ? sanitize_key( $error->get_error_code() ) : 'inconnu' ) );
+		}
+	);
 } )();
