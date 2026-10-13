@@ -550,7 +550,7 @@ a.kb-badge:hover { background: var(--kb-copper); color: var(--kb-white); }
 }
 
 @media (max-width: 600px) {
-	.kb-brand__tagline,
+	.kb-header .kb-brand__tagline,
 	.kb-header .kb-lang { display: none; }
 	.kb-brand__name { font-size: 1.2rem; }
 	.kb-header__inner { gap: .75rem; }
@@ -1767,6 +1767,39 @@ a.kb-quick__card:hover .kb-quick__arrow .kb-icon { transform: translateX(8px); }
 .kb-entry .wp-block-gallery { gap: .75rem; }
 .kb-entry .wp-block-embed iframe { max-width: 100%; }
 .kb-entry .has-drop-cap:not(:focus)::first-letter { font-family: var(--kb-font-serif); font-size: 4.6em; font-weight: 600; line-height: .8; margin: .08em .12em 0 0; color: var(--kb-copper); }
+
+/* Blocs de mise en page dans le contenu */
+.kb-entry .wp-block-media-text { gap: 0; margin-block: 2.5rem; }
+.kb-entry .wp-block-media-text__content { padding: clamp(1.5rem, 4vw, 3rem); }
+.kb-entry .wp-block-media-text__content > :first-child { margin-top: 0; }
+.kb-entry .wp-block-media-text__media img { border-radius: var(--kb-radius-lg); }
+.kb-entry .wp-block-columns { gap: clamp(1.5rem, 4vw, 3rem); margin-block: 2.5rem; }
+.kb-entry .wp-block-column > :first-child { margin-top: 0; }
+.kb-entry .wp-block-image img,
+.kb-entry .wp-block-gallery img { border-radius: var(--kb-radius); }
+.kb-entry .wp-block-video video { width: 100%; border-radius: var(--kb-radius-lg); background: var(--kb-paper); }
+
+/* Galeries : grille simple, nombre de colonnes respecté (2 sur mobile) */
+.kb-entry .wp-block-gallery.has-nested-images { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(.5rem, 1.5vw, 1rem); }
+.kb-entry .wp-block-gallery.has-nested-images figure.wp-block-image:not(#individual-image) { width: auto; min-width: 0; margin: 0; }
+.kb-entry .wp-block-gallery.has-nested-images figure.wp-block-image img { width: 100%; }
+.kb-entry .wp-block-gallery.has-nested-images.is-cropped figure.wp-block-image:not(#individual-image) img { aspect-ratio: 4 / 3; object-fit: cover; }
+@media (min-width: 782px) {
+	.kb-entry .wp-block-gallery.has-nested-images.columns-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+	.kb-entry .wp-block-gallery.has-nested-images.columns-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* Équipe municipale : portraits au même format */
+.kb-entry .kb-team { max-width: 52rem; }
+.kb-entry .kb-team .wp-block-column { padding: 1rem 1rem 1.5rem; border: 1px solid var(--kb-line-soft); border-radius: var(--kb-radius-lg); background: var(--kb-white); box-shadow: var(--kb-shadow-soft); text-align: center; }
+.kb-entry .kb-team figure { margin: 0 0 1.25rem; }
+.kb-entry .kb-team img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; object-position: center 20%; }
+.kb-entry .kb-team h3 { margin: 0 0 .25rem; font-size: var(--kb-step-1); }
+.kb-entry .kb-team p { margin: 0; font-size: .875rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--kb-copper-dark); }
+
+/* Carte intégrée (Google Maps) */
+.kb-entry .kb-map { max-width: var(--kb-container); }
+.kb-map iframe { display: block; width: 100%; aspect-ratio: 16 / 9; min-height: 18rem; border: 0; border-radius: var(--kb-radius-lg); }
 
 /* Couleurs de la palette Gutenberg */
 .has-green-color { color: #0B2A1F; } .has-green-background-color { background-color: #0B2A1F; }
