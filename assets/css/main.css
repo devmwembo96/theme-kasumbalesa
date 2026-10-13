@@ -806,6 +806,8 @@ a.kb-badge:hover { background: var(--kb-white); color: var(--kb-ink); }
 	color: var(--kb-white);
 	text-align: center;
 	transition: opacity .45s var(--kb-ease), transform .45s var(--kb-ease), visibility .45s;
+	/* Fermeture garantie à 2 s, même si le script arrive tard (connexion lente). */
+	animation: kb-intro-out .45s 1.55s var(--kb-ease) forwards;
 }
 
 .kb-intro.is-leaving { opacity: 0; transform: scale(1.04); visibility: hidden; }
@@ -879,6 +881,7 @@ a.kb-badge:hover { background: var(--kb-white); color: var(--kb-ink); }
 html.kb-intro-active,
 html.kb-intro-active body { overflow: hidden; }
 
+@keyframes kb-intro-out { to { opacity: 0; transform: scale(1.04); visibility: hidden; } }
 @keyframes kb-draw { to { stroke-dashoffset: 0; } }
 @keyframes kb-logo-in { to { opacity: 1; transform: none; filter: none; } }
 @keyframes kb-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }

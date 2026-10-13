@@ -170,7 +170,9 @@
 		intro.addEventListener('keydown', function (event) {
 			if (event.key === 'Escape') { leave(); }
 		});
-		leaveTimer = window.setTimeout(leave, 1550);
+		// Le compte à rebours part de l'affichage de la page, pas du chargement du script.
+		var elapsed = window.performance && performance.now ? performance.now() : 0;
+		leaveTimer = window.setTimeout(leave, Math.max(0, 1550 - elapsed));
 	}
 
 	/* ------------------------------------------------------------------
