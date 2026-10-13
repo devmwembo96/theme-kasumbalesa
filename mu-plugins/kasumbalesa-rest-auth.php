@@ -1,14 +1,12 @@
 <?php
 /**
- * Plugin Name: Kasumbalesa — Authentification REST de secours
- * Description: Le cache Edge de LWS supprime l'en-tête HTTP Authorization. Ce mu-plugin accepte les mêmes identifiants (mot de passe d'application) dans l'en-tête X-Kasu-Auth, uniquement pour l'API REST et en HTTPS.
- * Version: 1.2.0
+ * Plugin Name: Kasumbalesa — Authentification REST (correctif et diagnostic)
+ * Description: Fait valider les mots de passe d'application sur l'API REST même si une extension lit l'utilisateur courant trop tôt, et ajoute un en-tête de diagnostic X-Kasu-Auth-Etat aux réponses de l'API.
+ * Version: 2.0.0
  *
  * À déposer dans wp-content/mu-plugins/ (pas dans le thème).
- * Format de l'en-tête : X-Kasu-Auth: Basic base64(utilisateur:mot-de-passe-d-application)
- *
- * Ne contient aucun identifiant. Seuls les mots de passe d'application sont
- * acceptés : WordPress refuse le mot de passe de connexion sur l'API REST.
+ * Ne contient aucun identifiant et n'ajoute aucune méthode de connexion :
+ * seul l'en-tête Authorization standard est utilisé.
  *
  * @package Kasumbalesa
  */
@@ -22,62 +20,59 @@ defined( 'ABSPATH' ) || exit;
 		return;
 	}
 
-	// Diagnostic : indique dans la réponse jusqu'où le mu-plugin est allé (aucune donnée sensible).
-	$state = static function ( $value ) {
-		if ( ! headers_sent() ) {
-			header( 'X-Kasu-Auth-Etat: ' . $value );
-		}
-	};
-
-	// L'en-tête standard est arrivé : rien à faire.
-	if ( ! empty( $_SERVER['PHP_AUTH_USER'] ) ) {
-		$state( 'authorization-standard' );
-		return;
-	}
-	if ( empty( $_SERVER['HTTP_X_KASU_AUTH'] ) ) {
-		$state( 'en-tete-absent' );
-		return;
-	}
-
-	// HTTPS seulement (derrière le proxy LWS, Apache peut voir la requête en HTTP).
-	$forwarded_https = isset( $_SERVER['HTTP_X_FORWARDED_PROTO'] ) && 'https' === strtolower( (string) $_SERVER['HTTP_X_FORWARDED_PROTO'] );
-	if ( ! is_ssl() && ! $forwarded_https ) {
-		$state( 'https-non-detecte' );
-		return;
-	}
-
-	$value = trim( (string) $_SERVER['HTTP_X_KASU_AUTH'] );
-	if ( 0 === stripos( $value, 'Basic ' ) ) {
-		$value = substr( $value, 6 );
-	}
-
-	$decoded = base64_decode( $value, true );
-	if ( false === $decoded || false === strpos( $decoded, ':' ) ) {
-		$state( 'format-invalide' );
-		return;
-	}
-
-	list( $user, $password ) = explode( ':', $decoded, 2 );
-
-	// WordPress lit ces deux valeurs pour valider le mot de passe d'application.
-	$_SERVER['PHP_AUTH_USER'] = $user;
-	$_SERVER['PHP_AUTH_PW']   = $password;
-	$state( 'applique' );
-
 	// Une extension peut lire l'utilisateur courant avant que WordPress ne sache qu'il
-	// s'agit d'une requête REST : l'identification serait alors ignorée sans erreur.
+	// s'agit d'une requête REST : le mot de passe d'application serait alors ignoré sans erreur.
 	add_filter( 'application_password_is_api_request', '__return_true' );
 
+	$result      = 'non-tente';
+	$determined  = 'jamais';
+	$auth_header = ! empty( $_SERVER['PHP_AUTH_USER'] ) ? 'recu' : 'absent';
+
+	add_action(
+		'set_current_user',
+		static function () use ( &$determined ) {
+			if ( 'jamais' === $determined ) {
+				$determined = defined( 'REST_REQUEST' ) && REST_REQUEST ? 'pendant-rest' : 'avant-rest';
+			}
+		},
+		0
+	);
 	add_action(
 		'application_password_did_authenticate',
-		static function () use ( $state ) {
-			$state( 'reussi' );
+		static function () use ( &$result ) {
+			$result = 'reussi';
 		}
 	);
 	add_action(
 		'application_password_failed_authentication',
-		static function ( $error ) use ( $state ) {
-			$state( 'echec-' . ( is_wp_error( $error ) ? sanitize_key( $error->get_error_code() ) : 'inconnu' ) );
+		static function ( $error ) use ( &$result ) {
+			$result = 'echec-' . ( is_wp_error( $error ) ? sanitize_key( $error->get_error_code() ) : 'inconnu' );
 		}
+	);
+
+	// Diagnostic sans donnée sensible, ajouté à la réponse de l'API.
+	add_filter(
+		'rest_pre_dispatch',
+		static function ( $response ) use ( &$result, &$determined, $auth_header ) {
+			$first    = $determined;
+			$user_id  = get_current_user_id();
+			$priority = has_filter( 'determine_current_user', 'wp_validate_application_password' );
+
+			if ( ! headers_sent() ) {
+				header(
+					sprintf(
+						'X-Kasu-Auth-Etat: entete=%s; dispo=%d; filtre=%s; utilisateur-lu=%s; resultat=%s; id=%d',
+						$auth_header,
+						wp_is_application_passwords_available() ? 1 : 0,
+						false === $priority ? 'absent' : (string) $priority,
+						$first,
+						$result,
+						$user_id
+					)
+				);
+			}
+			return $response;
+		},
+		0
 	);
 } )();
