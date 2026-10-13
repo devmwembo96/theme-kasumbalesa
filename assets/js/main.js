@@ -476,7 +476,8 @@
 	}
 
 	function initParallax() {
-		if (reducedMotion) { return; }
+		// Pas de parallaxe sur écran tactile ou étroit : la barre d'adresse mobile provoque des à-coups.
+		if (reducedMotion || window.matchMedia('(hover: none), (max-width: 1024px)').matches) { return; }
 		var items = $$('.kb-cover .wp-block-cover__image-background, .kb-topo__image img, .kb-figures__bg, .kb-hero__slides');
 		if (!items.length) { return; }
 		var ticking = false;
