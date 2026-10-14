@@ -8,12 +8,12 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * URL Google Fonts : Cormorant Garamond (titres) + Manrope (texte).
+ * URL Google Fonts : Roboto, la police de l'ancien site (titres en Roboto Light).
  *
  * @return string
  */
 function kb_fonts_url() {
-	return 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Manrope:wght@400..700&display=swap';
+	return 'https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400&display=swap';
 }
 
 /**

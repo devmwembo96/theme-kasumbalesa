@@ -265,6 +265,23 @@ function kb_customize_register( $wp_customize ) {
 	$add( 'topo_image', 'kb_topo', 'image', __( 'Image d’illustration', 'kasumbalesa' ) );
 	$add( 'topo_link_label', 'kb_topo', 'text', __( 'Lien – texte', 'kasumbalesa' ) );
 	$add( 'topo_link_url', 'kb_topo', 'link', __( 'Lien – adresse (vide = pas de lien)', 'kasumbalesa' ) );
+
+	// Carte retournable avant le pied de page.
+	$add( 'flip_enable', 'kb_topo', 'checkbox', __( 'Carte retournable avant le pied de page', 'kasumbalesa' ) );
+	$add( 'flip_front_title', 'kb_topo', 'text', __( 'Carte – titre (recto)', 'kasumbalesa' ) );
+	$add( 'flip_front_text', 'kb_topo', 'text', __( 'Carte – texte (recto)', 'kasumbalesa' ) );
+	$add( 'flip_back_title', 'kb_topo', 'text', __( 'Carte – titre (verso)', 'kasumbalesa' ) );
+	$add( 'flip_back_text', 'kb_topo', 'text', __( 'Carte – texte (verso)', 'kasumbalesa' ) );
+	$add( 'flip_image', 'kb_topo', 'image', __( 'Carte – photo de fond (vide = photo de la toponymie)', 'kasumbalesa' ) );
+	$add( 'flip_link_url', 'kb_topo', 'link', __( 'Carte – lien « Découvrir la ville » (vide = page Portail)', 'kasumbalesa' ) );
+
+	// Bandeau institutionnel du pied de page.
+	$add( 'heritage_emblem_1', 'kb_topo', 'image', __( 'Pied de page – armoiries de la RDC', 'kasumbalesa' ) );
+	$add( 'heritage_emblem_2', 'kb_topo', 'image', __( 'Pied de page – logo de la province du Haut-Katanga', 'kasumbalesa' ) );
+	$add( 'heritage_photo', 'kb_topo', 'image', __( 'Pied de page – photo de la montagne', 'kasumbalesa' ) );
+	$add( 'heritage_line', 'kb_topo', 'text', __( 'Pied de page – appartenance (pays, province)', 'kasumbalesa' ) );
+	$add( 'heritage_title', 'kb_topo', 'text', __( 'Pied de page – titre (*mot* = accent doré)', 'kasumbalesa' ) );
+	$add( 'heritage_motto', 'kb_topo', 'text', __( 'Pied de page – devise', 'kasumbalesa' ) );
 	$add( 'postcard_image', 'kb_topo', 'image', __( 'Carte postale – photo', 'kasumbalesa' ) );
 	$add( 'postcard_title', 'kb_topo', 'text', __( 'Carte postale – titre', 'kasumbalesa' ) );
 	$add( 'postcard_text', 'kb_topo', 'text', __( 'Carte postale – légende', 'kasumbalesa' ) );

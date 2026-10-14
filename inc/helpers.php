@@ -112,6 +112,23 @@ function kb_defaults() {
 		'topo_image'            => 0,
 		'topo_link_label'       => 'Découvrir son histoire',
 		'topo_link_url'         => '',
+
+		// Carte retournable (avant le pied de page, sur toutes les pages).
+		'flip_enable'           => 1,
+		'flip_front_title'      => 'Ville de Kasumbalesa',
+		'flip_front_text'       => 'Ville frontalière du Haut-Katanga',
+		'flip_back_title'       => 'Town of Kasumbalesa',
+		'flip_back_text'        => 'Border town of Haut-Katanga',
+		'flip_image'            => 0,
+		'flip_link_url'         => '',
+
+		// Bandeau institutionnel du pied de page (armoiries, devise, photo de la montagne).
+		'heritage_emblem_1'     => 6041,
+		'heritage_emblem_2'     => 6044,
+		'heritage_photo'        => 7153,
+		'heritage_line'         => 'Ville de la République Démocratique du Congo · Province du Haut-Katanga',
+		'heritage_title'        => 'Site officiel de la *Ville de Kasumbalesa*',
+		'heritage_motto'        => 'Kasumbalesa, la ville-montagne de Dieu',
 		'postcard_image'        => 0,
 		'postcard_title'        => 'Souvenir de Kasumbalesa',
 		'postcard_text'         => 'Haut-Katanga · République Démocratique du Congo',
@@ -168,6 +185,8 @@ function kb_translatable_mods() {
 		'figures_eyebrow', 'figures_title',
 		'fig_1_label', 'fig_2_label', 'fig_3_label', 'fig_4_label',
 		'topo_eyebrow', 'topo_title', 'topo_text', 'topo_link_label',
+		'flip_front_title', 'flip_front_text', 'flip_back_title', 'flip_back_text',
+		'heritage_line', 'heritage_title', 'heritage_motto',
 		'postcard_title', 'postcard_text', 'marquee_text',
 		'contact_address', 'contact_hours', 'footer_about', 'footer_credit', 'seo_description',
 	);

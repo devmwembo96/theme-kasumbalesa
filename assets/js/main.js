@@ -417,6 +417,26 @@
 	}
 
 	/* ------------------------------------------------------------------
+	 * Carte retournable : toucher, clic ou clavier (le survol est géré en CSS)
+	 * ------------------------------------------------------------------ */
+	function initFlip() {
+		$$('[data-flip]').forEach(function (card) {
+			function toggle() {
+				var on = card.classList.toggle('is-flipped');
+				card.setAttribute('aria-pressed', on ? 'true' : 'false');
+			}
+			card.addEventListener('click', function (e) {
+				if (e.target.closest('a')) { return; }
+				toggle();
+			});
+			card.addEventListener('keydown', function (e) {
+				if (e.target !== card) { return; }
+				if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+			});
+		});
+	}
+
+	/* ------------------------------------------------------------------
 	 * Mise en scène du contenu : apparitions, titres mot à mot,
 	 * compteurs et parallaxe (prépare le DOM avant initReveal)
 	 * ------------------------------------------------------------------ */
@@ -687,5 +707,6 @@
 	initReveal();
 	initParallax();
 	initCarousels();
+	initFlip();
 	runIntro();
 })();

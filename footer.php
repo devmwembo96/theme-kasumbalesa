@@ -11,14 +11,15 @@ $kb_about = ( get_bloginfo( 'description' ) === $kb_about ) ? '' : $kb_about;
 ?>
 </main>
 
+<?php get_template_part( 'template-parts/flip-card' ); ?>
+
 <footer class="kb-footer">
 	<div class="kb-footer__top kb-container kb-container--wide">
 		<div class="kb-footer__brand">
-			<?php kb_site_branding( 'footer' ); ?>
+			<?php get_template_part( 'template-parts/footer-heritage' ); ?>
 			<?php if ( $kb_about ) : ?>
 				<p class="kb-footer__about"><?php echo nl2br( esc_html( $kb_about ) ); ?></p>
 			<?php endif; ?>
-			<?php kb_social_links( 'kb-social--footer' ); ?>
 		</div>
 
 		<div class="kb-footer__col kb-footer__col--contact">

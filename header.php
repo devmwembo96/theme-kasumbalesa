@@ -26,6 +26,7 @@ if ( is_front_page() && kb_mod( 'intro_enable' ) ) {
 ?>
 
 <header class="kb-header" id="kb-header">
+	<?php kb_topbar(); ?>
 	<div class="kb-header__bar">
 		<div class="kb-header__inner kb-container kb-container--wide">
 			<?php kb_site_branding( 'header' ); ?>

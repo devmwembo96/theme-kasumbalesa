@@ -416,3 +416,42 @@ function kb_category_filter() {
 	</nav>
 	<?php
 }
+
+/**
+ * Bande de coordonnées en haut de l'en-tête (téléphone, e-mail, adresse, réseaux).
+ */
+function kb_topbar() {
+	if ( ! kb_topbar_is_visible() ) {
+		return;
+	}
+	$phone   = kb_mod( 'contact_phone' );
+	$email   = kb_mod( 'contact_email' );
+	$address = trim( (string) strtok( (string) kb_mod( 'contact_address' ), "\n" ) );
+	?>
+	<div class="kb-topbar">
+		<div class="kb-topbar__inner kb-container kb-container--wide">
+			<ul class="kb-topbar__list">
+				<?php if ( $phone ) : ?>
+					<li><?php echo kb_icon( 'phone' ); // phpcs:ignore ?><a href="<?php echo esc_attr( kb_tel_href( $phone ) ); ?>"><?php echo esc_html( $phone ); ?></a></li>
+				<?php endif; ?>
+				<?php if ( $email && is_email( $email ) ) : ?>
+					<li><?php echo kb_icon( 'mail' ); // phpcs:ignore ?><a href="<?php echo esc_attr( 'mailto:' . antispambot( $email, 1 ) ); ?>"><?php echo esc_html( antispambot( $email ) ); ?></a></li>
+				<?php endif; ?>
+				<?php if ( $address ) : ?>
+					<li class="kb-topbar__address"><?php echo kb_icon( 'map-pin' ); // phpcs:ignore ?><span><?php echo esc_html( $address ); ?></span></li>
+				<?php endif; ?>
+			</ul>
+			<?php kb_social_links(); ?>
+		</div>
+	</div>
+	<?php
+}
+
+/**
+ * La bande de coordonnées s'affiche dès qu'un téléphone, un e-mail ou une adresse est renseigné.
+ *
+ * @return bool
+ */
+function kb_topbar_is_visible() {
+	return (bool) ( kb_mod( 'contact_phone' ) || kb_mod( 'contact_email' ) || kb_mod( 'contact_address' ) );
+}
