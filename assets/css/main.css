@@ -3271,7 +3271,7 @@ body { --kb-header-h: calc(var(--kb-bar-h) + var(--kb-ticker-h) + var(--kb-topba
        titres en gras, italique pour les citations et légendes
    ========================================================================== */
 :root {
-	--kb-font-serif: "Abel", "Helvetica Neue", Helvetica, Arial, sans-serif;
+	--kb-font-serif: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
 	--kb-font-sans: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
 	--kb-step--1: clamp(.8125rem, 3.18vw, .875rem);
 	--kb-step-0: clamp(.9375rem, 3.64vw, 1rem);
@@ -4011,41 +4011,41 @@ a.kb-badge.kb-badge--cat:hover, a.kb-badge.kb-badge--cat:focus-visible { filter:
 .kb-intro__tagline { font-size: .875rem; font-weight: 500; letter-spacing: .02em; text-transform: none; }
 
 /* ==========================================================================
-   35. Version 1.4 : police Abel pour les titres, le menu, les boutons et les
-       étiquettes (Instrument Sans reste pour les textes) ; « Bienvenue… » sur
-       une seule ligne, « Ville de Kasumbalesa » plus grand et droit ;
-       sur-titre République moins espacé ; pied de page équilibré.
+   35. Version 1.4 : police Abel sur tout le site, sauf le sur-titre
+       « République démocratique du Congo · Haut-Katanga » (Instrument Sans)
+       et le titre du pop-up (Instrument Serif). Sur téléphone et tablette :
+       « Bienvenue… » sur une ligne et « Ville de Kasumbalesa » plus grand.
    ========================================================================== */
-:root { --kb-font-display: "Abel", "Helvetica Neue", Helvetica, Arial, sans-serif; }
-
-.kb-eyebrow, .kb-hero__eyebrow, .kb-btn, .kb-header__nav, .kb-mobile-menu,
-.kb-header--wh .kb-ticker__item, .kb-badge, .kb-carousel__cat, .kb-mini__cat,
-.kb-figures__label, .kb-heritage__line, .kb-mayor__caption, .kb-modal__caption,
-.kb-flip__title, .kb-footer__title, .kb-stat__value { font-family: var(--kb-font-display); }
-
-/* Sur-titre « République démocratique du Congo · Haut-Katanga » : sans étirement. */
-.kb-hero--center .kb-hero__eyebrow,
-.kb-page-hero--wh .kb-hero__eyebrow,
-.kb-post-hero--wh .kb-hero__eyebrow { letter-spacing: .05em; }
-
-/* Titre d'accueil : la phrase d'accueil sur une ligne, plus petite ;
-   « Ville de Kasumbalesa » nettement plus grand, sans italique. */
-.kb-hero--center .kb-hero__title {
-	font-size: clamp(1rem, 4.6vw, 1.75rem);
-	line-height: 1.15;
-	white-space: nowrap;
+:root {
+	--kb-font-serif: "Abel", "Helvetica Neue", Helvetica, Arial, sans-serif;
+	--kb-font-sans: "Abel", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
-.kb-hero--center .kb-hero__title em {
-	display: block;
-	margin-top: .1em;
-	font-size: 1.9em;
-	font-style: normal;
-	line-height: 1.02;
-	white-space: normal;
-}
-@media (max-width: 899px) {
-	.kb-hero--center .kb-hero__title { font-size: min(5.1vw, 1.5rem); }
-	.kb-hero--center .kb-hero__title em { font-size: 1.75em; }
+
+/* Le sur-titre République garde sa police d'avant. */
+.kb-hero__eyebrow { font-family: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+
+/* « Ville de Kasumbalesa » de l'en-tête : droit, sans italique. */
+.kb-hero__title em { font-style: normal; }
+
+@media (max-width: 1023px) {
+	/* Sur-titre République : sans étirement. */
+	.kb-hero--center .kb-hero__eyebrow,
+	.kb-page-hero--wh .kb-hero__eyebrow,
+	.kb-post-hero--wh .kb-hero__eyebrow { letter-spacing: .05em; }
+
+	/* Phrase d'accueil sur une seule ligne, « Ville de Kasumbalesa » plus grand. */
+	.kb-hero--center .kb-hero__title {
+		font-size: min(5.1vw, 1.75rem);
+		line-height: 1.15;
+		white-space: nowrap;
+	}
+	.kb-hero--center .kb-hero__title em {
+		display: block;
+		margin-top: .1em;
+		font-size: 1.75em;
+		line-height: 1.02;
+		white-space: normal;
+	}
 }
 
 /* Pied de page : « Site officiel de la » agrandi, sans dépasser « Ville de Kasumbalesa ». */
