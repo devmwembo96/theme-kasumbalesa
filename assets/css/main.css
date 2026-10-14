@@ -4007,3 +4007,5 @@ a.kb-badge.kb-badge--cat:hover, a.kb-badge.kb-badge--cat:focus-visible { filter:
 .kb-intro__ring-line { display: none; }
 /* Le nom et la devise restent un peu plus longtemps à l'écran */
 .kb-intro__tagline { color: var(--kb-rdc-blue, #007FFF); }
+/* Intro : devise en minuscules, plus petite */
+.kb-intro__tagline { font-size: .875rem; font-weight: 500; letter-spacing: .02em; text-transform: none; }
