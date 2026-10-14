@@ -26,7 +26,11 @@ $kb_logo = (int) get_theme_mod( 'custom_logo' );
 			<div class="kb-modal__excerpt">
 				<?php echo wpautop( esc_html( kb_mayor_excerpt( $kb_page, 40 ) ) ); // phpcs:ignore ?>
 			</div>
-			<?php kb_button( kb_mod( 'popup_button' ), get_permalink( $kb_page ), 'gold' ); ?>
+			<?php
+			// Le bouton mène à la section « Mot du Maire » de l'accueil (la page seule si la section est masquée).
+			$kb_target = kb_mod( 'mayor_section_enable' ) ? home_url( '/#mot-du-maire' ) : get_permalink( $kb_page );
+			kb_button( kb_mod( 'popup_button' ), $kb_target, 'gold' );
+			?>
 		</div>
 
 		<figure class="kb-modal__portrait">
