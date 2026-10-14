@@ -57,7 +57,9 @@
 	--kb-header-h: calc(var(--kb-bar-h) + var(--kb-ticker-h));
 }
 
-.kb-has-ticker { --kb-ticker-h: 44px; }
+/* La hauteur totale est recalculée ici : sinon elle reste figée à la valeur de :root (sans la bande). */
+.kb-has-ticker { --kb-ticker-h: 44px; --kb-header-h: calc(var(--kb-bar-h) + var(--kb-ticker-h)); }
+html:has(.kb-has-ticker) { --kb-ticker-h: 44px; }
 
 @media (max-width: 900px) {
 	:root { --kb-bar-h: 68px; }
@@ -1939,7 +1941,7 @@ a.kb-quick__card:hover .kb-quick__arrow .kb-icon { transform: translateX(8px); }
 .kb-reveal-ready .kb-mountain-line:not(.is-revealed) { clip-path: inset(0 100% 0 0); }
 
 /* ---- Animations d'apparition (contenu des pages) ---- */
-.kb-reveal-ready [data-reveal="image"] { opacity: 1; transform: none; clip-path: inset(0 0 100% 0 round var(--kb-radius-lg)); transition: clip-path 1.25s var(--kb-ease-out); transition-delay: var(--kb-reveal-delay, 0ms); }
+.kb-reveal-ready [data-reveal="image"] { overflow: clip; opacity: 1; transform: none; clip-path: inset(0 0 100% 0 round var(--kb-radius-lg)); transition: clip-path 1.25s var(--kb-ease-out); transition-delay: var(--kb-reveal-delay, 0ms); }
 .kb-reveal-ready [data-reveal="image"] img { transform: scale(1.18); transition: transform 1.8s var(--kb-ease-out); transition-delay: var(--kb-reveal-delay, 0ms); }
 .kb-reveal-ready [data-reveal="image"].is-revealed { clip-path: inset(0 0 0 0 round var(--kb-radius-lg)); }
 .kb-reveal-ready [data-reveal="image"].is-revealed img { transform: none; }
@@ -2903,6 +2905,81 @@ a.kb-bento__card:hover .kb-bento__item--1 .kb-bento__icon,
 .kb-modal .kb-eyebrow--light { color: var(--kb-copper-dark); }
 .kb-modal .kb-signature--light .kb-signature__name { color: var(--kb-ink); }
 .kb-modal .kb-signature--light .kb-signature__role { color: var(--kb-copper-dark); }
+
+/* Stabilité : l'en-tête ne se transforme plus au défilement (pas de saut),
+   il reste plein écran ; seule l'ombre apparaît. */
+.kb-header.is-scrolled {
+	top: 0;
+	left: 0;
+	right: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	overflow: visible;
+	backdrop-filter: none;
+}
+.kb-header.is-scrolled .kb-header__bar { background: rgba(255, 255, 255, .97); box-shadow: 0 1px 0 var(--kb-line-soft), 0 12px 30px -22px rgba(11, 42, 31, .35); }
+@supports (backdrop-filter: blur(1px)) {
+	.kb-header.is-scrolled .kb-header__bar { background: rgba(255, 255, 255, .88); backdrop-filter: saturate(160%) blur(14px); }
+}
+.kb-header.is-scrolled .kb-header__inner,
+.kb-header.is-scrolled .kb-ticker__inner { padding-inline: var(--kb-gutter); }
+.kb-header.is-scrolled { --kb-bar-h: inherit; }
+
+/* Petits écrans : la bande « À la une » se replie au défilement pour libérer la hauteur */
+@media (max-width: 900px) {
+	.kb-ticker { overflow: hidden; transition: height .35s var(--kb-ease), border-color .35s; }
+	.kb-header.is-scrolled .kb-ticker { height: 0; border-top-color: transparent; }
+}
+
+/* Tactile et petits écrans : pas d'effets liés au défilement (barre d'adresse mobile = à-coups) */
+@media (hover: none), (max-width: 1024px) {
+	.kb-hero__slides,
+	.kb-hero__content,
+	.kb-marquee__line { animation: none !important; transform: none !important; translate: none !important; }
+}
+/* Une seule parallaxe sur le héros (celle du script) : le texte reste en place */
+.kb-hero__content { animation: none !important; }
+@supports (animation-timeline: view()) {
+	.kb-hero__slides { animation: none !important; }
+}
+
+/* Héros ajusté à la hauteur de l'écran : titre et espacements suivent aussi la hauteur,
+   pour que le titre, les boutons et les commandes tiennent dans le premier écran. */
+.kb-hero__title { font-size: min(var(--kb-step-5), 9.5svh); }
+.kb-hero__subtitle { margin-bottom: clamp(1.25rem, 4svh, 2.5rem); }
+.kb-hero__title { margin-bottom: clamp(.75rem, 2.5svh, 1.5rem); }
+.kb-hero { padding-top: clamp(1rem, 4svh, 3rem); }
+.kb-hero__content { padding-bottom: clamp(1rem, 4svh, 4rem); }
+@media (max-width: 600px) {
+	.kb-hero__title { font-size: min(clamp(2.1rem, 10vw, 3rem), 7svh); }
+}
+@media (max-height: 760px) {
+	.kb-hero__footer { padding-block: .75rem 1rem; }
+	.kb-hero .kb-eyebrow { margin-bottom: .5rem; }
+	.kb-hero__subtitle { font-size: var(--kb-step-0); line-height: 1.45; }
+}
+@media (min-width: 1000px) {
+	.kb-hero__title { max-width: 19ch; }
+}
+@media (max-width: 600px) {
+	.kb-hero__actions { gap: .625rem; }
+}
+@media (max-height: 700px) and (max-width: 600px) {
+	.kb-hero .kb-eyebrow { display: none; }
+}
+@media (max-height: 640px) and (max-width: 600px) {
+	.kb-hero__subtitle { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+}
+/* Paysage très bas (téléphone couché) : le héros peut dépasser, le contenu reste lisible */
+@media (max-height: 480px) and (orientation: landscape) {
+	.kb-hero { min-height: auto; }
+	.kb-hero__title { font-size: clamp(1.8rem, 5vw, 2.4rem); }
+}
+
+/* Aucun élément ne doit faire glisser la page latéralement sur mobile */
+body { overflow-x: clip; }
 
 /* Titres découpés : visibles si les animations ne sont pas prêtes */
 html:not(.kb-reveal-ready) .kb-split__inner:not(.kb-hero *) { transform: none; }
