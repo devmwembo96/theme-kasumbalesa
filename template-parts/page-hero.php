@@ -17,8 +17,12 @@ $kb_args = wp_parse_args(
 		'extra'       => null,
 	)
 );
+if ( ! $kb_args['image'] ) {
+	$kb_args['image'] = kb_fallback_hero_image();
+}
+$kb_logo = (int) get_theme_mod( 'custom_logo' );
 ?>
-<header class="kb-page-hero<?php echo $kb_args['image'] ? ' kb-page-hero--image' : ''; ?>">
+<header class="kb-page-hero kb-page-hero--wh<?php echo $kb_args['image'] ? ' kb-page-hero--image' : ''; ?>">
 	<?php
 	if ( $kb_args['image'] ) {
 		echo wp_get_attachment_image(
@@ -37,6 +41,11 @@ $kb_args = wp_parse_args(
 	}
 	?>
 	<div class="kb-page-hero__inner kb-container kb-container--wide">
+		<?php
+		if ( $kb_logo ) {
+			echo wp_get_attachment_image( $kb_logo, 'medium', false, array( 'class' => 'kb-page-hero__emblem', 'alt' => '', 'loading' => 'eager' ) );
+		}
+		?>
 		<?php if ( $kb_args['eyebrow'] ) : ?>
 			<p class="kb-eyebrow kb-eyebrow--light"><?php echo esc_html( $kb_args['eyebrow'] ); ?></p>
 		<?php endif; ?>

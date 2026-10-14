@@ -435,3 +435,25 @@ function kb_footer_credit() {
 function kb_is_full_width() {
 	return is_page_template( 'templates/template-full-width.php' );
 }
+
+/**
+ * Photo de secours pour les en-têtes de page : la 1re image du diaporama d'accueil.
+ *
+ * @return int
+ */
+function kb_fallback_hero_image() {
+	$ids = kb_hero_slide_ids();
+	return $ids ? (int) $ids[0] : absint( kb_mod( 'topo_image' ) );
+}
+
+/**
+ * L'en-tête du site se pose en transparence sur une photo (accueil, pages, articles, listes).
+ *
+ * @return bool
+ */
+function kb_header_overlays() {
+	if ( is_404() || kb_is_full_width() ) {
+		return false;
+	}
+	return is_front_page() || is_singular() || is_home() || is_archive() || is_search();
+}

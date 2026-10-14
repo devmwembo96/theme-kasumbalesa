@@ -3593,3 +3593,77 @@ body.home.kb-header-solid .kb-main { padding-top: 0; }
 	.kb-carousel--pres .kb-carousel__body,
 	.kb-carousel--pres .kb-carousel__icon { opacity: 1; transform: none; transition: none; }
 }
+
+/* ==========================================================================
+   26. Même modèle d'en-tête sur toutes les pages : barre transparente posée sur
+       une photo (voile bleu), logo de la barre visible seulement au défilement,
+       barre attachée en verre ; en-têtes de page centrés avec l'emblème
+   ========================================================================== */
+.kb-header-overlay.kb-header-solid .kb-main { padding-top: 0; }
+.kb-header-overlay .kb-header--wh:not(.is-scrolled) { background: linear-gradient(180deg, rgba(0, 0, 40, .5) 0%, rgba(0, 0, 40, .18) 70%, rgba(0, 0, 40, 0) 100%); box-shadow: none; color: var(--kb-white); }
+.kb-header-overlay .kb-header--wh:not(.is-scrolled) .kb-header__nav-inner::before { background: rgba(255, 255, 255, .55); }
+.kb-header-overlay .kb-header--wh:not(.is-scrolled) .kb-header__nav-more { background: linear-gradient(90deg, rgba(0, 0, 40, 0), rgba(0, 0, 40, .35) 45%); }
+.kb-header-overlay .kb-header--wh:not(.is-scrolled) .kb-nav__menu > li > a:hover { color: var(--kb-gold-light); }
+/* Un seul emblème à la fois : celui de la barre n'apparaît qu'au défilement */
+.kb-header--wh .kb-brand { transition: opacity .4s var(--kb-ease), transform .4s var(--kb-ease), visibility .4s; }
+.kb-header-overlay .kb-header--wh:not(.is-scrolled) .kb-brand { opacity: 0; visibility: hidden; transform: translateY(-8px) scale(.9); }
+
+/* Barre attachée en verre (blanc translucide flouté) */
+.kb-header.is-scrolled.kb-header--wh { background: rgba(255, 255, 255, .9); }
+@supports (backdrop-filter: blur(1px)) {
+	.kb-header.is-scrolled.kb-header--wh { background: rgba(255, 255, 255, .66); backdrop-filter: saturate(170%) blur(18px); -webkit-backdrop-filter: saturate(170%) blur(18px); }
+}
+
+/* En-têtes de pages et d'articles : photo + voile bleu, contenu centré sous la barre */
+.kb-page-hero--wh,
+.kb-post-hero--wh {
+	align-items: center;
+	justify-content: center;
+	min-height: clamp(26rem, 68svh, 40rem);
+	padding: calc(var(--kb-header-h) + 1.5rem) 0 clamp(2rem, 6vw, 3.5rem);
+	text-align: center;
+	color: var(--kb-white);
+}
+.kb-page-hero--wh::after { display: none; }
+.kb-page-hero--wh.kb-page-hero--image::before,
+.kb-post-hero--wh.kb-post-hero--image::before {
+	background:
+		linear-gradient(to top, rgba(6, 23, 15, .6) 0%, rgba(6, 23, 15, 0) 45%),
+		linear-gradient(rgba(0, 0, 75, .48), rgba(0, 0, 75, .48));
+}
+.kb-page-hero--wh:not(.kb-page-hero--image) { background: linear-gradient(160deg, #0b1f5c, var(--kb-green-900)); }
+.kb-page-hero--wh .kb-page-hero__inner,
+.kb-post-hero--wh .kb-post-hero__inner { display: flex; flex-direction: column; align-items: center; }
+.kb-page-hero__emblem { width: auto; height: clamp(56px, 9svh, 96px); margin: 0 auto clamp(.75rem, 2svh, 1.25rem); filter: drop-shadow(0 8px 22px rgba(0, 0, 0, .35)); animation: kb-rise 1s var(--kb-ease-out) both; }
+.kb-page-hero--wh .kb-eyebrow { justify-content: center; color: var(--kb-white); }
+.kb-page-hero--wh .kb-eyebrow::after { content: ""; width: 2.5rem; height: 1px; background: currentColor; }
+.kb-page-hero--wh .kb-page-hero__title,
+.kb-post-hero--wh .kb-post-hero__title { max-width: 22ch; margin-inline: auto; color: var(--kb-white); text-shadow: 0 2px 20px rgba(0, 0, 0, .3); }
+.kb-page-hero--wh .kb-page-hero__desc { margin-inline: auto; color: rgba(255, 255, 255, .92); }
+.kb-post-hero--wh .kb-post-hero__meta { justify-content: center; color: rgba(255, 255, 255, .9); }
+.kb-post-hero--wh .kb-post-hero__meta .kb-date { color: var(--kb-gold-light); }
+.kb-post-hero--wh .kb-meta { justify-content: center; }
+.kb-page-hero--wh .kb-searchform { margin-inline: auto; }
+
+/* Titre de l'accueil sur deux lignes : « Ville de Kasumbalesa » en dessous */
+.kb-hero__title em { display: block; }
+.kb-hero--center .kb-hero__title { max-width: none; }
+
+/* Boutons compacts (taille d'origine) au lieu de la pleine largeur */
+.kb-hero--center .kb-hero__actions { width: auto; max-width: none; gap: .75rem; }
+.kb-hero--center .kb-hero__actions .kb-btn,
+.kb-modal--wh .kb-btn { flex: 0 0 auto; width: auto; min-height: 44px; padding: .4rem .45rem .4rem 1.25rem; gap: .75rem; font-size: .8125rem; }
+.kb-hero--center .kb-hero__actions .kb-btn .kb-btn__icon,
+.kb-modal--wh .kb-btn .kb-btn__icon { width: 34px; height: 34px; }
+@media (max-width: 600px) {
+	.kb-hero--center .kb-hero__actions .kb-btn { font-size: .75rem; padding-left: 1rem; }
+}
+
+/* Pop-up du Maire en clair */
+.kb-modal.kb-modal--wh { background: var(--kb-white); color: var(--kb-ink); box-shadow: 0 40px 80px -30px rgba(11, 42, 31, .45); }
+.kb-modal--wh::backdrop { background: rgba(11, 42, 31, .4); }
+.kb-modal--wh .kb-modal__title { color: var(--kb-green-900); }
+.kb-modal--wh .kb-modal__excerpt { color: var(--kb-muted); }
+.kb-modal--wh .kb-modal__close { color: var(--kb-copper-dark); }
+.kb-modal--wh .kb-modal__close:hover { background: var(--kb-mist); color: var(--kb-copper); }
+.kb-modal__logo { opacity: 1; }
