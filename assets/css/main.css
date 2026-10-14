@@ -3898,3 +3898,36 @@ a.kb-badge.kb-badge--cat:hover, a.kb-badge.kb-badge--cat:focus-visible { filter:
 .kb-mayor__frame img { display: block; align-self: start; min-height: 0 !important; }
 /* WordPress ajoute « sizes=auto » aux images différées : sans cela la photo réserve 1500 px de haut */
 .kb-mayor__frame img { contain-intrinsic-size: none; }
+
+/* ==========================================================================
+   32. Portrait officiel détouré du Maire : accueil (sur fond) et pop-up
+   ========================================================================== */
+.kb-mayor__portrait--cutout { max-width: 360px; text-align: center; }
+.kb-mayor__stage {
+	position: relative;
+	overflow: hidden;
+	display: flex;
+	align-items: flex-end;
+	justify-content: center;
+	aspect-ratio: 4 / 4.4;
+	padding-top: 1.5rem;
+	border-radius: var(--kb-radius-xl, 22px);
+	background:
+		radial-gradient(60% 50% at 50% 38%, rgba(247, 214, 24, .28), rgba(247, 214, 24, 0) 70%),
+		url("../img/montagne.svg") center bottom / cover no-repeat,
+		#0a1847;
+	box-shadow: var(--kb-shadow);
+	isolation: isolate;
+}
+.kb-mayor__stage::before { content: ""; position: absolute; left: 50%; top: 9%; z-index: -1; width: 72%; aspect-ratio: 1; border: 2px solid rgba(212, 168, 83, .55); border-radius: 50%; transform: translateX(-50%); }
+.kb-mayor__stage::after { content: ""; position: absolute; inset: auto 0 0; height: 5px; background: var(--kb-rdc-stripe); }
+.kb-mayor__cutout { position: relative; display: block; width: 94%; height: auto; margin: 0 auto; }
+.kb-mayor__portrait--cutout .kb-mayor__caption { margin-top: 1.1rem; text-align: center; }
+.kb-mayor__portrait--cutout .kb-mayor__caption span { display: block; font-family: var(--kb-font-sans); font-size: var(--kb-step-1); font-style: normal; font-weight: 700; letter-spacing: .01em; text-transform: none; color: var(--kb-green-900); }
+@media (max-width: 900px) { .kb-mayor__portrait--cutout { max-width: 320px; margin-inline: auto; } }
+
+/* Pop-up : nouveau portrait, centré sur le demi-cercle */
+.kb-modal__portrait { align-items: center; }
+.kb-modal__photo { display: block; width: auto; max-width: 86%; height: clamp(13rem, 56vw, 17rem); margin-inline: auto; object-fit: contain; object-position: bottom center; }
+.kb-modal__caption { text-align: center; }
+.kb-modal__name, .kb-modal__role { text-align: center; }

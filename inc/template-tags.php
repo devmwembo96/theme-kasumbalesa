@@ -532,3 +532,27 @@ function kb_topbar() {
 function kb_topbar_is_visible() {
 	return (bool) ( kb_mod( 'contact_phone' ) || kb_mod( 'contact_email' ) || kb_mod( 'contact_address' ) );
 }
+
+/**
+ * Portrait détouré officiel du Maire (fond transparent).
+ * Réglable dans le Customizer ; par défaut, la photo officielle fournie avec le thème.
+ *
+ * @param string $class Classe CSS de l'image.
+ * @param string $sizes Attribut sizes.
+ */
+function kb_mayor_cutout( $class = '', $sizes = '(min-width: 600px) 340px, 80vw' ) {
+	$id = absint( kb_mod( 'mayor_cutout' ) );
+	if ( $id && wp_attachment_is_image( $id ) ) {
+		echo wp_get_attachment_image( $id, 'medium_large', false, array( 'class' => $class, 'alt' => esc_attr( kb_mod( 'mayor_name' ) ), 'loading' => 'eager', 'sizes' => $sizes ) );
+		return;
+	}
+	$base = get_template_directory_uri() . '/assets/img/';
+	printf(
+		'<img class="%1$s" src="%2$s" srcset="%2$s 600w, %3$s 900w" sizes="%4$s" width="900" height="934" alt="%5$s" decoding="async">',
+		esc_attr( $class ),
+		esc_url( $base . 'maire-600.webp' ),
+		esc_url( $base . 'maire-900.webp' ),
+		esc_attr( $sizes ),
+		esc_attr( kb_mod( 'mayor_name' ) )
+	);
+}

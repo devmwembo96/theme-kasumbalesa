@@ -28,6 +28,7 @@ function kb_defaults() {
 		'mayor_name'            => 'André KAPAMPA KAMWANYA',
 		'mayor_role'            => 'Maire de la Ville de Kasumbalesa',
 		'mayor_signature'       => 6417,
+		'mayor_cutout'          => 0,
 		'popup_eyebrow'         => 'Message du Maire',
 		'popup_title'           => "Bienvenue\nVille de Kasumbalesa",
 		'popup_button'          => 'Lire le mot du Maire',
