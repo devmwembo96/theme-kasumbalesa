@@ -13,27 +13,15 @@ $kb_content = apply_filters( 'the_content', $kb_page->post_content ); // phpcs:i
 ?>
 <section class="kb-section kb-section--white kb-mayor" id="mot-du-maire" aria-labelledby="kb-mayor-title">
 	<div class="kb-container kb-mayor__grid">
-		<?php if ( has_post_thumbnail( $kb_page ) ) : ?>
-			<figure class="kb-mayor__portrait" data-reveal>
-				<div class="kb-mayor__frame">
-					<?php
-					echo get_the_post_thumbnail(
-						$kb_page,
-						'kb-portrait',
-						array(
-							'loading'  => 'lazy',
-							'decoding' => 'async',
-							'sizes'    => '(min-width: 900px) 440px, 90vw',
-						)
-					);
-					?>
-				</div>
-				<figcaption class="kb-mayor__caption">
-					<span><?php echo esc_html( kb_mod( 'mayor_name' ) ); ?></span>
-					<?php echo esc_html( kb_mod( 'mayor_role' ) ); ?>
-				</figcaption>
-			</figure>
-		<?php endif; ?>
+		<figure class="kb-mayor__portrait kb-mayor__portrait--cutout" data-reveal>
+			<div class="kb-mayor__stage">
+				<?php kb_mayor_cutout( 'kb-mayor__cutout', '(min-width: 900px) 360px, 80vw' ); ?>
+			</div>
+			<figcaption class="kb-mayor__caption">
+				<span><?php echo esc_html( kb_mod( 'mayor_name' ) ); ?></span>
+				<?php echo esc_html( kb_mod( 'mayor_role' ) ); ?>
+			</figcaption>
+		</figure>
 
 		<div class="kb-mayor__letter">
 			<header data-reveal>

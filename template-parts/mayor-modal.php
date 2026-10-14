@@ -30,21 +30,7 @@ $kb_logo = (int) get_theme_mod( 'custom_logo' );
 		</div>
 
 		<figure class="kb-modal__portrait">
-			<?php
-			if ( has_post_thumbnail( $kb_page ) ) {
-				echo get_the_post_thumbnail(
-					$kb_page,
-					'medium_large',
-					array(
-						'class'    => 'kb-modal__photo',
-						'alt'      => esc_attr( kb_mod( 'mayor_name' ) ),
-						'loading'  => 'lazy',
-						'decoding' => 'async',
-						'sizes'    => '(min-width: 600px) 300px, 60vw',
-					)
-				);
-			}
-			?>
+			<?php kb_mayor_cutout( 'kb-modal__photo', '(min-width: 600px) 340px, 80vw' ); ?>
 			<figcaption class="kb-modal__caption">
 				<span class="kb-modal__name"><?php echo esc_html( kb_mod( 'mayor_name' ) ); ?></span>
 				<span class="kb-modal__role"><?php echo esc_html( kb_mod( 'mayor_role' ) ); ?></span>

@@ -98,19 +98,20 @@ function kb_primary_category( $post = null ) {
  * et l'icône ronde du carrousel des actualités.
  *
  * @param WP_Term|null $cat Catégorie.
- * @return array{color:string,icon:string}
+ * @return array{color:string,icon:string,ink:string}
  */
 function kb_category_style( $cat ) {
 	$slug   = $cat ? remove_accents( strtolower( $cat->slug . ' ' . $cat->name ) ) : '';
+	// Couleurs du drapeau de la RDC (bleu ciel, jaune, rouge) + vert et cuivre du thème.
 	$styles = array(
-		'secur'      => array( '#C8102E', 'shield' ),
-		'cooperat'   => array( '#0072CE', 'globe' ),
-		'diplomat'   => array( '#0072CE', 'globe' ),
+		'secur'      => array( '#CE1021', 'shield' ),
+		'cooperat'   => array( '#007FFF', 'globe' ),
+		'diplomat'   => array( '#007FFF', 'globe' ),
 		'infrastruc' => array( '#B87333', 'crane' ),
 		'projet'     => array( '#B87333', 'crane' ),
 		'travaux'    => array( '#B87333', 'crane' ),
-		'educat'     => array( '#C99A2E', 'graduation' ),
-		'etude'      => array( '#C99A2E', 'graduation' ),
+		'educat'     => array( '#F7D618', 'graduation' ),
+		'etude'      => array( '#F7D618', 'graduation' ),
 		'mairie'     => array( '#1F5C43', 'landmark' ),
 		'municip'    => array( '#1F5C43', 'landmark' ),
 		'sante'      => array( '#0F8A6A', 'heart' ),
@@ -118,10 +119,11 @@ function kb_category_style( $cat ) {
 	);
 	foreach ( $styles as $key => $style ) {
 		if ( false !== strpos( $slug, $key ) ) {
-			return array( 'color' => $style[0], 'icon' => $style[1] );
+			// Texte foncé sur le jaune, blanc ailleurs (lisibilité).
+			return array( 'color' => $style[0], 'icon' => $style[1], 'ink' => '#F7D618' === $style[0] ? '#14110A' : '#FFFFFF' );
 		}
 	}
-	return array( 'color' => '#1F5C43', 'icon' => 'newspaper' );
+	return array( 'color' => '#1F5C43', 'icon' => 'newspaper', 'ink' => '#FFFFFF' );
 }
 
 /**
@@ -169,10 +171,12 @@ function kb_category_badge( $post = null, $link = true ) {
 	if ( ! $cat ) {
 		return;
 	}
+	$style = kb_category_style( $cat );
+	$vars  = sprintf( '--kb-cat:%s;--kb-cat-ink:%s', $style['color'], $style['ink'] );
 	if ( $link ) {
-		printf( '<a class="kb-badge" href="%s">%s</a>', esc_url( get_category_link( $cat ) ), esc_html( $cat->name ) );
+		printf( '<a class="kb-badge kb-badge--cat" style="%s" href="%s">%s</a>', esc_attr( $vars ), esc_url( get_category_link( $cat ) ), esc_html( $cat->name ) );
 	} else {
-		printf( '<span class="kb-badge">%s</span>', esc_html( $cat->name ) );
+		printf( '<span class="kb-badge kb-badge--cat" style="%s">%s</span>', esc_attr( $vars ), esc_html( $cat->name ) );
 	}
 }
 
@@ -527,4 +531,29 @@ function kb_topbar() {
  */
 function kb_topbar_is_visible() {
 	return (bool) ( kb_mod( 'contact_phone' ) || kb_mod( 'contact_email' ) || kb_mod( 'contact_address' ) );
+}
+
+/**
+ * Portrait détouré officiel du Maire (fond transparent).
+ * Réglable dans le Customizer ; par défaut, la photo officielle fournie avec le thème
+ * (le Maire avec le drapeau de la RDC).
+ *
+ * @param string $class Classe CSS de l'image.
+ * @param string $sizes Attribut sizes.
+ */
+function kb_mayor_cutout( $class = '', $sizes = '(min-width: 600px) 340px, 80vw' ) {
+	$id = absint( kb_mod( 'mayor_cutout' ) );
+	if ( $id && wp_attachment_is_image( $id ) ) {
+		echo wp_get_attachment_image( $id, 'medium_large', false, array( 'class' => $class, 'alt' => esc_attr( kb_mod( 'mayor_name' ) ), 'loading' => 'eager', 'sizes' => $sizes ) );
+		return;
+	}
+	$base = get_template_directory_uri() . '/assets/img/';
+	printf(
+		'<img class="%1$s" src="%2$s" srcset="%2$s 640w, %3$s 1000w" sizes="%4$s" width="1000" height="962" alt="%5$s" decoding="async">',
+		esc_attr( $class ),
+		esc_url( $base . 'maire-drapeau-640.webp' ),
+		esc_url( $base . 'maire-drapeau-1000.webp' ),
+		esc_attr( $sizes ),
+		esc_attr( kb_mod( 'mayor_name' ) )
+	);
 }

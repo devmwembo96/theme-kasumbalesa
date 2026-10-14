@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+	<!-- Illustration du thème : la montagne Kasumba ka Lesa au crépuscule (bleu nuit, vert montagne, soleil doré). -->
+	<defs>
+		<linearGradient id="ciel" x1="0" y1="0" x2="0" y2="1">
+			<stop offset="0" stop-color="#0a1847"/>
+			<stop offset=".55" stop-color="#123a6b"/>
+			<stop offset=".82" stop-color="#3d5a5a"/>
+			<stop offset="1" stop-color="#b98a4a"/>
+		</linearGradient>
+		<radialGradient id="halo" cx="1150" cy="560" r="420" gradientUnits="userSpaceOnUse">
+			<stop offset="0" stop-color="#f7d618" stop-opacity=".55"/>
+			<stop offset=".35" stop-color="#d4a853" stop-opacity=".25"/>
+			<stop offset="1" stop-color="#d4a853" stop-opacity="0"/>
+		</radialGradient>
+		<linearGradient id="m1" x1="0" y1="0" x2="0" y2="1">
+			<stop offset="0" stop-color="#2f6b55"/>
+			<stop offset="1" stop-color="#1f5c43"/>
+		</linearGradient>
+		<linearGradient id="m2" x1="0" y1="0" x2="0" y2="1">
+			<stop offset="0" stop-color="#1c4d3a"/>
+			<stop offset="1" stop-color="#123d2d"/>
+		</linearGradient>
+		<linearGradient id="m3" x1="0" y1="0" x2="0" y2="1">
+			<stop offset="0" stop-color="#0f3325"/>
+			<stop offset="1" stop-color="#06170f"/>
+		</linearGradient>
+	</defs>
+	<rect width="1600" height="900" fill="url(#ciel)"/>
+	<rect width="1600" height="900" fill="url(#halo)"/>
+	<g fill="#f7d618" opacity=".75">
+		<circle cx="180" cy="120" r="2"/><circle cx="320" cy="210" r="1.4"/><circle cx="470" cy="90" r="1.8"/>
+		<circle cx="640" cy="170" r="1.2"/><circle cx="820" cy="70" r="1.6"/><circle cx="980" cy="150" r="1.2"/>
+		<circle cx="1330" cy="110" r="1.8"/><circle cx="1480" cy="220" r="1.3"/><circle cx="90" cy="300" r="1.2"/>
+		<path d="M1420 300l6 17h18l-14 11 5 17-15-10-15 10 5-17-14-11h18z" opacity=".9"/>
+	</g>
+	<circle cx="1150" cy="560" r="78" fill="#f7d618" opacity=".9"/>
+	<circle cx="1150" cy="560" r="78" fill="none" stroke="#fff3b0" stroke-width="2" opacity=".6"/>
+	<path d="M0 640 L120 580 L230 610 L360 520 L470 575 L600 470 L720 540 L820 500 L960 590 L1080 520 L1200 600 L1330 540 L1460 610 L1600 560 V900 H0Z" fill="url(#m1)" opacity=".85"/>
+	<path d="M0 720 L150 650 L280 690 L420 600 L520 640 L640 520 L700 560 L780 470 L860 540 L940 600 L1060 640 L1180 610 L1300 680 L1440 640 L1600 700 V900 H0Z" fill="url(#m2)"/>
+	<path d="M780 470 L815 505 L800 512 L830 530 L860 540 L840 548" fill="none" stroke="#d4a853" stroke-width="2" opacity=".55"/>
+	<path d="M0 800 L180 740 L330 770 L470 720 L610 760 L760 700 L900 750 L1040 720 L1190 770 L1340 730 L1480 770 L1600 750 V900 H0Z" fill="url(#m3)"/>
+	<g fill="none" stroke="#d4a853" stroke-width="1.2" opacity=".22">
+		<path d="M0 830 C200 790 360 820 520 790 S860 770 1040 800 1380 790 1600 805"/>
+		<path d="M0 860 C220 830 380 850 560 825 S900 810 1080 835 1400 825 1600 840"/>
+		<path d="M520 640 C600 600 660 560 700 560 S770 520 780 500"/>
+		<path d="M460 660 C560 610 640 590 690 585 S780 545 800 530"/>
+	</g>
+</svg>

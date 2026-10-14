@@ -168,6 +168,7 @@ function kb_customize_register( $wp_customize ) {
 	$add( 'mayor_name', 'kb_intro', 'text', __( 'Nom du Maire (signature)', 'kasumbalesa' ) );
 	$add( 'mayor_role', 'kb_intro', 'text', __( 'Fonction (signature)', 'kasumbalesa' ) );
 	$add( 'mayor_signature', 'kb_intro', 'image', __( 'Signature manuscrite (image PNG transparente, facultatif)', 'kasumbalesa' ) );
+	$add( 'mayor_cutout', 'kb_mayor', 'image', __( 'Portrait détouré du Maire (fond transparent, pop-up et accueil)', 'kasumbalesa' ) );
 	$add( 'popup_eyebrow', 'kb_intro', 'text', __( 'Surtitre du pop-up', 'kasumbalesa' ) );
 	$add( 'popup_title', 'kb_intro', 'textarea', __( 'Pop-up – titre (retour à la ligne permis)', 'kasumbalesa' ) );
 	$add( 'popup_button', 'kb_intro', 'text', __( 'Texte du bouton du pop-up', 'kasumbalesa' ) );

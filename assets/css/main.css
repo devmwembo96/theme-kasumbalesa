@@ -3753,3 +3753,241 @@ body.home.kb-header-solid .kb-main { padding-top: 0; }
 .kb-modal__caption { position: relative; inset: auto; width: 100%; padding: .8rem 1rem 1rem; background: var(--kb-green-900); }
 .kb-modal__name { font-size: var(--kb-step-1); color: var(--kb-white); }
 .kb-modal__role { font-size: var(--kb-step-0); color: var(--kb-gold-light); }
+
+/* ==========================================================================
+   30. Couleurs de la RDC (bleu ciel, jaune, rouge) en accents : « filet
+       national » sous l'en-tête et au-dessus du pied de page, soulignés des
+       titres de section, filets de la mention du pays, catégories, pop-up
+   ========================================================================== */
+:root {
+	--kb-rdc-blue: #007FFF;
+	--kb-rdc-yellow: #F7D618;
+	--kb-rdc-red: #CE1021;
+	/* Bande du drapeau : bleu, liseré jaune, rouge, liseré jaune, bleu */
+	--kb-rdc-stripe: linear-gradient(100deg, var(--kb-rdc-blue) 0 42%, var(--kb-rdc-yellow) 42% 45.5%, var(--kb-rdc-red) 45.5% 54.5%, var(--kb-rdc-yellow) 54.5% 58%, var(--kb-rdc-blue) 58% 100%);
+	/* Trois couleurs à parts égales, pour les petits filets */
+	--kb-rdc-tri: linear-gradient(90deg, var(--kb-rdc-blue) 0 33.33%, var(--kb-rdc-yellow) 33.33% 66.66%, var(--kb-rdc-red) 66.66% 100%);
+}
+
+/* Filet national sous la barre fixée (visible au défilement et sur les pages sans photo) */
+.kb-header--wh::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--kb-rdc-stripe); opacity: 0; transition: opacity .35s var(--kb-ease); pointer-events: none; }
+.kb-header.is-scrolled.kb-header--wh::after,
+body:not(.kb-header-overlay) .kb-header--wh::after { opacity: 1; }
+
+/* Filet national au-dessus du pied de page */
+.kb-footer::before { height: 4px; background: var(--kb-rdc-stripe); }
+
+/* Mention « République Démocratique du Congo · Haut-Katanga » : filets aux trois couleurs */
+.kb-hero--center .kb-hero__eyebrow::before,
+.kb-hero--center .kb-hero__eyebrow::after,
+.kb-page-hero--wh .kb-hero__eyebrow::before,
+.kb-page-hero--wh .kb-hero__eyebrow::after,
+.kb-post-hero--wh .kb-hero__eyebrow::before,
+.kb-post-hero--wh .kb-hero__eyebrow::after { height: 2px; background: var(--kb-rdc-tri); }
+.kb-hero--center .kb-hero__eyebrow::after,
+.kb-page-hero--wh .kb-hero__eyebrow::after,
+.kb-post-hero--wh .kb-hero__eyebrow::after { transform: scaleX(-1); }
+
+/* Titres de section soulignés aux couleurs nationales (comme presidence.cd) */
+.kb-section-title::after { content: ""; display: block; width: 88px; height: 4px; margin-top: .85rem; border-radius: 2px; background: var(--kb-rdc-tri); }
+.kb-section-head--center .kb-section-title::after { margin-inline: auto; }
+
+/* Points de la bande d'annonce aux trois couleurs, en alternance */
+.kb-header--wh .kb-ticker__item:nth-child(3n+1)::after { color: var(--kb-rdc-blue); }
+.kb-header--wh .kb-ticker__item:nth-child(3n+2)::after { color: #C9A800; }
+.kb-header--wh .kb-ticker__item:nth-child(3n)::after { color: var(--kb-rdc-red); }
+
+/* Catégories : bouton et icône lisibles sur chaque couleur */
+.kb-carousel__cta { background: var(--kb-cat); color: var(--kb-cat-ink, var(--kb-white)); }
+.kb-carousel__cta:hover, .kb-carousel__cta:focus-visible { color: var(--kb-cat-ink, var(--kb-white)); }
+.kb-carousel__icon { color: var(--kb-cat-ink, var(--kb-white)); }
+
+/* Pop-up du Maire : filet national en haut */
+.kb-modal--wh .kb-modal__inner::before { content: ""; position: absolute; inset: 0 0 auto; height: 5px; background: var(--kb-rdc-stripe); z-index: 4; }
+/* Pastilles de catégorie à la couleur de leur catégorie */
+.kb-badge.kb-badge--cat { background: var(--kb-cat); border-color: var(--kb-cat); color: var(--kb-cat-ink); }
+a.kb-badge.kb-badge--cat:hover, a.kb-badge.kb-badge--cat:focus-visible { filter: brightness(1.1); color: var(--kb-cat-ink); }
+.kb-hero:not(.kb-hero--plain) .kb-hero__eyebrow.kb-eyebrow--light::before,
+.kb-hero:not(.kb-hero--plain) .kb-hero__eyebrow.kb-eyebrow--light::after,
+.kb-page-hero--wh .kb-hero__eyebrow.kb-eyebrow--light::before,
+.kb-page-hero--wh .kb-hero__eyebrow.kb-eyebrow--light::after,
+.kb-post-hero--wh .kb-hero__eyebrow.kb-eyebrow--light::before,
+.kb-post-hero--wh .kb-hero__eyebrow.kb-eyebrow--light::after { flex: 0 0 2.5rem; width: 2.5rem; height: 2px; background: var(--kb-rdc-tri); }
+
+/* ==========================================================================
+   31. Ajustements 1.3.2 : boutons rouges sans majuscules, tailles de texte
+       réduites, chiffres clés plus sobres, photo du Maire plus petite,
+       illustration de la montagne pour les sections à citation, menu plus
+       petit, Facebook à sa couleur officielle
+   ========================================================================== */
+
+/* Échelle typographique réduite (texte et titres) */
+:root {
+	--kb-step--1: .8125rem;
+	--kb-step-0: .9375rem;
+	--kb-step-1: 1rem;
+	--kb-step-2: 1.125rem;
+	--kb-step-3: 1.25rem;
+	--kb-step-4: 1.5rem;
+	--kb-step-5: 1.875rem;
+}
+@media (min-width: 440px) {
+	:root { --kb-step--1: .8125rem; --kb-step-0: 1rem; --kb-step-1: 1.0625rem; --kb-step-2: 1.25rem; --kb-step-3: 1.5rem; --kb-step-4: 1.875rem; --kb-step-5: 2.375rem; }
+}
+@media (min-width: 1024px) {
+	:root { --kb-step-2: 1.375rem; --kb-step-3: 1.625rem; --kb-step-4: 2.125rem; --kb-step-5: 2.75rem; }
+}
+@media (min-width: 1440px) {
+	:root { --kb-step--1: .875rem; --kb-step-0: 1.0625rem; --kb-step-1: 1.125rem; --kb-step-2: 1.5rem; --kb-step-3: 1.75rem; --kb-step-4: 2.375rem; --kb-step-5: 3rem; }
+}
+
+/* Boutons : rouge de la RDC à la place du doré, texte en minuscules */
+.kb-btn { font-size: .9375rem; font-weight: 600; letter-spacing: .01em; text-transform: none; }
+.kb-hero--center .kb-hero__actions .kb-btn,
+.kb-page-hero__actions .kb-btn,
+.kb-modal--wh .kb-btn { font-size: .9375rem; }
+@media (max-width: 600px) {
+	.kb-hero--center .kb-hero__actions .kb-btn,
+	.kb-page-hero__actions .kb-btn { font-size: .875rem; }
+}
+.kb-btn--gold { --kb-btn-bg: var(--kb-rdc-red); --kb-btn-fg: var(--kb-white); --kb-btn-border: var(--kb-rdc-red); }
+.kb-btn--gold::before { background: #9b0b18; }
+.kb-btn--gold:hover,
+.kb-btn--gold:focus-visible { color: var(--kb-white); border-color: #9b0b18; }
+.kb-btn--gold .kb-btn__icon { background: var(--kb-white); color: var(--kb-rdc-red); }
+/* Exception demandée : « Découvrir son histoire » garde ses majuscules */
+.kb-topo .kb-btn { font-size: .875rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+
+/* 04 — Kasumbalesa en chiffres : valeurs et libellés plus petits */
+.kb-figures__value { font-size: clamp(2rem, 1.5rem + 2.2vw, 3rem); font-weight: 700; }
+.kb-figures__suffix { font-size: .5em; }
+.kb-figures__label { font-size: .75rem; letter-spacing: .1em; }
+.kb-figures__item,
+.kb-figures__item + .kb-figures__item { padding: clamp(1.1rem, 2.2vw, 1.6rem) .75rem; }
+.kb-stats .kb-stat__value { font-size: clamp(1.75rem, 1.3rem + 2vw, 2.6rem); }
+
+/* Photo du Maire (accueil) : plus petite, entière, comme sur l'ancienne page */
+.kb-mayor__grid { grid-template-columns: minmax(0, 340px) minmax(0, 1fr); }
+.kb-mayor__portrait { max-width: 340px; width: 100%; margin-inline: auto; }
+.kb-mayor__frame img { aspect-ratio: auto; height: auto; object-fit: contain; background: linear-gradient(180deg, var(--kb-mist, #f4f7f5), var(--kb-paper)); }
+.kb-mayor__frame::before { inset: .9rem -.9rem -.9rem .9rem; }
+@media (max-width: 900px) { .kb-mayor__grid { grid-template-columns: 1fr; } .kb-mayor__portrait { position: static; max-width: 280px; } }
+.kb-signature__img { width: min(280px, 80%); height: auto; }
+
+/* Sections à citation (Mot du Maire, Toponymie…) : illustration de la montagne du thème */
+.kb-cover .wp-block-cover__image-background { display: none; }
+.kb-entry > .wp-block-cover.kb-cover { background: #0a1847 url("../img/montagne.svg") center bottom / cover no-repeat; }
+.kb-cover .wp-block-cover__background { background: linear-gradient(to top, rgba(6, 23, 15, .55), rgba(6, 23, 15, 0) 55%) !important; opacity: 1 !important; }
+
+/* Menu déroulant (panneau) : texte plus petit */
+.kb-mobile-menu__list > li > a { min-height: 3rem; font-family: var(--kb-font-sans); font-size: clamp(1.125rem, 4.6vw, 1.375rem); font-weight: 600; }
+.kb-mobile-menu__list .sub-menu a { font-size: .9375rem; }
+
+/* Facebook à sa couleur officielle */
+.kb-social a[href*="facebook"],
+.kb-social .kb-icon--facebook { --kb-fb: #1877F2; }
+.kb-social a[href*="facebook"] { border-color: #1877F2; background: #1877F2; color: var(--kb-white); }
+.kb-social a[href*="facebook"]:hover,
+.kb-social a[href*="facebook"]:focus-visible { border-color: #0d65d9; background: #0d65d9; color: var(--kb-white); }
+.kb-heritage .kb-social a[href*="facebook"] { border-color: #1877F2; background: #1877F2; color: var(--kb-white); }
+.kb-mayor__frame { height: auto; }
+.kb-mayor__frame img { height: auto !important; max-height: none; aspect-ratio: auto !important; }
+.kb-mayor__grid { align-items: start; }
+.kb-mayor__portrait,
+.kb-mayor__frame { display: block; height: auto !important; min-height: 0 !important; }
+.kb-mayor__frame img { display: block; align-self: start; min-height: 0 !important; }
+/* WordPress ajoute « sizes=auto » aux images différées : sans cela la photo réserve 1500 px de haut */
+.kb-mayor__frame img { contain-intrinsic-size: none; }
+
+/* ==========================================================================
+   32. Portrait officiel détouré du Maire : accueil (sur fond) et pop-up
+   ========================================================================== */
+.kb-mayor__portrait--cutout { max-width: 360px; text-align: center; }
+.kb-mayor__stage {
+	position: relative;
+	overflow: hidden;
+	display: flex;
+	align-items: flex-end;
+	justify-content: center;
+	aspect-ratio: 4 / 4.4;
+	padding-top: 1.5rem;
+	border-radius: var(--kb-radius-xl, 22px);
+	background:
+		radial-gradient(60% 50% at 50% 38%, rgba(247, 214, 24, .28), rgba(247, 214, 24, 0) 70%),
+		url("../img/montagne.svg") center bottom / cover no-repeat,
+		#0a1847;
+	box-shadow: var(--kb-shadow);
+	isolation: isolate;
+}
+.kb-mayor__stage::before { content: ""; position: absolute; left: 50%; top: 9%; z-index: -1; width: 72%; aspect-ratio: 1; border: 2px solid rgba(212, 168, 83, .55); border-radius: 50%; transform: translateX(-50%); }
+.kb-mayor__stage::after { content: ""; position: absolute; inset: auto 0 0; height: 5px; background: var(--kb-rdc-stripe); }
+.kb-mayor__cutout { position: relative; display: block; width: 94%; height: auto; margin: 0 auto; }
+.kb-mayor__portrait--cutout .kb-mayor__caption { margin-top: 1.1rem; text-align: center; }
+.kb-mayor__portrait--cutout .kb-mayor__caption span { display: block; font-family: var(--kb-font-sans); font-size: var(--kb-step-1); font-style: normal; font-weight: 700; letter-spacing: .01em; text-transform: none; color: var(--kb-green-900); }
+@media (max-width: 900px) { .kb-mayor__portrait--cutout { max-width: 320px; margin-inline: auto; } }
+
+/* Pop-up : nouveau portrait, centré sur le demi-cercle */
+.kb-modal__portrait { align-items: center; }
+.kb-modal__photo { display: block; width: auto; max-width: 86%; height: clamp(13rem, 56vw, 17rem); margin-inline: auto; object-fit: contain; object-position: bottom center; }
+.kb-modal__caption { text-align: center; }
+.kb-modal__name, .kb-modal__role { text-align: center; }
+
+/* Portrait avec le drapeau : cadre un peu plus large */
+.kb-mayor__stage { aspect-ratio: 1 / 1; }
+.kb-mayor__cutout { width: 100%; }
+.kb-modal__photo { max-width: 94%; }
+
+/* Ligne sous la page active du menu : bleu de la RDC */
+.kb-header__nav .kb-nav__menu > li > a::after,
+.kb-nav__menu > li.current-menu-item > a::after,
+.kb-nav__menu > li.current_page_item > a::after,
+.kb-nav__menu > li.current-menu-ancestor > a::after { background: var(--kb-rdc-blue); }
+.kb-mobile-menu__list > li.current-menu-item > a,
+.kb-mobile-menu__list > li.current_page_item > a { color: var(--kb-rdc-blue); box-shadow: inset 3px 0 0 var(--kb-rdc-blue); padding-left: .75rem; }
+
+/* ==========================================================================
+   33. Cartes des actualités (sous l'article principal) : catégorie en bandeau
+       tout en haut de la carte, sur toute la largeur, sur une seule ligne
+   ========================================================================== */
+.kb-mini-card { position: relative; padding-top: calc(var(--kb-mini-tab, 2rem) + .9rem); overflow: hidden; }
+.kb-mini-card .kb-meta { display: block; margin-bottom: .4rem; }
+.kb-mini-card .kb-badge {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 2;
+	display: block;
+	height: var(--kb-mini-tab, 2rem);
+	padding: 0 1rem;
+	border: 0;
+	border-radius: 0;
+	font-size: .75rem;
+	font-weight: 700;
+	line-height: var(--kb-mini-tab, 2rem);
+	letter-spacing: .1em;
+	text-align: center;
+	text-transform: uppercase;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.kb-mini-card .kb-date { display: block; }
+.kb-mini-card__title { font-size: var(--kb-step-1); }
+
+/* Portrait du Maire : fond uni bleu nuit, sans montagne ni soleil */
+.kb-mayor__stage {
+	background:
+		radial-gradient(60% 50% at 50% 38%, rgba(255, 255, 255, .14), rgba(255, 255, 255, 0) 70%),
+		linear-gradient(180deg, #0a1847 0%, #102a6b 100%);
+}
+
+/* Pied de page : appartenance de la même couleur que la devise ;
+   titre sur deux lignes, sans italique, « Site officiel de la » 2 pt plus petit */
+.kb-heritage__line { color: var(--kb-muted); }
+.kb-heritage__title { font-size: calc(var(--kb-step-3) - 2pt); white-space: normal; }
+.kb-heritage__title em { display: block; font-size: calc(1em + 2pt); font-style: normal; }
+@media (min-width: 1100px) {
+	.kb-heritage__title { font-size: calc(clamp(1.75rem, 2.3vw, 2.6rem) - 2pt); white-space: normal; }
+	.kb-heritage__title em { white-space: nowrap; }
+}
