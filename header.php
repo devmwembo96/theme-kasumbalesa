@@ -25,13 +25,32 @@ if ( is_front_page() && kb_mod( 'intro_enable' ) ) {
 }
 ?>
 
-<header class="kb-header" id="kb-header">
-	<?php kb_topbar(); ?>
+<header class="kb-header kb-header--wh" id="kb-header">
+	<?php
+	if ( kb_ticker_is_visible() ) {
+		get_template_part( 'template-parts/news-ticker' );
+	}
+	?>
 	<div class="kb-header__bar">
 		<div class="kb-header__inner kb-container kb-container--wide">
+			<div class="kb-header__side kb-header__side--start">
+				<button type="button" class="kb-icon-btn kb-menu-toggle" aria-controls="kb-mobile-menu" aria-expanded="false">
+					<?php echo kb_icon( 'menu' ); // phpcs:ignore ?>
+					<span class="screen-reader-text"><?php esc_html_e( 'Ouvrir le menu', 'kasumbalesa' ); ?></span>
+				</button>
+			</div>
 			<?php kb_site_branding( 'header' ); ?>
-
-			<nav class="kb-nav" aria-label="<?php esc_attr_e( 'Menu principal', 'kasumbalesa' ); ?>">
+			<div class="kb-header__side kb-header__side--end">
+				<button type="button" class="kb-icon-btn kb-search-toggle" aria-controls="kb-search" aria-expanded="false">
+					<?php echo kb_icon( 'search' ); // phpcs:ignore ?>
+					<span class="screen-reader-text"><?php esc_html_e( 'Rechercher', 'kasumbalesa' ); ?></span>
+				</button>
+			</div>
+		</div>
+	</div>
+	<nav class="kb-header__nav" aria-label="<?php esc_attr_e( 'Menu principal', 'kasumbalesa' ); ?>">
+		<div class="kb-header__nav-inner kb-container kb-container--wide">
+			<div class="kb-header__nav-scroll" data-nav-scroll>
 				<?php
 				wp_nav_menu(
 					array(
@@ -39,32 +58,17 @@ if ( is_front_page() && kb_mod( 'intro_enable' ) ) {
 						'container'      => false,
 						'menu_class'     => 'kb-nav__menu',
 						'menu_id'        => 'kb-primary-menu',
-						'depth'          => 2,
+						'depth'          => 1,
 						'fallback_cb'    => 'kb_menu_fallback',
 					)
 				);
 				?>
-			</nav>
-
-			<div class="kb-header__actions">
-				<?php kb_lang_switcher( 'header' ); ?>
-				<button type="button" class="kb-icon-btn kb-search-toggle" aria-controls="kb-search" aria-expanded="false">
-					<?php echo kb_icon( 'search' ); // phpcs:ignore ?>
-					<span class="screen-reader-text"><?php esc_html_e( 'Rechercher', 'kasumbalesa' ); ?></span>
-				</button>
-				<button type="button" class="kb-icon-btn kb-menu-toggle" aria-controls="kb-mobile-menu" aria-expanded="false">
-					<?php echo kb_icon( 'menu' ); // phpcs:ignore ?>
-					<span class="screen-reader-text"><?php esc_html_e( 'Ouvrir le menu', 'kasumbalesa' ); ?></span>
-				</button>
 			</div>
+			<button type="button" class="kb-header__nav-more" data-nav-more tabindex="-1" aria-hidden="true">
+				<?php echo kb_icon( 'chevron-right' ); // phpcs:ignore ?>
+			</button>
 		</div>
-	</div>
-
-	<?php
-	if ( kb_ticker_is_visible() ) {
-		get_template_part( 'template-parts/news-ticker' );
-	}
-	?>
+	</nav>
 </header>
 
 <div class="kb-search" id="kb-search" hidden>

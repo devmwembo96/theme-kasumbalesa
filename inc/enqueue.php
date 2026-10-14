@@ -8,12 +8,12 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * URL Google Fonts : Roboto, la police de l'ancien site (titres en Roboto Light).
+ * URL Google Fonts : Instrument Sans (texte, titres en gras, italique pour les citations).
  *
  * @return string
  */
 function kb_fonts_url() {
-	return 'https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400&display=swap';
+	return 'https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&display=swap';
 }
 
 /**

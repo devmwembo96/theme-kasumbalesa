@@ -45,6 +45,9 @@ $kb_btn2    = kb_resolve_url( kb_mod( 'hero_btn2_url' ), kb_news_url() );
 	<div class="kb-hero__veil" aria-hidden="true"></div>
 
 	<div class="kb-hero__content kb-container kb-container--wide">
+		<?php if ( kb_mod( 'hero_eyebrow' ) ) : ?>
+			<p class="kb-eyebrow kb-eyebrow--light kb-hero__eyebrow"><?php echo esc_html( kb_mod( 'hero_eyebrow' ) ); ?></p>
+		<?php endif; ?>
 		<?php
 		$kb_logo = (int) get_theme_mod( 'custom_logo' );
 		if ( $kb_logo ) {
@@ -62,9 +65,6 @@ $kb_btn2    = kb_resolve_url( kb_mod( 'hero_btn2_url' ), kb_news_url() );
 			);
 		}
 		?>
-		<?php if ( kb_mod( 'hero_eyebrow' ) ) : ?>
-			<p class="kb-eyebrow kb-eyebrow--light kb-hero__eyebrow"><?php echo esc_html( kb_mod( 'hero_eyebrow' ) ); ?></p>
-		<?php endif; ?>
 		<h1 class="kb-hero__title" id="kb-hero-title" data-split><?php echo kb_rich_title( kb_mod( 'hero_title' ) ); // phpcs:ignore ?></h1>
 		<?php if ( kb_mod( 'hero_subtitle' ) ) : ?>
 			<p class="kb-hero__subtitle"><?php echo esc_html( kb_mod( 'hero_subtitle' ) ); ?></p>

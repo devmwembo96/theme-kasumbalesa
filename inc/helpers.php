@@ -29,7 +29,8 @@ function kb_defaults() {
 		'mayor_role'            => 'Maire de la Ville de Kasumbalesa',
 		'mayor_signature'       => 0,
 		'popup_eyebrow'         => 'Message du Maire',
-		'popup_button'          => 'Lire le message complet',
+		'popup_title'           => 'Bienvenue !',
+		'popup_button'          => 'Lire le mot du Maire',
 
 		// Héros.
 		'hero_eyebrow'          => 'République Démocratique du Congo · Haut-Katanga',
@@ -176,7 +177,7 @@ function kb_defaults() {
  */
 function kb_translatable_mods() {
 	return array(
-		'mayor_role', 'popup_eyebrow', 'popup_button',
+		'mayor_role', 'popup_eyebrow', 'popup_title', 'popup_button',
 		'hero_eyebrow', 'hero_title', 'hero_subtitle', 'hero_btn1_label', 'hero_btn2_label',
 		'ticker_label', 'mayor_section_eyebrow', 'mayor_readmore', 'mayor_readless',
 		'news_eyebrow', 'news_title', 'news_all_label',

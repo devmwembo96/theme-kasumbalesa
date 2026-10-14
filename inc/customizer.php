@@ -169,6 +169,7 @@ function kb_customize_register( $wp_customize ) {
 	$add( 'mayor_role', 'kb_intro', 'text', __( 'Fonction (signature)', 'kasumbalesa' ) );
 	$add( 'mayor_signature', 'kb_intro', 'image', __( 'Signature manuscrite (image PNG transparente, facultatif)', 'kasumbalesa' ) );
 	$add( 'popup_eyebrow', 'kb_intro', 'text', __( 'Surtitre du pop-up', 'kasumbalesa' ) );
+	$add( 'popup_title', 'kb_intro', 'text', __( 'Pop-up – titre (ex. Bienvenue !)', 'kasumbalesa' ) );
 	$add( 'popup_button', 'kb_intro', 'text', __( 'Texte du bouton du pop-up', 'kasumbalesa' ) );
 
 	// Héros.

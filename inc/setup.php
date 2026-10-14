@@ -92,9 +92,6 @@ function kb_body_classes( $classes ) {
 	if ( kb_ticker_is_visible() ) {
 		$classes[] = 'kb-has-ticker';
 	}
-	if ( kb_topbar_is_visible() ) {
-		$classes[] = 'kb-has-topbar';
-	}
 	return $classes;
 }
 add_filter( 'body_class', 'kb_body_classes' );
