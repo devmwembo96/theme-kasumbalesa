@@ -1,7 +1,7 @@
 <?php
 /**
  * Animation d'introduction : logo du site (Personnaliser > Identité du site).
- * Affichée une fois par session, 5 secondes, avec un bouton « Passer ».
+ * Affichée une fois par session, 5 secondes (touche Échap pour la fermer).
  * Le cercle qui tourne reprend les trois couleurs de la RDC (bleu ciel, jaune, rouge).
  *
  * @package Kasumbalesa
@@ -42,7 +42,4 @@ $kb_logo_id = get_theme_mod( 'custom_logo' );
 	<?php if ( get_bloginfo( 'description' ) ) : ?>
 		<p class="kb-intro__tagline"><?php bloginfo( 'description' ); ?></p>
 	<?php endif; ?>
-	<button type="button" class="kb-intro__skip" data-intro-skip>
-		<?php esc_html_e( 'Passer', 'kasumbalesa' ); ?> <?php echo kb_icon( 'arrow-right' ); // phpcs:ignore ?>
-	</button>
 </div>
