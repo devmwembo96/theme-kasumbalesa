@@ -3931,3 +3931,16 @@ a.kb-badge.kb-badge--cat:hover, a.kb-badge.kb-badge--cat:focus-visible { filter:
 .kb-modal__photo { display: block; width: auto; max-width: 86%; height: clamp(13rem, 56vw, 17rem); margin-inline: auto; object-fit: contain; object-position: bottom center; }
 .kb-modal__caption { text-align: center; }
 .kb-modal__name, .kb-modal__role { text-align: center; }
+
+/* Portrait avec le drapeau : cadre un peu plus large */
+.kb-mayor__stage { aspect-ratio: 1 / 1; }
+.kb-mayor__cutout { width: 100%; }
+.kb-modal__photo { max-width: 94%; }
+
+/* Ligne sous la page active du menu : bleu de la RDC */
+.kb-header__nav .kb-nav__menu > li > a::after,
+.kb-nav__menu > li.current-menu-item > a::after,
+.kb-nav__menu > li.current_page_item > a::after,
+.kb-nav__menu > li.current-menu-ancestor > a::after { background: var(--kb-rdc-blue); }
+.kb-mobile-menu__list > li.current-menu-item > a,
+.kb-mobile-menu__list > li.current_page_item > a { color: var(--kb-rdc-blue); box-shadow: inset 3px 0 0 var(--kb-rdc-blue); padding-left: .75rem; }
