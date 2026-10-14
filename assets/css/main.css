@@ -3944,3 +3944,33 @@ a.kb-badge.kb-badge--cat:hover, a.kb-badge.kb-badge--cat:focus-visible { filter:
 .kb-nav__menu > li.current-menu-ancestor > a::after { background: var(--kb-rdc-blue); }
 .kb-mobile-menu__list > li.current-menu-item > a,
 .kb-mobile-menu__list > li.current_page_item > a { color: var(--kb-rdc-blue); box-shadow: inset 3px 0 0 var(--kb-rdc-blue); padding-left: .75rem; }
+
+/* ==========================================================================
+   33. Cartes des actualités (sous l'article principal) : catégorie en bandeau
+       tout en haut de la carte, sur toute la largeur, sur une seule ligne
+   ========================================================================== */
+.kb-mini-card { position: relative; padding-top: calc(var(--kb-mini-tab, 2rem) + .9rem); overflow: hidden; }
+.kb-mini-card .kb-meta { display: block; margin-bottom: .4rem; }
+.kb-mini-card .kb-badge {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 2;
+	display: block;
+	height: var(--kb-mini-tab, 2rem);
+	padding: 0 1rem;
+	border: 0;
+	border-radius: 0;
+	font-size: .75rem;
+	font-weight: 700;
+	line-height: var(--kb-mini-tab, 2rem);
+	letter-spacing: .1em;
+	text-align: center;
+	text-transform: uppercase;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.kb-mini-card .kb-date { display: block; }
+.kb-mini-card__title { font-size: var(--kb-step-1); }
