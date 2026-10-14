@@ -3753,3 +3753,63 @@ body.home.kb-header-solid .kb-main { padding-top: 0; }
 .kb-modal__caption { position: relative; inset: auto; width: 100%; padding: .8rem 1rem 1rem; background: var(--kb-green-900); }
 .kb-modal__name { font-size: var(--kb-step-1); color: var(--kb-white); }
 .kb-modal__role { font-size: var(--kb-step-0); color: var(--kb-gold-light); }
+
+/* ==========================================================================
+   30. Couleurs de la RDC (bleu ciel, jaune, rouge) en accents : « filet
+       national » sous l'en-tête et au-dessus du pied de page, soulignés des
+       titres de section, filets de la mention du pays, catégories, pop-up
+   ========================================================================== */
+:root {
+	--kb-rdc-blue: #007FFF;
+	--kb-rdc-yellow: #F7D618;
+	--kb-rdc-red: #CE1021;
+	/* Bande du drapeau : bleu, liseré jaune, rouge, liseré jaune, bleu */
+	--kb-rdc-stripe: linear-gradient(100deg, var(--kb-rdc-blue) 0 42%, var(--kb-rdc-yellow) 42% 45.5%, var(--kb-rdc-red) 45.5% 54.5%, var(--kb-rdc-yellow) 54.5% 58%, var(--kb-rdc-blue) 58% 100%);
+	/* Trois couleurs à parts égales, pour les petits filets */
+	--kb-rdc-tri: linear-gradient(90deg, var(--kb-rdc-blue) 0 33.33%, var(--kb-rdc-yellow) 33.33% 66.66%, var(--kb-rdc-red) 66.66% 100%);
+}
+
+/* Filet national sous la barre fixée (visible au défilement et sur les pages sans photo) */
+.kb-header--wh::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--kb-rdc-stripe); opacity: 0; transition: opacity .35s var(--kb-ease); pointer-events: none; }
+.kb-header.is-scrolled.kb-header--wh::after,
+body:not(.kb-header-overlay) .kb-header--wh::after { opacity: 1; }
+
+/* Filet national au-dessus du pied de page */
+.kb-footer::before { height: 4px; background: var(--kb-rdc-stripe); }
+
+/* Mention « République Démocratique du Congo · Haut-Katanga » : filets aux trois couleurs */
+.kb-hero--center .kb-hero__eyebrow::before,
+.kb-hero--center .kb-hero__eyebrow::after,
+.kb-page-hero--wh .kb-hero__eyebrow::before,
+.kb-page-hero--wh .kb-hero__eyebrow::after,
+.kb-post-hero--wh .kb-hero__eyebrow::before,
+.kb-post-hero--wh .kb-hero__eyebrow::after { height: 2px; background: var(--kb-rdc-tri); }
+.kb-hero--center .kb-hero__eyebrow::after,
+.kb-page-hero--wh .kb-hero__eyebrow::after,
+.kb-post-hero--wh .kb-hero__eyebrow::after { transform: scaleX(-1); }
+
+/* Titres de section soulignés aux couleurs nationales (comme presidence.cd) */
+.kb-section-title::after { content: ""; display: block; width: 88px; height: 4px; margin-top: .85rem; border-radius: 2px; background: var(--kb-rdc-tri); }
+.kb-section-head--center .kb-section-title::after { margin-inline: auto; }
+
+/* Points de la bande d'annonce aux trois couleurs, en alternance */
+.kb-header--wh .kb-ticker__item:nth-child(3n+1)::after { color: var(--kb-rdc-blue); }
+.kb-header--wh .kb-ticker__item:nth-child(3n+2)::after { color: #C9A800; }
+.kb-header--wh .kb-ticker__item:nth-child(3n)::after { color: var(--kb-rdc-red); }
+
+/* Catégories : bouton et icône lisibles sur chaque couleur */
+.kb-carousel__cta { background: var(--kb-cat); color: var(--kb-cat-ink, var(--kb-white)); }
+.kb-carousel__cta:hover, .kb-carousel__cta:focus-visible { color: var(--kb-cat-ink, var(--kb-white)); }
+.kb-carousel__icon { color: var(--kb-cat-ink, var(--kb-white)); }
+
+/* Pop-up du Maire : filet national en haut */
+.kb-modal--wh .kb-modal__inner::before { content: ""; position: absolute; inset: 0 0 auto; height: 5px; background: var(--kb-rdc-stripe); z-index: 4; }
+/* Pastilles de catégorie à la couleur de leur catégorie */
+.kb-badge.kb-badge--cat { background: var(--kb-cat); border-color: var(--kb-cat); color: var(--kb-cat-ink); }
+a.kb-badge.kb-badge--cat:hover, a.kb-badge.kb-badge--cat:focus-visible { filter: brightness(1.1); color: var(--kb-cat-ink); }
+.kb-hero:not(.kb-hero--plain) .kb-hero__eyebrow.kb-eyebrow--light::before,
+.kb-hero:not(.kb-hero--plain) .kb-hero__eyebrow.kb-eyebrow--light::after,
+.kb-page-hero--wh .kb-hero__eyebrow.kb-eyebrow--light::before,
+.kb-page-hero--wh .kb-hero__eyebrow.kb-eyebrow--light::after,
+.kb-post-hero--wh .kb-hero__eyebrow.kb-eyebrow--light::before,
+.kb-post-hero--wh .kb-hero__eyebrow.kb-eyebrow--light::after { flex: 0 0 2.5rem; width: 2.5rem; height: 2px; background: var(--kb-rdc-tri); }

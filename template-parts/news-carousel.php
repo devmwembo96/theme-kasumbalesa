@@ -28,7 +28,7 @@ $kb_count = count( $kb_posts );
 						$kb_cat   = kb_primary_category( $kb_post );
 						$kb_style = kb_category_style( $kb_cat );
 						?>
-						<article class="kb-carousel__slide<?php echo 0 === $kb_i ? ' is-active' : ''; ?>" style="--kb-cat: <?php echo esc_attr( $kb_style['color'] ); ?>" role="group" aria-roledescription="<?php esc_attr_e( 'diapositive', 'kasumbalesa' ); ?>" aria-label="<?php echo esc_attr( sprintf( /* translators: 1: position, 2: total. */ __( '%1$d sur %2$d', 'kasumbalesa' ), $kb_i + 1, $kb_count ) ); ?>" aria-hidden="<?php echo 0 === $kb_i ? 'false' : 'true'; ?>">
+						<article class="kb-carousel__slide<?php echo 0 === $kb_i ? ' is-active' : ''; ?>" style="--kb-cat: <?php echo esc_attr( $kb_style['color'] ); ?>; --kb-cat-ink: <?php echo esc_attr( $kb_style['ink'] ); ?>" role="group" aria-roledescription="<?php esc_attr_e( 'diapositive', 'kasumbalesa' ); ?>" aria-label="<?php echo esc_attr( sprintf( /* translators: 1: position, 2: total. */ __( '%1$d sur %2$d', 'kasumbalesa' ), $kb_i + 1, $kb_count ) ); ?>" aria-hidden="<?php echo 0 === $kb_i ? 'false' : 'true'; ?>">
 							<a class="kb-carousel__media" href="<?php echo esc_url( get_permalink( $kb_post ) ); ?>" tabindex="-1" aria-hidden="true">
 								<?php kb_thumbnail( 'kb-wide', array( 'sizes' => '(min-width: 1100px) 60vw, 100vw' ), $kb_post ); ?>
 							</a>
