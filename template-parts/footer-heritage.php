@@ -49,7 +49,14 @@ $kb_emblem   = static function ( $id, $label, $main = false ) {
 	</div>
 	<div class="kb-heritage__body">
 		<?php if ( kb_mod( 'heritage_line' ) ) : ?>
-			<p class="kb-heritage__line"><?php echo esc_html( kb_mod( 'heritage_line' ) ); ?></p>
+			<p class="kb-heritage__line">
+				<?php
+				// Une information par ligne (séparateur « · » dans le Customizer).
+				foreach ( array_filter( array_map( 'trim', explode( '·', kb_mod( 'heritage_line' ) ) ) ) as $kb_part ) {
+					echo '<span>' . esc_html( $kb_part ) . '</span>';
+				}
+				?>
+			</p>
 		<?php endif; ?>
 		<?php if ( kb_mod( 'heritage_title' ) ) : ?>
 			<p class="kb-heritage__title"><?php echo kb_rich_title( kb_mod( 'heritage_title' ) ); // phpcs:ignore ?></p>
