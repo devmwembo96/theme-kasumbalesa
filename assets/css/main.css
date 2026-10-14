@@ -3974,3 +3974,20 @@ a.kb-badge.kb-badge--cat:hover, a.kb-badge.kb-badge--cat:focus-visible { filter:
 }
 .kb-mini-card .kb-date { display: block; }
 .kb-mini-card__title { font-size: var(--kb-step-1); }
+
+/* Portrait du Maire : fond uni bleu nuit, sans montagne ni soleil */
+.kb-mayor__stage {
+	background:
+		radial-gradient(60% 50% at 50% 38%, rgba(255, 255, 255, .14), rgba(255, 255, 255, 0) 70%),
+		linear-gradient(180deg, #0a1847 0%, #102a6b 100%);
+}
+
+/* Pied de page : appartenance de la même couleur que la devise ;
+   titre sur deux lignes, sans italique, « Site officiel de la » 2 pt plus petit */
+.kb-heritage__line { color: var(--kb-muted); }
+.kb-heritage__title { font-size: calc(var(--kb-step-3) - 2pt); white-space: normal; }
+.kb-heritage__title em { display: block; font-size: calc(1em + 2pt); font-style: normal; }
+@media (min-width: 1100px) {
+	.kb-heritage__title { font-size: calc(clamp(1.75rem, 2.3vw, 2.6rem) - 2pt); white-space: normal; }
+	.kb-heritage__title em { white-space: nowrap; }
+}
