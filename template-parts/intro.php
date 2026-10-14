@@ -1,7 +1,8 @@
 <?php
 /**
  * Animation d'introduction : logo du site (Personnaliser > Identité du site).
- * Affichée une fois par session, 2 secondes maximum, avec un bouton « Passer ».
+ * Affichée une fois par session, 5 secondes, avec un bouton « Passer ».
+ * Le cercle qui tourne reprend les trois couleurs de la RDC (bleu ciel, jaune, rouge).
  *
  * @package Kasumbalesa
  */
@@ -12,7 +13,11 @@ $kb_logo_id = get_theme_mod( 'custom_logo' );
 	<div class="kb-intro__stage">
 		<svg class="kb-intro__ring" viewBox="0 0 200 200" aria-hidden="true" focusable="false">
 			<circle class="kb-intro__ring-track" cx="100" cy="100" r="96" />
-			<circle class="kb-intro__ring-line" cx="100" cy="100" r="96" pathLength="1" />
+			<g class="kb-intro__spin">
+				<circle class="kb-intro__arc kb-intro__arc--blue" cx="100" cy="100" r="96" pathLength="300" />
+				<circle class="kb-intro__arc kb-intro__arc--yellow" cx="100" cy="100" r="96" pathLength="300" />
+				<circle class="kb-intro__arc kb-intro__arc--red" cx="100" cy="100" r="96" pathLength="300" />
+			</g>
 		</svg>
 		<div class="kb-intro__logo">
 			<?php
