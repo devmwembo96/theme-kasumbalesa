@@ -19,11 +19,11 @@ $kb_content = apply_filters( 'the_content', $kb_page->post_content ); // phpcs:i
 					<?php
 					echo get_the_post_thumbnail(
 						$kb_page,
-						'kb-portrait',
+						'medium_large',
 						array(
-							'loading'  => 'lazy',
+							'loading'  => 'eager',
 							'decoding' => 'async',
-							'sizes'    => '(min-width: 900px) 440px, 90vw',
+							'sizes'    => '(min-width: 900px) 340px, 70vw',
 						)
 					);
 					?>

@@ -3813,3 +3813,88 @@ a.kb-badge.kb-badge--cat:hover, a.kb-badge.kb-badge--cat:focus-visible { filter:
 .kb-page-hero--wh .kb-hero__eyebrow.kb-eyebrow--light::after,
 .kb-post-hero--wh .kb-hero__eyebrow.kb-eyebrow--light::before,
 .kb-post-hero--wh .kb-hero__eyebrow.kb-eyebrow--light::after { flex: 0 0 2.5rem; width: 2.5rem; height: 2px; background: var(--kb-rdc-tri); }
+
+/* ==========================================================================
+   31. Ajustements 1.3.2 : boutons rouges sans majuscules, tailles de texte
+       réduites, chiffres clés plus sobres, photo du Maire plus petite,
+       illustration de la montagne pour les sections à citation, menu plus
+       petit, Facebook à sa couleur officielle
+   ========================================================================== */
+
+/* Échelle typographique réduite (texte et titres) */
+:root {
+	--kb-step--1: .8125rem;
+	--kb-step-0: .9375rem;
+	--kb-step-1: 1rem;
+	--kb-step-2: 1.125rem;
+	--kb-step-3: 1.25rem;
+	--kb-step-4: 1.5rem;
+	--kb-step-5: 1.875rem;
+}
+@media (min-width: 440px) {
+	:root { --kb-step--1: .8125rem; --kb-step-0: 1rem; --kb-step-1: 1.0625rem; --kb-step-2: 1.25rem; --kb-step-3: 1.5rem; --kb-step-4: 1.875rem; --kb-step-5: 2.375rem; }
+}
+@media (min-width: 1024px) {
+	:root { --kb-step-2: 1.375rem; --kb-step-3: 1.625rem; --kb-step-4: 2.125rem; --kb-step-5: 2.75rem; }
+}
+@media (min-width: 1440px) {
+	:root { --kb-step--1: .875rem; --kb-step-0: 1.0625rem; --kb-step-1: 1.125rem; --kb-step-2: 1.5rem; --kb-step-3: 1.75rem; --kb-step-4: 2.375rem; --kb-step-5: 3rem; }
+}
+
+/* Boutons : rouge de la RDC à la place du doré, texte en minuscules */
+.kb-btn { font-size: .9375rem; font-weight: 600; letter-spacing: .01em; text-transform: none; }
+.kb-hero--center .kb-hero__actions .kb-btn,
+.kb-page-hero__actions .kb-btn,
+.kb-modal--wh .kb-btn { font-size: .9375rem; }
+@media (max-width: 600px) {
+	.kb-hero--center .kb-hero__actions .kb-btn,
+	.kb-page-hero__actions .kb-btn { font-size: .875rem; }
+}
+.kb-btn--gold { --kb-btn-bg: var(--kb-rdc-red); --kb-btn-fg: var(--kb-white); --kb-btn-border: var(--kb-rdc-red); }
+.kb-btn--gold::before { background: #9b0b18; }
+.kb-btn--gold:hover,
+.kb-btn--gold:focus-visible { color: var(--kb-white); border-color: #9b0b18; }
+.kb-btn--gold .kb-btn__icon { background: var(--kb-white); color: var(--kb-rdc-red); }
+/* Exception demandée : « Découvrir son histoire » garde ses majuscules */
+.kb-topo .kb-btn { font-size: .875rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+
+/* 04 — Kasumbalesa en chiffres : valeurs et libellés plus petits */
+.kb-figures__value { font-size: clamp(2rem, 1.5rem + 2.2vw, 3rem); font-weight: 700; }
+.kb-figures__suffix { font-size: .5em; }
+.kb-figures__label { font-size: .75rem; letter-spacing: .1em; }
+.kb-figures__item,
+.kb-figures__item + .kb-figures__item { padding: clamp(1.1rem, 2.2vw, 1.6rem) .75rem; }
+.kb-stats .kb-stat__value { font-size: clamp(1.75rem, 1.3rem + 2vw, 2.6rem); }
+
+/* Photo du Maire (accueil) : plus petite, entière, comme sur l'ancienne page */
+.kb-mayor__grid { grid-template-columns: minmax(0, 340px) minmax(0, 1fr); }
+.kb-mayor__portrait { max-width: 340px; width: 100%; margin-inline: auto; }
+.kb-mayor__frame img { aspect-ratio: auto; height: auto; object-fit: contain; background: linear-gradient(180deg, var(--kb-mist, #f4f7f5), var(--kb-paper)); }
+.kb-mayor__frame::before { inset: .9rem -.9rem -.9rem .9rem; }
+@media (max-width: 900px) { .kb-mayor__grid { grid-template-columns: 1fr; } .kb-mayor__portrait { position: static; max-width: 280px; } }
+.kb-signature__img { width: min(280px, 80%); height: auto; }
+
+/* Sections à citation (Mot du Maire, Toponymie…) : illustration de la montagne du thème */
+.kb-cover .wp-block-cover__image-background { display: none; }
+.kb-entry > .wp-block-cover.kb-cover { background: #0a1847 url("../img/montagne.svg") center bottom / cover no-repeat; }
+.kb-cover .wp-block-cover__background { background: linear-gradient(to top, rgba(6, 23, 15, .55), rgba(6, 23, 15, 0) 55%) !important; opacity: 1 !important; }
+
+/* Menu déroulant (panneau) : texte plus petit */
+.kb-mobile-menu__list > li > a { min-height: 3rem; font-family: var(--kb-font-sans); font-size: clamp(1.125rem, 4.6vw, 1.375rem); font-weight: 600; }
+.kb-mobile-menu__list .sub-menu a { font-size: .9375rem; }
+
+/* Facebook à sa couleur officielle */
+.kb-social a[href*="facebook"],
+.kb-social .kb-icon--facebook { --kb-fb: #1877F2; }
+.kb-social a[href*="facebook"] { border-color: #1877F2; background: #1877F2; color: var(--kb-white); }
+.kb-social a[href*="facebook"]:hover,
+.kb-social a[href*="facebook"]:focus-visible { border-color: #0d65d9; background: #0d65d9; color: var(--kb-white); }
+.kb-heritage .kb-social a[href*="facebook"] { border-color: #1877F2; background: #1877F2; color: var(--kb-white); }
+.kb-mayor__frame { height: auto; }
+.kb-mayor__frame img { height: auto !important; max-height: none; aspect-ratio: auto !important; }
+.kb-mayor__grid { align-items: start; }
+.kb-mayor__portrait,
+.kb-mayor__frame { display: block; height: auto !important; min-height: 0 !important; }
+.kb-mayor__frame img { display: block; align-self: start; min-height: 0 !important; }
+/* WordPress ajoute « sizes=auto » aux images différées : sans cela la photo réserve 1500 px de haut */
+.kb-mayor__frame img { contain-intrinsic-size: none; }
