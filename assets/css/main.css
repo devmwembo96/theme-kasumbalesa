@@ -3682,3 +3682,45 @@ body.home.kb-header-solid .kb-main { padding-top: 0; }
 	.kb-heritage__title { max-width: none; font-size: clamp(1.75rem, 2.3vw, 2.6rem); white-space: nowrap; }
 	.kb-heritage .kb-social { justify-content: flex-start; }
 }
+
+/* ==========================================================================
+   28. Haut de chaque page identique à l'accueil : pays, emblème, titre de la
+       page, texte et deux boutons vers d'autres pages
+   ========================================================================== */
+.kb-page-hero--wh,
+.kb-post-hero--wh { min-height: 100vh; min-height: 100svh; }
+.kb-page-hero--wh .kb-hero__eyebrow,
+.kb-post-hero--wh .kb-hero__eyebrow {
+	display: flex;
+	justify-content: center;
+	gap: .75em;
+	max-width: 100%;
+	margin: 0 auto clamp(.75rem, 2.2svh, 1.4rem);
+	font-size: clamp(.55rem, 2.3vw, .875rem);
+	letter-spacing: clamp(.03em, .4vw, .2em);
+	white-space: nowrap;
+	color: var(--kb-white);
+}
+.kb-page-hero--wh .kb-hero__eyebrow::before,
+.kb-page-hero--wh .kb-hero__eyebrow::after,
+.kb-post-hero--wh .kb-hero__eyebrow::before,
+.kb-post-hero--wh .kb-hero__eyebrow::after { content: ""; flex: 0 1 2.5rem; min-width: .75rem; height: 1px; align-self: center; background: var(--kb-gold); }
+@media (max-width: 420px) {
+	.kb-page-hero--wh .kb-hero__eyebrow::before, .kb-page-hero--wh .kb-hero__eyebrow::after,
+	.kb-post-hero--wh .kb-hero__eyebrow::before, .kb-post-hero--wh .kb-hero__eyebrow::after { display: none; }
+}
+.kb-page-hero--wh .kb-page-hero__emblem,
+.kb-post-hero--wh .kb-page-hero__emblem { height: clamp(72px, 15svh, 200px); }
+@media (max-width: 600px) {
+	.kb-page-hero--wh .kb-page-hero__emblem,
+	.kb-post-hero--wh .kb-page-hero__emblem { height: clamp(60px, 10svh, 88px); }
+}
+.kb-page-hero__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .75rem; margin-top: clamp(1.25rem, 3svh, 2rem); }
+.kb-page-hero__actions .kb-btn { flex: 0 0 auto; width: auto; min-height: 44px; padding: .4rem .45rem .4rem 1.25rem; gap: .75rem; font-size: .8125rem; }
+.kb-page-hero__actions .kb-btn .kb-btn__icon { width: 34px; height: 34px; }
+@media (max-width: 600px) { .kb-page-hero__actions .kb-btn { font-size: .75rem; padding-left: 1rem; } }
+.kb-page-hero--wh .kb-page-hero__actions .kb-btn--ghost { --kb-btn-fg: var(--kb-white); --kb-btn-border: rgba(255, 255, 255, .7); }
+.js .kb-page-hero__actions,
+.js .kb-page-hero--wh .kb-hero__eyebrow,
+.js .kb-post-hero--wh .kb-hero__eyebrow { opacity: 1; transform: none; }
+.kb-page-hero__actions { animation: kb-rise 1.1s .45s var(--kb-ease-out) both; }

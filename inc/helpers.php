@@ -457,3 +457,68 @@ function kb_header_overlays() {
 	}
 	return is_front_page() || is_singular() || is_home() || is_archive() || is_search();
 }
+
+/**
+ * Deux boutons de l'en-tête d'une page, vers d'autres pages du site.
+ * Correspondances choisies par la Mairie (identifiant de page => pages cibles),
+ * sinon les deux pages suivantes du menu principal.
+ *
+ * @param int $current ID de la page affichée (0 pour une liste, -1 pour un article).
+ * @return array<int, array{label:string,url:string}>
+ */
+function kb_hero_links( $current = 0 ) {
+	$by_slug = array(
+		'bureau-du-maire'    => array( 'historique', '@news' ),
+		'historique'         => array( 'bureau-du-maire', 'ressources-projets' ),
+		'ressources-projets' => array( 'bureau-du-maire', '@news' ),
+		'mot-du-maire'       => array( 'bureau-du-maire', '@news' ),
+		'@news'              => array( 'historique', 'bureau-du-maire' ),
+		'@post'              => array( '@news', 'historique' ),
+	);
+	$posts_page = (int) get_option( 'page_for_posts' );
+	$key        = -1 === $current ? '@post' : '@news';
+	if ( $current > 0 && $current !== $posts_page ) {
+		$key = (string) get_post_field( 'post_name', $current );
+	}
+
+	$resolve = static function ( $slug ) use ( $posts_page ) {
+		if ( '@news' === $slug ) {
+			return $posts_page ? array( 'label' => html_entity_decode( get_the_title( $posts_page ), ENT_QUOTES, 'UTF-8' ), 'url' => get_permalink( $posts_page ) ) : null;
+		}
+		$page = get_page_by_path( $slug );
+		return ( $page && 'publish' === $page->post_status ) ? array( 'label' => html_entity_decode( get_the_title( $page ), ENT_QUOTES, 'UTF-8' ), 'url' => get_permalink( $page ) ) : null;
+	};
+
+	$links = array();
+	if ( isset( $by_slug[ $key ] ) ) {
+		foreach ( $by_slug[ $key ] as $slug ) {
+			$link = $resolve( $slug );
+			if ( $link ) {
+				$links[] = $link;
+			}
+		}
+	}
+
+	// Repli : pages suivantes du menu principal (hors accueil et page courante).
+	if ( count( $links ) < 2 ) {
+		$locations = get_nav_menu_locations();
+		$items     = empty( $locations['primary'] ) ? array() : (array) wp_get_nav_menu_items( $locations['primary'] );
+		$items     = array_values(
+			array_filter(
+				$items,
+				static function ( $item ) use ( $current ) {
+					return ! $item->menu_item_parent && (int) $item->object_id !== (int) $current && (int) $item->object_id !== (int) get_option( 'page_on_front' ) && untrailingslashit( $item->url ) !== untrailingslashit( home_url() );
+				}
+			)
+		);
+		foreach ( $items as $item ) {
+			if ( count( $links ) >= 2 ) {
+				break;
+			}
+			if ( ! in_array( $item->url, wp_list_pluck( $links, 'url' ), true ) ) {
+				$links[] = array( 'label' => html_entity_decode( $item->title, ENT_QUOTES, 'UTF-8' ), 'url' => $item->url );
+			}
+		}
+	}
+	return array_slice( $links, 0, 2 );
+}

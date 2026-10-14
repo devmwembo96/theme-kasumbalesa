@@ -33,6 +33,9 @@ while ( have_posts() ) :
 			}
 			?>
 			<div class="kb-post-hero__inner kb-container">
+				<?php if ( kb_mod( 'hero_eyebrow' ) ) : ?>
+					<p class="kb-eyebrow kb-eyebrow--light kb-hero__eyebrow"><?php echo esc_html( kb_mod( 'hero_eyebrow' ) ); ?></p>
+				<?php endif; ?>
 				<?php
 				if ( get_theme_mod( 'custom_logo' ) ) {
 					echo wp_get_attachment_image( (int) get_theme_mod( 'custom_logo' ), 'medium', false, array( 'class' => 'kb-page-hero__emblem', 'alt' => '', 'loading' => 'eager' ) );
@@ -50,6 +53,16 @@ while ( have_posts() ) :
 						?>
 					</span>
 				</p>
+				<?php $kb_links = kb_hero_links( -1 ); ?>
+				<?php if ( $kb_links ) : ?>
+					<div class="kb-hero__actions kb-page-hero__actions">
+						<?php
+						foreach ( $kb_links as $kb_n => $kb_link ) {
+							kb_button( $kb_link['label'], $kb_link['url'], 0 === $kb_n ? 'gold' : 'ghost' );
+						}
+						?>
+					</div>
+				<?php endif; ?>
 			</div>
 		</header>
 
