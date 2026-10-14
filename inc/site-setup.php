@@ -81,3 +81,27 @@ function kb_site_setup() {
 	update_option( 'kb_site_setup_done', gmdate( 'c' ), false );
 }
 add_action( 'after_switch_theme', 'kb_site_setup' );
+
+/**
+ * Mise à jour 1.2 : reprend le diaporama de l'ancien accueil (photos de la ville),
+ * seulement si le diaporama est encore celui posé par défaut à l'activation.
+ */
+function kb_site_setup_v2() {
+	if ( get_option( 'kb_site_setup_v2' ) ) {
+		return;
+	}
+	$current = array();
+	for ( $i = 1; $i <= 5; $i++ ) {
+		$current[] = absint( get_theme_mod( 'hero_slide_' . $i, 0 ) );
+	}
+	if ( in_array( $current, array( array( 7307, 7236, 7241, 0, 0 ), array( 0, 0, 0, 0, 0 ) ), true ) ) {
+		$old = array_values( array_filter( array( 7631, 7342, 7313, 7250, 7233 ), 'wp_attachment_is_image' ) );
+		if ( $old ) {
+			for ( $i = 1; $i <= 5; $i++ ) {
+				set_theme_mod( 'hero_slide_' . $i, isset( $old[ $i - 1 ] ) ? $old[ $i - 1 ] : 0 );
+			}
+		}
+	}
+	update_option( 'kb_site_setup_v2', gmdate( 'c' ), true );
+}
+add_action( 'init', 'kb_site_setup_v2' );

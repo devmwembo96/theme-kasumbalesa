@@ -3162,7 +3162,6 @@ body { --kb-header-h: calc(var(--kb-bar-h) + var(--kb-ticker-h) + var(--kb-topba
 }
 
 /* Ajustements du héros centré : tout tient dans le premier écran */
-.kb-hero--center .kb-hero__eyebrow,
 .kb-hero--center .kb-hero__card { display: none; }
 .kb-hero--center .kb-hero__emblem { height: clamp(72px, 15svh, 200px); }
 @media (max-width: 600px) {
@@ -3230,4 +3229,39 @@ body { --kb-header-h: calc(var(--kb-bar-h) + var(--kb-ticker-h) + var(--kb-topba
 }
 @media (max-width: 640px) {
 	.kb-heritage__motto { flex-direction: column; gap: .35rem; }
+}
+
+/* ==========================================================================
+   20. Héros comme l'ancien site : photos en fond sous un voile bleu nuit
+       transparent, emblème centré, mention du pays sur une seule ligne
+   ========================================================================== */
+.kb-hero--center .kb-hero__veil {
+	background:
+		linear-gradient(to top, rgba(6, 23, 15, .55) 0%, rgba(6, 23, 15, 0) 38%),
+		linear-gradient(rgba(0, 0, 75, calc(var(--kb-overlay) + .18)), rgba(0, 0, 75, calc(var(--kb-overlay) + .18)));
+}
+.kb-hero--center .kb-hero__eyebrow {
+	display: flex;
+	justify-content: center;
+	gap: .75em;
+	max-width: 100%;
+	margin: 0 auto clamp(.6rem, 2svh, 1.1rem);
+	font-size: clamp(.55rem, 2.3vw, .875rem);
+	letter-spacing: clamp(.03em, .4vw, .2em);
+	white-space: nowrap;
+	color: var(--kb-white);
+}
+.kb-hero--center .kb-hero__eyebrow::before,
+.kb-hero--center .kb-hero__eyebrow::after { content: ""; flex: 0 1 2.5rem; min-width: .75rem; height: 1px; align-self: center; background: var(--kb-gold); }
+@media (max-width: 420px) {
+	.kb-hero--center .kb-hero__eyebrow::before,
+	.kb-hero--center .kb-hero__eyebrow::after { display: none; }
+}
+@media (max-height: 700px) and (max-width: 600px) {
+	.kb-hero--center .kb-hero__eyebrow { display: flex; }
+}
+@media (max-height: 700px) and (max-width: 600px) {
+	.kb-hero--center .kb-hero__title { font-size: min(clamp(1.7rem, 8vw, 2.4rem), 5.4svh); margin-bottom: .9rem; }
+	.kb-hero--center .kb-hero__actions { gap: .5rem; }
+	.kb-hero--center .kb-hero__actions .kb-btn { min-height: 48px; padding-block: .4rem; }
 }
