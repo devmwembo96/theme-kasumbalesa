@@ -14,7 +14,7 @@ defined( 'ABSPATH' ) || exit;
  * @return string
  */
 function kb_fonts_url() {
-	return 'https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Instrument+Serif&display=swap';
+	return 'https://fonts.googleapis.com/css2?family=Abel&family=Instrument+Serif&display=swap';
 }
 
 /**
