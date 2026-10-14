@@ -203,6 +203,22 @@
 		$$('[data-modal-close]', modal).forEach(function (btn) { btn.addEventListener('click', close); });
 		modal.addEventListener('close', function () { body.classList.remove('kb-lock'); });
 
+		// Bouton vers une section de la page (#mot-du-maire) : ferme le pop-up, déplie le texte et y défile.
+		$$('a[href*="#"]', modal).forEach(function (link) {
+			var section = link.hash ? doc.getElementById(link.hash.slice(1)) : null;
+			if (!section || link.pathname !== window.location.pathname) { return; }
+			link.addEventListener('click', function (event) {
+				event.preventDefault();
+				close();
+				var more = $('[data-readmore][aria-expanded="false"]', section);
+				if (more) { more.click(); }
+				window.setTimeout(function () {
+					section.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+					if (window.history.replaceState) { window.history.replaceState(null, '', link.hash); }
+				}, reducedMotion ? 0 : 300);
+			});
+		});
+
 		window.setTimeout(function () {
 			storageSet('kbMayorSeen');
 			body.classList.add('kb-lock');
