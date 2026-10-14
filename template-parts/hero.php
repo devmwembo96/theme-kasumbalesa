@@ -10,7 +10,7 @@ $kb_slides  = kb_hero_slide_ids();
 $kb_overlay = min( 70, absint( kb_mod( 'hero_overlay' ) ) ) / 100;
 $kb_btn2    = kb_resolve_url( kb_mod( 'hero_btn2_url' ), kb_news_url() );
 ?>
-<section class="kb-hero<?php echo $kb_slides ? '' : ' kb-hero--plain'; ?>" style="--kb-overlay: <?php echo esc_attr( $kb_overlay ); ?>" aria-labelledby="kb-hero-title" data-hero>
+<section class="kb-hero kb-hero--center<?php echo $kb_slides ? '' : ' kb-hero--plain'; ?>" style="--kb-overlay: <?php echo esc_attr( $kb_overlay ); ?>" aria-labelledby="kb-hero-title" data-hero>
 	<?php if ( $kb_slides ) : ?>
 		<div class="kb-hero__slides">
 			<?php foreach ( $kb_slides as $kb_i => $kb_id ) : ?>
@@ -48,6 +48,23 @@ $kb_btn2    = kb_resolve_url( kb_mod( 'hero_btn2_url' ), kb_news_url() );
 		<?php if ( kb_mod( 'hero_eyebrow' ) ) : ?>
 			<p class="kb-eyebrow kb-eyebrow--light kb-hero__eyebrow"><?php echo esc_html( kb_mod( 'hero_eyebrow' ) ); ?></p>
 		<?php endif; ?>
+		<?php
+		$kb_logo = (int) get_theme_mod( 'custom_logo' );
+		if ( $kb_logo ) {
+			echo wp_get_attachment_image(
+				$kb_logo,
+				'medium_large',
+				false,
+				array(
+					'class'         => 'kb-hero__emblem',
+					'alt'           => '',
+					'loading'       => 'eager',
+					'fetchpriority' => 'high',
+					'sizes'         => '230px',
+				)
+			);
+		}
+		?>
 		<h1 class="kb-hero__title" id="kb-hero-title" data-split><?php echo kb_rich_title( kb_mod( 'hero_title' ) ); // phpcs:ignore ?></h1>
 		<?php if ( kb_mod( 'hero_subtitle' ) ) : ?>
 			<p class="kb-hero__subtitle"><?php echo esc_html( kb_mod( 'hero_subtitle' ) ); ?></p>

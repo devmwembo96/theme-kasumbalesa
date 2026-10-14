@@ -89,6 +89,9 @@ add_action( 'after_setup_theme', 'kb_setup' );
 function kb_body_classes( $classes ) {
 	// En-tête clair et opaque sur toutes les pages : le contenu commence sous lui.
 	$classes[] = 'kb-header-solid';
+	if ( kb_header_overlays() ) {
+		$classes[] = 'kb-header-overlay';
+	}
 	if ( kb_ticker_is_visible() ) {
 		$classes[] = 'kb-has-ticker';
 	}

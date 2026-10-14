@@ -29,7 +29,8 @@ function kb_defaults() {
 		'mayor_role'            => 'Maire de la Ville de Kasumbalesa',
 		'mayor_signature'       => 0,
 		'popup_eyebrow'         => 'Message du Maire',
-		'popup_button'          => 'Lire le message complet',
+		'popup_title'           => "Bienvenue\nVille de Kasumbalesa",
+		'popup_button'          => 'Lire le mot du Maire',
 
 		// Héros.
 		'hero_eyebrow'          => 'République Démocratique du Congo · Haut-Katanga',
@@ -112,6 +113,23 @@ function kb_defaults() {
 		'topo_image'            => 0,
 		'topo_link_label'       => 'Découvrir son histoire',
 		'topo_link_url'         => '',
+
+		// Carte retournable (avant le pied de page, sur toutes les pages).
+		'flip_enable'           => 1,
+		'flip_front_title'      => 'Ville de Kasumbalesa',
+		'flip_front_text'       => 'Ville frontalière du Haut-Katanga',
+		'flip_back_title'       => 'Town of Kasumbalesa',
+		'flip_back_text'        => 'Border town of Haut-Katanga',
+		'flip_image'            => 0,
+		'flip_link_url'         => '',
+
+		// Bandeau institutionnel du pied de page (armoiries, devise, photo de la montagne).
+		'heritage_emblem_1'     => 6041,
+		'heritage_emblem_2'     => 6044,
+		'heritage_photo'        => 7153,
+		'heritage_line'         => 'Ville de la République Démocratique du Congo · Province du Haut-Katanga',
+		'heritage_title'        => 'Site officiel de la *Ville de Kasumbalesa*',
+		'heritage_motto'        => 'Kasumbalesa, la ville-montagne de Dieu',
 		'postcard_image'        => 0,
 		'postcard_title'        => 'Souvenir de Kasumbalesa',
 		'postcard_text'         => 'Haut-Katanga · République Démocratique du Congo',
@@ -159,7 +177,7 @@ function kb_defaults() {
  */
 function kb_translatable_mods() {
 	return array(
-		'mayor_role', 'popup_eyebrow', 'popup_button',
+		'mayor_role', 'popup_eyebrow', 'popup_title', 'popup_button',
 		'hero_eyebrow', 'hero_title', 'hero_subtitle', 'hero_btn1_label', 'hero_btn2_label',
 		'ticker_label', 'mayor_section_eyebrow', 'mayor_readmore', 'mayor_readless',
 		'news_eyebrow', 'news_title', 'news_all_label',
@@ -168,6 +186,8 @@ function kb_translatable_mods() {
 		'figures_eyebrow', 'figures_title',
 		'fig_1_label', 'fig_2_label', 'fig_3_label', 'fig_4_label',
 		'topo_eyebrow', 'topo_title', 'topo_text', 'topo_link_label',
+		'flip_front_title', 'flip_front_text', 'flip_back_title', 'flip_back_text',
+		'heritage_line', 'heritage_title', 'heritage_motto',
 		'postcard_title', 'postcard_text', 'marquee_text',
 		'contact_address', 'contact_hours', 'footer_about', 'footer_credit', 'seo_description',
 	);
@@ -414,4 +434,91 @@ function kb_footer_credit() {
  */
 function kb_is_full_width() {
 	return is_page_template( 'templates/template-full-width.php' );
+}
+
+/**
+ * Photo de secours pour les en-têtes de page : la 1re image du diaporama d'accueil.
+ *
+ * @return int
+ */
+function kb_fallback_hero_image() {
+	$ids = kb_hero_slide_ids();
+	return $ids ? (int) $ids[0] : absint( kb_mod( 'topo_image' ) );
+}
+
+/**
+ * L'en-tête du site se pose en transparence sur une photo (accueil, pages, articles, listes).
+ *
+ * @return bool
+ */
+function kb_header_overlays() {
+	if ( is_404() || kb_is_full_width() ) {
+		return false;
+	}
+	return is_front_page() || is_singular() || is_home() || is_archive() || is_search();
+}
+
+/**
+ * Deux boutons de l'en-tête d'une page, vers d'autres pages du site.
+ * Correspondances choisies par la Mairie (identifiant de page => pages cibles),
+ * sinon les deux pages suivantes du menu principal.
+ *
+ * @param int $current ID de la page affichée (0 pour une liste, -1 pour un article).
+ * @return array<int, array{label:string,url:string}>
+ */
+function kb_hero_links( $current = 0 ) {
+	$by_slug = array(
+		'bureau-du-maire'    => array( 'historique', '@news' ),
+		'historique'         => array( 'bureau-du-maire', 'ressources-projets' ),
+		'ressources-projets' => array( 'bureau-du-maire', '@news' ),
+		'mot-du-maire'       => array( 'bureau-du-maire', '@news' ),
+		'@news'              => array( 'historique', 'bureau-du-maire' ),
+		'@post'              => array( '@news', 'historique' ),
+	);
+	$posts_page = (int) get_option( 'page_for_posts' );
+	$key        = -1 === $current ? '@post' : '@news';
+	if ( $current > 0 && $current !== $posts_page ) {
+		$key = (string) get_post_field( 'post_name', $current );
+	}
+
+	$resolve = static function ( $slug ) use ( $posts_page ) {
+		if ( '@news' === $slug ) {
+			return $posts_page ? array( 'label' => html_entity_decode( get_the_title( $posts_page ), ENT_QUOTES, 'UTF-8' ), 'url' => get_permalink( $posts_page ) ) : null;
+		}
+		$page = get_page_by_path( $slug );
+		return ( $page && 'publish' === $page->post_status ) ? array( 'label' => html_entity_decode( get_the_title( $page ), ENT_QUOTES, 'UTF-8' ), 'url' => get_permalink( $page ) ) : null;
+	};
+
+	$links = array();
+	if ( isset( $by_slug[ $key ] ) ) {
+		foreach ( $by_slug[ $key ] as $slug ) {
+			$link = $resolve( $slug );
+			if ( $link ) {
+				$links[] = $link;
+			}
+		}
+	}
+
+	// Repli : pages suivantes du menu principal (hors accueil et page courante).
+	if ( count( $links ) < 2 ) {
+		$locations = get_nav_menu_locations();
+		$items     = empty( $locations['primary'] ) ? array() : (array) wp_get_nav_menu_items( $locations['primary'] );
+		$items     = array_values(
+			array_filter(
+				$items,
+				static function ( $item ) use ( $current ) {
+					return ! $item->menu_item_parent && (int) $item->object_id !== (int) $current && (int) $item->object_id !== (int) get_option( 'page_on_front' ) && untrailingslashit( $item->url ) !== untrailingslashit( home_url() );
+				}
+			)
+		);
+		foreach ( $items as $item ) {
+			if ( count( $links ) >= 2 ) {
+				break;
+			}
+			if ( ! in_array( $item->url, wp_list_pluck( $links, 'url' ), true ) ) {
+				$links[] = array( 'label' => html_entity_decode( $item->title, ENT_QUOTES, 'UTF-8' ), 'url' => $item->url );
+			}
+		}
+	}
+	return array_slice( $links, 0, 2 );
 }

@@ -8,12 +8,13 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * URL Google Fonts : Cormorant Garamond (titres) + Manrope (texte).
+ * URL Google Fonts : Instrument Sans (texte, titres en gras, italique pour les citations)
+ * et Instrument Serif (titre d'accueil du pop-up, comme whitehouse.gov).
  *
  * @return string
  */
 function kb_fonts_url() {
-	return 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Manrope:wght@400..700&display=swap';
+	return 'https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Instrument+Serif&display=swap';
 }
 
 /**

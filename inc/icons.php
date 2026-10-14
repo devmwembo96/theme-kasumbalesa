@@ -15,6 +15,12 @@ defined( 'ABSPATH' ) || exit;
 function kb_icon_paths() {
 	return array(
 		'arrow-right' => '<path d="M5 12h14M13 6l6 6-6 6"/>',
+		'chevron-right' => '<path d="M9 5l7 7-7 7"/>',
+		'chevron-left'  => '<path d="M15 5l-7 7 7 7"/>',
+		'graduation'    => '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.6 2.7 3 6 3s6-1.4 6-3v-5M22 9v6"/>',
+		'crane'         => '<path d="M4 21V4h3v17M2 21h8M7 5h13l-3 3M7 8h10M16 8v4"/><rect x="14" y="12" width="4" height="3"/>',
+		'landmark'      => '<path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 21h18M3 18h18"/>',
+		'newspaper'     => '<rect x="3" y="4" width="15" height="16" rx="1.5"/><path d="M18 8h3v10a2 2 0 0 1-4 0M7 8h7M7 12h7M7 16h4"/>',
 		'arrow-left'  => '<path d="M19 12H5M11 6l-6 6 6 6"/>',
 		'arrow-up'    => '<path d="M12 19V5M6 11l6-6 6 6"/>',
 		'arrow-down'  => '<path d="M12 5v14M6 13l6 6 6-6"/>',

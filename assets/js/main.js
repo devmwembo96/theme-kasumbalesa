@@ -417,6 +417,52 @@
 	}
 
 	/* ------------------------------------------------------------------
+	 * Liens du menu en ligne : flèche « suite » quand ils débordent (mobile)
+	 * ------------------------------------------------------------------ */
+	function initNavScroll() {
+		var nav = $('.kb-header__nav');
+		var scroller = nav ? $('[data-nav-scroll]', nav) : null;
+		var more = nav ? $('[data-nav-more]', nav) : null;
+		if (!scroller) { return; }
+		function update() {
+			var rest = scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft;
+			nav.classList.toggle('has-more', rest > 4);
+		}
+		scroller.addEventListener('scroll', update, { passive: true });
+		window.addEventListener('resize', update);
+		if (more) {
+			more.addEventListener('click', function () {
+				scroller.scrollBy({ left: scroller.clientWidth * 0.7, behavior: reducedMotion ? 'auto' : 'smooth' });
+			});
+		}
+		var current = $('.current-menu-item, .current_page_item', scroller);
+		if (current && current.offsetLeft + current.offsetWidth > scroller.clientWidth) {
+			scroller.scrollLeft = current.offsetLeft - 24;
+		}
+		update();
+	}
+
+	/* ------------------------------------------------------------------
+	 * Carte retournable : toucher, clic ou clavier (le survol est géré en CSS)
+	 * ------------------------------------------------------------------ */
+	function initFlip() {
+		$$('[data-flip]').forEach(function (card) {
+			function toggle() {
+				var on = card.classList.toggle('is-flipped');
+				card.setAttribute('aria-pressed', on ? 'true' : 'false');
+			}
+			card.addEventListener('click', function (e) {
+				if (e.target.closest('a')) { return; }
+				toggle();
+			});
+			card.addEventListener('keydown', function (e) {
+				if (e.target !== card) { return; }
+				if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+			});
+		});
+	}
+
+	/* ------------------------------------------------------------------
 	 * Mise en scène du contenu : apparitions, titres mot à mot,
 	 * compteurs et parallaxe (prépare le DOM avant initReveal)
 	 * ------------------------------------------------------------------ */
@@ -687,5 +733,7 @@
 	initReveal();
 	initParallax();
 	initCarousels();
+	initFlip();
+	initNavScroll();
 	runIntro();
 })();

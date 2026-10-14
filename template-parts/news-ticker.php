@@ -1,6 +1,6 @@
 <?php
 /**
- * Bande défilante : titres des 5 derniers articles.
+ * Bande défilante du haut (style « annonce ») : coordonnées de la Mairie puis titres des derniers articles.
  *
  * @package Kasumbalesa
  */
@@ -12,17 +12,26 @@ $kb_speeds   = array(
 	'fast'   => 5,
 );
 $kb_speed    = kb_mod( 'ticker_speed' );
-$kb_duration = count( $kb_posts ) * ( isset( $kb_speeds[ $kb_speed ] ) ? $kb_speeds[ $kb_speed ] : 8 );
+$kb_phone    = kb_mod( 'contact_phone' );
+$kb_email    = kb_mod( 'contact_email' );
+$kb_address  = trim( (string) strtok( (string) kb_mod( 'contact_address' ), "\n" ) );
+$kb_duration = ( count( $kb_posts ) + 2 ) * ( isset( $kb_speeds[ $kb_speed ] ) ? $kb_speeds[ $kb_speed ] : 8 );
 ?>
 <div class="kb-ticker" role="region" aria-label="<?php esc_attr_e( 'Dernières actualités', 'kasumbalesa' ); ?>">
 	<div class="kb-ticker__inner kb-container kb-container--wide">
-		<?php if ( kb_mod( 'ticker_label' ) ) : ?>
-			<p class="kb-ticker__label"><span class="kb-ticker__dot" aria-hidden="true"></span><?php echo esc_html( kb_mod( 'ticker_label' ) ); ?></p>
-		<?php endif; ?>
 		<div class="kb-ticker__viewport">
 			<div class="kb-ticker__track" style="--kb-ticker-duration: <?php echo esc_attr( $kb_duration ); ?>s">
 				<?php for ( $kb_pass = 0; $kb_pass < 2; $kb_pass++ ) : ?>
 					<ul class="kb-ticker__list"<?php echo $kb_pass ? ' aria-hidden="true"' : ''; ?>>
+						<?php if ( $kb_phone ) : ?>
+							<li class="kb-ticker__item kb-ticker__item--contact"><a href="<?php echo esc_attr( kb_tel_href( $kb_phone ) ); ?>"<?php echo $kb_pass ? ' tabindex="-1"' : ''; ?>><?php echo esc_html( $kb_phone ); ?></a></li>
+						<?php endif; ?>
+						<?php if ( $kb_email && is_email( $kb_email ) ) : ?>
+							<li class="kb-ticker__item kb-ticker__item--contact"><a href="<?php echo esc_attr( 'mailto:' . antispambot( $kb_email, 1 ) ); ?>"<?php echo $kb_pass ? ' tabindex="-1"' : ''; ?>><?php echo esc_html( antispambot( $kb_email ) ); ?></a></li>
+						<?php endif; ?>
+						<?php if ( $kb_address ) : ?>
+							<li class="kb-ticker__item kb-ticker__item--contact"><span><?php echo esc_html( $kb_address ); ?></span></li>
+						<?php endif; ?>
 						<?php foreach ( $kb_posts as $kb_post ) : ?>
 							<li class="kb-ticker__item">
 								<a href="<?php echo esc_url( get_permalink( $kb_post ) ); ?>"<?php echo $kb_pass ? ' tabindex="-1"' : ''; ?>>

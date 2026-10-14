@@ -84,7 +84,78 @@ function kb_site_branding( $context = 'header' ) {
  */
 function kb_primary_category( $post = null ) {
 	$cats = get_the_category( get_post( $post )->ID );
+	// « Non classé » seulement si l'article n'a aucune autre catégorie.
+	foreach ( $cats as $cat ) {
+		if ( (int) get_option( 'default_category' ) !== (int) $cat->term_id ) {
+			return $cat;
+		}
+	}
 	return $cats ? $cats[0] : null;
+}
+
+/**
+ * Couleur et pictogramme d'une catégorie (d'après son identifiant), pour les pastilles
+ * et l'icône ronde du carrousel des actualités.
+ *
+ * @param WP_Term|null $cat Catégorie.
+ * @return array{color:string,icon:string}
+ */
+function kb_category_style( $cat ) {
+	$slug   = $cat ? remove_accents( strtolower( $cat->slug . ' ' . $cat->name ) ) : '';
+	$styles = array(
+		'secur'      => array( '#C8102E', 'shield' ),
+		'cooperat'   => array( '#0072CE', 'globe' ),
+		'diplomat'   => array( '#0072CE', 'globe' ),
+		'infrastruc' => array( '#B87333', 'crane' ),
+		'projet'     => array( '#B87333', 'crane' ),
+		'travaux'    => array( '#B87333', 'crane' ),
+		'educat'     => array( '#C99A2E', 'graduation' ),
+		'etude'      => array( '#C99A2E', 'graduation' ),
+		'mairie'     => array( '#1F5C43', 'landmark' ),
+		'municip'    => array( '#1F5C43', 'landmark' ),
+		'sante'      => array( '#0F8A6A', 'heart' ),
+		'social'     => array( '#7A3E9D', 'users' ),
+	);
+	foreach ( $styles as $key => $style ) {
+		if ( false !== strpos( $slug, $key ) ) {
+			return array( 'color' => $style[0], 'icon' => $style[1] );
+		}
+	}
+	return array( 'color' => '#1F5C43', 'icon' => 'newspaper' );
+}
+
+/**
+ * Image d'un article : l'image mise en avant, sinon la première image de son contenu.
+ *
+ * @param int|WP_Post|null $post Article.
+ * @return int ID de pièce jointe (0 si aucune).
+ */
+function kb_post_image_id( $post = null ) {
+	$post = get_post( $post );
+	if ( ! $post ) {
+		return 0;
+	}
+	$id = (int) get_post_thumbnail_id( $post );
+	if ( $id ) {
+		return $id;
+	}
+	// Résultat mémorisé tant que le contenu de l'article ne change pas.
+	if ( get_post_meta( $post->ID, '_kb_first_image_rev', true ) === md5( $post->post_content ) ) {
+		return (int) get_post_meta( $post->ID, '_kb_first_image', true );
+	}
+	$id = 0;
+	if ( preg_match( '/wp-image-(\d+)/', $post->post_content, $m ) && wp_attachment_is_image( (int) $m[1] ) ) {
+		$id = (int) $m[1];
+	} elseif ( preg_match( '/<img[^>]+src=["\']([^"\']+)["\']/i', $post->post_content, $m ) ) {
+		$url = preg_replace( '/-\d+x\d+(?=\.[a-z]+$)/i', '', strtok( $m[1], '?' ) );
+		$id  = (int) attachment_url_to_postid( $url );
+		if ( ! $id ) {
+			$id = (int) attachment_url_to_postid( preg_replace( '/(\.[a-z]+)$/i', '-scaled$1', $url ) );
+		}
+	}
+	update_post_meta( $post->ID, '_kb_first_image', $id );
+	update_post_meta( $post->ID, '_kb_first_image_rev', md5( $post->post_content ) );
+	return $id;
 }
 
 /**
@@ -372,13 +443,15 @@ function kb_pagination() {
  */
 function kb_thumbnail( $size = 'kb-card', $attr = array(), $post = null ) {
 	$post = get_post( $post );
-	if ( ! has_post_thumbnail( $post ) ) {
+	$id   = kb_post_image_id( $post );
+	if ( ! $id ) {
 		echo '<span class="kb-thumb-fallback" aria-hidden="true">' . kb_icon( 'mountain' ) . '</span>'; // phpcs:ignore
 		return;
 	}
-	echo get_the_post_thumbnail(
-		$post,
+	echo wp_get_attachment_image(
+		$id,
 		$size,
+		false,
 		array_merge(
 			array(
 				'loading'  => 'lazy',
@@ -415,4 +488,43 @@ function kb_category_filter() {
 		</ul>
 	</nav>
 	<?php
+}
+
+/**
+ * Bande de coordonnées en haut de l'en-tête (téléphone, e-mail, adresse, réseaux).
+ */
+function kb_topbar() {
+	if ( ! kb_topbar_is_visible() ) {
+		return;
+	}
+	$phone   = kb_mod( 'contact_phone' );
+	$email   = kb_mod( 'contact_email' );
+	$address = trim( (string) strtok( (string) kb_mod( 'contact_address' ), "\n" ) );
+	?>
+	<div class="kb-topbar">
+		<div class="kb-topbar__inner kb-container kb-container--wide">
+			<ul class="kb-topbar__list">
+				<?php if ( $phone ) : ?>
+					<li><?php echo kb_icon( 'phone' ); // phpcs:ignore ?><a href="<?php echo esc_attr( kb_tel_href( $phone ) ); ?>"><?php echo esc_html( $phone ); ?></a></li>
+				<?php endif; ?>
+				<?php if ( $email && is_email( $email ) ) : ?>
+					<li><?php echo kb_icon( 'mail' ); // phpcs:ignore ?><a href="<?php echo esc_attr( 'mailto:' . antispambot( $email, 1 ) ); ?>"><?php echo esc_html( antispambot( $email ) ); ?></a></li>
+				<?php endif; ?>
+				<?php if ( $address ) : ?>
+					<li class="kb-topbar__address"><?php echo kb_icon( 'map-pin' ); // phpcs:ignore ?><span><?php echo esc_html( $address ); ?></span></li>
+				<?php endif; ?>
+			</ul>
+			<?php kb_social_links(); ?>
+		</div>
+	</div>
+	<?php
+}
+
+/**
+ * La bande de coordonnées s'affiche dès qu'un téléphone, un e-mail ou une adresse est renseigné.
+ *
+ * @return bool
+ */
+function kb_topbar_is_visible() {
+	return (bool) ( kb_mod( 'contact_phone' ) || kb_mod( 'contact_email' ) || kb_mod( 'contact_address' ) );
 }

@@ -21,20 +21,28 @@ $kb_count = count( $kb_posts );
 		</div>
 
 		<div class="kb-news__grid">
-			<div class="kb-carousel" data-carousel data-interval="6500" role="region" aria-roledescription="<?php esc_attr_e( 'carrousel', 'kasumbalesa' ); ?>" aria-label="<?php esc_attr_e( 'Articles à la une', 'kasumbalesa' ); ?>" data-reveal>
+			<div class="kb-carousel kb-carousel--pres" data-carousel data-interval="6500" role="region" aria-roledescription="<?php esc_attr_e( 'carrousel', 'kasumbalesa' ); ?>" aria-label="<?php esc_attr_e( 'Articles à la une', 'kasumbalesa' ); ?>" data-reveal>
 				<div class="kb-carousel__viewport" aria-live="off">
-					<?php foreach ( $kb_posts as $kb_i => $kb_post ) : ?>
-						<article class="kb-carousel__slide<?php echo 0 === $kb_i ? ' is-active' : ''; ?>" role="group" aria-roledescription="<?php esc_attr_e( 'diapositive', 'kasumbalesa' ); ?>" aria-label="<?php echo esc_attr( sprintf( /* translators: 1: position, 2: total. */ __( '%1$d sur %2$d', 'kasumbalesa' ), $kb_i + 1, $kb_count ) ); ?>" aria-hidden="<?php echo 0 === $kb_i ? 'false' : 'true'; ?>">
+					<?php
+					foreach ( $kb_posts as $kb_i => $kb_post ) :
+						$kb_cat   = kb_primary_category( $kb_post );
+						$kb_style = kb_category_style( $kb_cat );
+						?>
+						<article class="kb-carousel__slide<?php echo 0 === $kb_i ? ' is-active' : ''; ?>" style="--kb-cat: <?php echo esc_attr( $kb_style['color'] ); ?>" role="group" aria-roledescription="<?php esc_attr_e( 'diapositive', 'kasumbalesa' ); ?>" aria-label="<?php echo esc_attr( sprintf( /* translators: 1: position, 2: total. */ __( '%1$d sur %2$d', 'kasumbalesa' ), $kb_i + 1, $kb_count ) ); ?>" aria-hidden="<?php echo 0 === $kb_i ? 'false' : 'true'; ?>">
 							<a class="kb-carousel__media" href="<?php echo esc_url( get_permalink( $kb_post ) ); ?>" tabindex="-1" aria-hidden="true">
 								<?php kb_thumbnail( 'kb-wide', array( 'sizes' => '(min-width: 1100px) 60vw, 100vw' ), $kb_post ); ?>
 							</a>
+							<span class="kb-carousel__icon" aria-hidden="true"><?php echo kb_icon( $kb_style['icon'] ); // phpcs:ignore ?></span>
 							<div class="kb-carousel__body">
-								<div class="kb-meta">
-									<?php kb_category_badge( $kb_post ); ?>
-									<?php kb_post_date( $kb_post ); ?>
-								</div>
+								<?php if ( $kb_cat ) : ?>
+									<p class="kb-carousel__cat"><?php echo esc_html( $kb_cat->name ); ?></p>
+								<?php endif; ?>
 								<h3 class="kb-carousel__title"><a href="<?php echo esc_url( get_permalink( $kb_post ) ); ?>"><?php echo esc_html( get_the_title( $kb_post ) ); ?></a></h3>
 								<p class="kb-carousel__excerpt"><?php echo esc_html( wp_strip_all_tags( get_the_excerpt( $kb_post ) ) ); ?></p>
+								<div class="kb-carousel__foot">
+									<a class="kb-carousel__cta" href="<?php echo esc_url( get_permalink( $kb_post ) ); ?>"><?php esc_html_e( 'Tout voir', 'kasumbalesa' ); ?><span class="screen-reader-text"> : <?php echo esc_html( get_the_title( $kb_post ) ); ?></span></a>
+									<?php kb_post_date( $kb_post ); ?>
+								</div>
 							</div>
 						</article>
 					<?php endforeach; ?>
@@ -56,11 +64,11 @@ $kb_count = count( $kb_posts );
 								<span class="screen-reader-text"><?php esc_html_e( 'Mettre en pause', 'kasumbalesa' ); ?></span>
 							</button>
 							<button type="button" class="kb-carousel__btn" data-carousel-prev>
-								<?php echo kb_icon( 'arrow-left' ); // phpcs:ignore ?>
+								<?php echo kb_icon( 'chevron-left' ); // phpcs:ignore ?>
 								<span class="screen-reader-text"><?php esc_html_e( 'Article précédent', 'kasumbalesa' ); ?></span>
 							</button>
 							<button type="button" class="kb-carousel__btn" data-carousel-next>
-								<?php echo kb_icon( 'arrow-right' ); // phpcs:ignore ?>
+								<?php echo kb_icon( 'chevron-right' ); // phpcs:ignore ?>
 								<span class="screen-reader-text"><?php esc_html_e( 'Article suivant', 'kasumbalesa' ); ?></span>
 							</button>
 						</div>

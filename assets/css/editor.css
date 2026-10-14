@@ -1,6 +1,6 @@
 /* Styles de l'éditeur Gutenberg : même typographie et mêmes couleurs que le site. */
 body {
-	font-family: "Manrope", system-ui, sans-serif;
+	font-family: "Roboto", "Helvetica Neue", Arial, sans-serif;
 	font-size: 18px;
 	line-height: 1.85;
 	color: #1C231F;
@@ -10,7 +10,7 @@ body {
 h1, h2, h3, h4,
 .editor-post-title__input,
 .wp-block-post-title {
-	font-family: "Cormorant Garamond", Garamond, serif;
+	font-family: "Montserrat", "Helvetica Neue", Arial, sans-serif;
 	font-weight: 600;
 	line-height: 1.1;
 	letter-spacing: -.01em;
@@ -32,14 +32,14 @@ blockquote,
 .wp-block-quote {
 	border: 0;
 	padding-left: 0;
-	font-family: "Cormorant Garamond", Garamond, serif;
+	font-family: "Montserrat", "Helvetica Neue", Arial, sans-serif;
 	font-size: 1.9rem;
 	font-style: italic;
 	line-height: 1.4;
 }
 
-.wp-block-quote cite { font-family: "Manrope", sans-serif; font-size: .75rem; font-style: normal; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: #8E4F1E; }
+.wp-block-quote cite { font-family: "Roboto", sans-serif; font-size: .75rem; font-style: normal; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: #8E4F1E; }
 
-.has-drop-cap:not(:focus)::first-letter { font-family: "Cormorant Garamond", serif; font-weight: 600; color: #B87333; }
+.has-drop-cap:not(:focus)::first-letter { font-family: "Montserrat", sans-serif; font-weight: 600; color: #B87333; }
 
 .wp-block-button__link { border-radius: 4px; background: #0B2A1F; font-size: .8125rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }

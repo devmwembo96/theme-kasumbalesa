@@ -9,15 +9,19 @@ get_header();
 
 while ( have_posts() ) :
 	the_post();
-	$kb_has_image = has_post_thumbnail();
+	$kb_image     = kb_post_image_id();
+	$kb_image     = $kb_image ? $kb_image : kb_fallback_hero_image();
+	$kb_has_image = (bool) $kb_image;
 	?>
 	<div class="kb-progress" aria-hidden="true"><span></span></div>
 	<article <?php post_class( 'kb-article' ); ?>>
-		<header class="kb-post-hero<?php echo $kb_has_image ? ' kb-post-hero--image' : ''; ?>">
+		<header class="kb-post-hero kb-post-hero--wh<?php echo $kb_has_image ? ' kb-post-hero--image' : ''; ?>">
 			<?php
 			if ( $kb_has_image ) {
-				the_post_thumbnail(
+				echo wp_get_attachment_image(
+					$kb_image,
 					'kb-hero',
+					false,
 					array(
 						'class'         => 'kb-post-hero__img',
 						'sizes'         => '100vw',
@@ -29,6 +33,14 @@ while ( have_posts() ) :
 			}
 			?>
 			<div class="kb-post-hero__inner kb-container">
+				<?php if ( kb_mod( 'hero_eyebrow' ) ) : ?>
+					<p class="kb-eyebrow kb-eyebrow--light kb-hero__eyebrow"><?php echo esc_html( kb_mod( 'hero_eyebrow' ) ); ?></p>
+				<?php endif; ?>
+				<?php
+				if ( get_theme_mod( 'custom_logo' ) ) {
+					echo wp_get_attachment_image( (int) get_theme_mod( 'custom_logo' ), 'medium', false, array( 'class' => 'kb-page-hero__emblem', 'alt' => '', 'loading' => 'eager' ) );
+				}
+				?>
 				<div class="kb-meta"><?php kb_category_badge(); ?></div>
 				<h1 class="kb-post-hero__title"><?php the_title(); ?></h1>
 				<p class="kb-post-hero__meta">
@@ -41,6 +53,16 @@ while ( have_posts() ) :
 						?>
 					</span>
 				</p>
+				<?php $kb_links = kb_hero_links( -1 ); ?>
+				<?php if ( $kb_links ) : ?>
+					<div class="kb-hero__actions kb-page-hero__actions">
+						<?php
+						foreach ( $kb_links as $kb_n => $kb_link ) {
+							kb_button( $kb_link['label'], $kb_link['url'], 0 === $kb_n ? 'gold' : 'ghost' );
+						}
+						?>
+					</div>
+				<?php endif; ?>
 			</div>
 		</header>
 

@@ -29,16 +29,16 @@
 	--kb-line-light: rgba(255, 255, 255, .16);
 	--kb-line-soft: rgba(11, 42, 31, .08);
 
-	--kb-font-serif: "Cormorant Garamond", "Cormorant", Garamond, "Times New Roman", serif;
-	--kb-font-sans: "Manrope", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--kb-font-serif: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
+	--kb-font-sans: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
 
 	--kb-step--1: clamp(.875rem, .85rem + .1vw, .9375rem);
 	--kb-step-0: clamp(1.0625rem, 1.02rem + .2vw, 1.125rem);
 	--kb-step-1: clamp(1.2rem, 1.1rem + .45vw, 1.45rem);
-	--kb-step-2: clamp(1.5rem, 1.3rem + .9vw, 2.05rem);
-	--kb-step-3: clamp(1.9rem, 1.5rem + 1.8vw, 3rem);
-	--kb-step-4: clamp(2.4rem, 1.7rem + 3.2vw, 4.4rem);
-	--kb-step-5: clamp(2.8rem, 1.8rem + 4.6vw, 5.8rem);
+	--kb-step-2: clamp(1.35rem, 1.2rem + .7vw, 1.8rem);
+	--kb-step-3: clamp(1.65rem, 1.35rem + 1.4vw, 2.5rem);
+	--kb-step-4: clamp(1.9rem, 1.45rem + 2.3vw, 3.4rem);
+	--kb-step-5: clamp(2.2rem, 1.5rem + 3.4vw, 4.4rem);
 
 	--kb-container: 1200px;
 	--kb-container-wide: 1440px;
@@ -58,7 +58,7 @@
 }
 
 /* La hauteur totale est recalculée ici : sinon elle reste figée à la valeur de :root (sans la bande). */
-.kb-has-ticker { --kb-ticker-h: 44px; --kb-header-h: calc(var(--kb-bar-h) + var(--kb-ticker-h)); }
+.kb-has-ticker { --kb-ticker-h: 44px; --kb-header-h: calc(var(--kb-bar-h) + var(--kb-ticker-h) + var(--kb-topbar-h, 0px)); }
 html:has(.kb-has-ticker) { --kb-ticker-h: 44px; }
 
 @media (max-width: 900px) {
@@ -1941,10 +1941,11 @@ a.kb-quick__card:hover .kb-quick__arrow .kb-icon { transform: translateX(8px); }
 .kb-reveal-ready .kb-mountain-line:not(.is-revealed) { clip-path: inset(0 100% 0 0); }
 
 /* ---- Animations d'apparition (contenu des pages) ---- */
-.kb-reveal-ready [data-reveal="image"] { overflow: clip; opacity: 1; transform: none; clip-path: inset(0 0 100% 0 round var(--kb-radius-lg)); transition: clip-path 1.25s var(--kb-ease-out); transition-delay: var(--kb-reveal-delay, 0ms); }
-.kb-reveal-ready [data-reveal="image"] img { transform: scale(1.18); transition: transform 1.8s var(--kb-ease-out); transition-delay: var(--kb-reveal-delay, 0ms); }
-.kb-reveal-ready [data-reveal="image"].is-revealed { clip-path: inset(0 0 0 0 round var(--kb-radius-lg)); }
-.kb-reveal-ready [data-reveal="image"].is-revealed img { transform: none; }
+/* Le dévoilement s'applique à l'image et non à son cadre : un cadre entièrement masqué
+   n'est jamais détecté à l'écran et l'image resterait invisible. */
+.kb-reveal-ready [data-reveal="image"] { overflow: clip; opacity: 1; transform: none; }
+.kb-reveal-ready [data-reveal="image"] :is(img, video) { clip-path: inset(0 0 100% 0); transform: scale(1.18); transition: clip-path 1.25s var(--kb-ease-out), transform 1.8s var(--kb-ease-out); transition-delay: var(--kb-reveal-delay, 0ms); }
+.kb-reveal-ready [data-reveal="image"].is-revealed :is(img, video) { clip-path: inset(0 0 0 0); transform: none; }
 .kb-entry .kb-mosaic [data-reveal="image"].is-revealed:hover img { transform: scale(1.07); }
 
 .kb-reveal-ready [data-reveal="title"] { opacity: 1; transform: none; }
@@ -3028,3 +3029,727 @@ html:not(.kb-reveal-ready) .kb-split__inner:not(.kb-hero *) { transform: none; }
 
 	.kb-page-hero--image .kb-page-hero__img { animation: none; }
 }
+
+/* ==========================================================================
+   15. Typographie de l'ancien site : Roboto (grands titres en Roboto Light)
+   ========================================================================== */
+h1, h2, h3, h4 { letter-spacing: -.01em; line-height: 1.15; }
+h1, h2,
+.kb-hero__title,
+.kb-page-hero__title,
+.kb-section-title { font-weight: 300; }
+h3, h4 { font-weight: 500; }
+.kb-hero__title { line-height: 1.1; }
+h1 em, h2 em, .kb-hero__title em, .kb-page-hero__title em, .kb-section-title em { font-weight: 300; }
+.kb-hero__subtitle { font-style: normal; font-weight: 400; }
+.kb-cover .kb-cover__quote { font-weight: 300; line-height: 1.2; }
+.kb-stats .kb-stat__value { font-weight: 300; }
+.kb-entry .kb-lede,
+.kb-topo__body p:first-child { font-weight: 300; line-height: 1.5; }
+
+/* ==========================================================================
+   16. Bande de coordonnées (haut de l'en-tête, fond blanc)
+   ========================================================================== */
+:root { --kb-topbar-h: 0px; }
+body { --kb-header-h: calc(var(--kb-bar-h) + var(--kb-ticker-h) + var(--kb-topbar-h)); }
+.kb-has-topbar { --kb-topbar-h: 40px; }
+.kb-topbar {
+	height: var(--kb-topbar-h);
+	overflow: hidden;
+	background: var(--kb-white);
+	border-bottom: 1px solid var(--kb-line-soft);
+	font-size: .875rem;
+	line-height: 1.35;
+	color: var(--kb-ink);
+	transition: height .35s var(--kb-ease);
+}
+.kb-topbar__inner { display: flex; align-items: center; justify-content: space-between; gap: .35rem 1.5rem; height: 100%; }
+.kb-topbar__list { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem 1.5rem; margin: 0; padding: 0; list-style: none; }
+.kb-topbar__list li { display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap; }
+.kb-topbar__list svg { width: 15px; height: 15px; flex: none; color: var(--kb-copper); }
+.kb-topbar a { color: inherit; text-decoration: none; }
+.kb-topbar a:hover, .kb-topbar a:focus-visible { color: var(--kb-copper-dark); }
+.kb-topbar .kb-social { gap: .25rem; }
+.kb-header.is-scrolled .kb-topbar { height: 0; border-bottom-color: transparent; }
+@media (max-width: 900px) {
+	.kb-has-topbar { --kb-topbar-h: 58px; }
+	.kb-topbar { font-size: .8125rem; }
+	.kb-topbar__inner { justify-content: center; }
+	.kb-topbar__list { justify-content: center; gap: .2rem 1.1rem; }
+	.kb-topbar__list li.kb-topbar__address { flex-basis: 100%; justify-content: center; }
+	.kb-topbar .kb-social { display: none; }
+}
+
+/* ==========================================================================
+   17. Héros centré : grand logo, titre et boutons au milieu (comme l'ancien site)
+   ========================================================================== */
+.kb-hero--center .kb-hero__content { margin-block: auto; display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: clamp(.5rem, 2svh, 1.5rem); }
+.kb-hero--center .kb-hero__emblem { width: auto; height: clamp(84px, 20svh, 230px); max-width: 70vw; margin: 0 auto clamp(.75rem, 2.5svh, 1.75rem); object-fit: contain; filter: drop-shadow(0 10px 30px rgba(0, 0, 0, .35)); }
+.kb-hero--center .kb-hero__title { max-width: 22ch; margin-inline: auto; }
+.kb-hero--center .kb-hero__subtitle { margin-inline: auto; }
+.kb-hero--center .kb-hero__actions { justify-content: center; }
+.kb-hero--center .kb-eyebrow { justify-content: center; }
+.kb-hero--center .kb-hero__veil {
+	background:
+		radial-gradient(70% 60% at 50% 55%, rgba(6, 23, 15, calc(var(--kb-overlay) + .12)), rgba(6, 23, 15, 0) 75%),
+		linear-gradient(to top, rgba(6, 23, 15, calc(var(--kb-overlay) + .25)) 0%, rgba(6, 23, 15, calc(var(--kb-overlay) * .5)) 45%, rgba(6, 23, 15, calc(var(--kb-overlay) * .35)) 100%);
+}
+.js .kb-hero__emblem { opacity: 0; transform: scale(.92); }
+.kb-hero.is-ready .kb-hero__emblem { opacity: 1; transform: none; transition: opacity 1s var(--kb-ease-out), transform 1.2s var(--kb-ease-out); }
+@media (prefers-reduced-motion: reduce) { .js .kb-hero__emblem { opacity: 1; transform: none; } }
+@media (max-width: 600px) {
+	.kb-hero--center .kb-hero__actions { width: 100%; max-width: 22rem; }
+	.kb-hero--center .kb-hero__title { font-size: min(clamp(1.9rem, 8.5vw, 2.6rem), 6svh); }
+}
+@media (max-height: 760px) {
+	.kb-hero--center .kb-hero__subtitle { display: none; }
+}
+
+/* ==========================================================================
+   18. Carte retournable avant le pied de page (reprise de l'ancien site)
+   ========================================================================== */
+.kb-flip { position: relative; isolation: isolate; overflow: hidden; padding-block: clamp(3rem, 8vw, 6rem); background: var(--kb-green-900); }
+.kb-flip__bg { position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%; object-fit: cover; }
+.kb-flip::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(6, 23, 15, .15), rgba(6, 23, 15, .45)); }
+.kb-flip__wrap { display: flex; justify-content: center; perspective: 1400px; }
+.kb-flip__card {
+	position: relative;
+	width: min(100%, 46rem);
+	min-height: clamp(17rem, 40vw, 22rem);
+	border-radius: var(--kb-radius-lg);
+	transform-style: preserve-3d;
+	transition: transform .8s var(--kb-ease-out);
+	cursor: pointer;
+	outline: none;
+}
+.kb-flip__card:focus-visible { box-shadow: 0 0 0 3px var(--kb-gold); }
+.kb-flip__face {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: .75rem;
+	padding: 2rem 1.5rem;
+	border: 1px solid rgba(255, 255, 255, .35);
+	border-radius: inherit;
+	color: var(--kb-white);
+	text-align: center;
+	backface-visibility: hidden;
+	-webkit-backface-visibility: hidden;
+	box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .55);
+}
+.kb-flip__face--front { background: rgba(11, 42, 31, .55); }
+.kb-flip__face--back { background: rgba(142, 79, 30, .72); transform: rotateY(180deg); }
+@supports (backdrop-filter: blur(1px)) {
+	.kb-flip__face--front { background: rgba(11, 42, 31, .42); backdrop-filter: blur(6px) saturate(140%); }
+	.kb-flip__face--back { background: rgba(142, 79, 30, .6); backdrop-filter: blur(6px) saturate(140%); }
+}
+.kb-flip__icon svg { width: 46px; height: 46px; color: var(--kb-gold); stroke-width: 1.4; }
+.kb-flip__title { margin: 0; font-family: var(--kb-font-serif); font-size: var(--kb-step-4); font-weight: 300; line-height: 1.1; color: var(--kb-white); text-shadow: 0 2px 18px rgba(0, 0, 0, .3); }
+.kb-flip__text { margin: 0; font-size: var(--kb-step-1); color: rgba(255, 255, 255, .92); }
+.kb-flip__hint { flex: none; aspect-ratio: 1; display: inline-grid; place-items: center; width: 44px; height: 44px; margin-top: .5rem; border: 1px solid rgba(255, 255, 255, .5); border-radius: 50%; }
+.kb-flip__hint svg { width: 18px; height: 18px; }
+.kb-flip__link { display: inline-flex; align-items: center; min-height: 44px; margin-top: .75rem; padding: .6rem 1.5rem; border-radius: 999px; background: var(--kb-white); color: var(--kb-green-900); font-weight: 500; text-decoration: none; }
+.kb-flip__link:hover, .kb-flip__link:focus-visible { background: var(--kb-gold); color: var(--kb-ink); }
+.kb-flip__card.is-flipped { transform: rotateY(180deg); }
+@media (hover: hover) and (pointer: fine) {
+	.kb-flip__card:hover { transform: rotateY(180deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+	.kb-flip__card { transition: none; }
+}
+
+/* Ajustements du héros centré : tout tient dans le premier écran */
+.kb-hero--center .kb-hero__card { display: none; }
+.kb-hero--center .kb-hero__emblem { height: clamp(72px, 15svh, 200px); }
+@media (max-width: 600px) {
+	.kb-hero--center .kb-hero__subtitle { display: none; }
+	.kb-topbar { font-size: .78rem; }
+	.kb-topbar__list { gap: .15rem .75rem; }
+	.kb-topbar__list li { gap: .35rem; }
+	.kb-topbar__list svg { width: 13px; height: 13px; }
+}
+@media (max-height: 820px) {
+	.kb-hero--center .kb-hero__subtitle { display: none; }
+	.kb-hero--center .kb-hero__title { margin-bottom: 1.25rem; }
+}
+@media (max-height: 700px) {
+	.kb-hero--center .kb-hero__emblem { height: clamp(56px, 11svh, 96px); margin-bottom: .5rem; }
+}
+
+/* ==========================================================================
+   19. Bandeau institutionnel du pied de page : sceau RDC · Ville · Haut-Katanga
+       sur la photo de la montagne, titre, devise et réseaux réunis en une carte
+   ========================================================================== */
+.kb-footer__top { grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+.kb-heritage {
+	position: relative;
+	isolation: isolate;
+	overflow: hidden;
+	border-radius: var(--kb-radius-lg);
+	background: var(--kb-green-900);
+	color: var(--kb-white);
+	box-shadow: var(--kb-shadow-soft);
+}
+.kb-heritage__photo { position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%; object-fit: cover; transform: scale(1.04); transition: transform 1.6s var(--kb-ease-out); }
+.kb-heritage:hover .kb-heritage__photo { transform: scale(1.09); }
+.kb-heritage::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background:
+		linear-gradient(180deg, rgba(6, 23, 15, .35) 0%, rgba(6, 23, 15, .62) 45%, rgba(6, 23, 15, .9) 100%);
+}
+.kb-heritage__body { display: flex; flex-direction: column; align-items: center; gap: .9rem; padding: clamp(1.75rem, 4vw, 2.75rem) clamp(1.25rem, 3vw, 2.5rem); text-align: center; }
+.kb-heritage__seal { display: flex; align-items: center; justify-content: center; gap: clamp(.75rem, 3vw, 1.75rem); margin: 0 0 .5rem; padding: 0; list-style: none; }
+.kb-heritage__emblem { display: grid; place-items: center; width: clamp(64px, 14vw, 88px); aspect-ratio: 1; padding: .55rem; border-radius: 50%; background: rgba(255, 255, 255, .94); box-shadow: 0 0 0 1px rgba(212, 168, 83, .55), 0 12px 28px -12px rgba(0, 0, 0, .6); }
+.kb-heritage__emblem--main { width: clamp(84px, 19vw, 120px); padding: .7rem; box-shadow: 0 0 0 2px var(--kb-gold), 0 16px 34px -14px rgba(0, 0, 0, .7); }
+.kb-heritage__emblem img { width: 100%; height: 100%; object-fit: contain; }
+.kb-heritage__seal li + li { position: relative; }
+.kb-heritage__line { margin: 0; font-size: .8125rem; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--kb-gold); }
+.kb-heritage__title { max-width: 24ch; margin: 0; font-family: var(--kb-font-serif); font-size: var(--kb-step-3); font-weight: 300; line-height: 1.15; color: var(--kb-white); }
+.kb-heritage__title em { font-style: italic; color: var(--kb-gold); }
+.kb-heritage__motto { display: inline-flex; align-items: center; gap: .55rem; margin: 0; font-size: var(--kb-step-0); color: rgba(255, 255, 255, .9); }
+.kb-heritage__motto svg { width: 22px; height: 22px; flex: none; color: var(--kb-gold); }
+.kb-heritage .kb-social { justify-content: center; margin-top: .5rem; }
+.kb-heritage .kb-social a { width: 44px; height: 44px; border-color: rgba(255, 255, 255, .45); background: rgba(255, 255, 255, .08); color: var(--kb-white); }
+.kb-heritage .kb-social a:hover,
+.kb-heritage .kb-social a:focus-visible { border-color: var(--kb-gold); background: var(--kb-gold); color: var(--kb-ink); }
+.kb-heritage--plain::before { background: linear-gradient(160deg, var(--kb-green-700), var(--kb-green-900)); }
+.kb-footer__brand .kb-footer__about { margin-top: 1.25rem; }
+@media (max-width: 1100px) {
+	.kb-footer__top { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+	.kb-footer__top { grid-template-columns: minmax(0, 1fr); }
+	.kb-heritage__line { font-size: .75rem; letter-spacing: .1em; }
+}
+@media (max-width: 640px) {
+	.kb-heritage__motto { flex-direction: column; gap: .35rem; }
+}
+
+/* ==========================================================================
+   20. Héros comme l'ancien site : photos en fond sous un voile bleu nuit
+       transparent, emblème centré, mention du pays sur une seule ligne
+   ========================================================================== */
+.kb-hero--center .kb-hero__veil {
+	background:
+		linear-gradient(to top, rgba(6, 23, 15, .55) 0%, rgba(6, 23, 15, 0) 38%),
+		linear-gradient(rgba(0, 0, 75, calc(var(--kb-overlay) + .18)), rgba(0, 0, 75, calc(var(--kb-overlay) + .18)));
+}
+.kb-hero--center .kb-hero__eyebrow {
+	display: flex;
+	justify-content: center;
+	gap: .75em;
+	max-width: 100%;
+	margin: 0 auto clamp(.6rem, 2svh, 1.1rem);
+	font-size: clamp(.55rem, 2.3vw, .875rem);
+	letter-spacing: clamp(.03em, .4vw, .2em);
+	white-space: nowrap;
+	color: var(--kb-white);
+}
+.kb-hero--center .kb-hero__eyebrow::before,
+.kb-hero--center .kb-hero__eyebrow::after { content: ""; flex: 0 1 2.5rem; min-width: .75rem; height: 1px; align-self: center; background: var(--kb-gold); }
+@media (max-width: 420px) {
+	.kb-hero--center .kb-hero__eyebrow::before,
+	.kb-hero--center .kb-hero__eyebrow::after { display: none; }
+}
+@media (max-height: 700px) and (max-width: 600px) {
+	.kb-hero--center .kb-hero__eyebrow { display: flex; }
+}
+@media (max-height: 700px) and (max-width: 600px) {
+	.kb-hero--center .kb-hero__title { font-size: min(clamp(1.7rem, 8vw, 2.4rem), 5.4svh); margin-bottom: .9rem; }
+	.kb-hero--center .kb-hero__actions { gap: .5rem; }
+	.kb-hero--center .kb-hero__actions .kb-btn { min-height: 48px; padding-block: .4rem; }
+}
+
+/* ==========================================================================
+   21. Version 1.3 : typographie Instrument Sans aux proportions de whitehouse.gov,
+       titres en gras, italique pour les citations et légendes
+   ========================================================================== */
+:root {
+	--kb-font-serif: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+	--kb-font-sans: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+	--kb-step--1: clamp(.8125rem, 3.18vw, .875rem);
+	--kb-step-0: clamp(.9375rem, 3.64vw, 1rem);
+	--kb-step-1: clamp(1rem, 4.09vw, 1.125rem);
+	--kb-step-2: clamp(1.0909rem, 5.45vw, 1.5rem);
+	--kb-step-3: clamp(1.3rem, 6.4vw, 1.8rem);
+	--kb-step-4: clamp(1.5455rem, 7.73vw, 2.125rem);
+	--kb-step-5: clamp(2.1rem, 10.5vw, 3.3125rem);
+}
+@media (min-width: 440px) {
+	:root {
+		--kb-step--1: .875rem;
+		--kb-step-0: clamp(1rem, .2vw + .945rem, 1.125rem);
+		--kb-step-1: clamp(1.125rem, .3vw + 1.0425rem, 1.3125rem);
+		--kb-step-2: clamp(1.5rem, .4vw + 1.39rem, 1.75rem);
+		--kb-step-3: clamp(1.8rem, .4vw + 1.69rem, 2.05rem);
+		--kb-step-4: clamp(2.125rem, .4vw + 2.015rem, 2.375rem);
+		--kb-step-5: clamp(3.3125rem, .1vw + 3.285rem, 3.375rem);
+	}
+}
+@media (min-width: 1440px) {
+	:root {
+		--kb-step--1: clamp(.875rem, .49vw + .4375rem, 1.0208rem);
+		--kb-step-0: clamp(1.125rem, .63vw + .5625rem, 1.3125rem);
+		--kb-step-1: clamp(1.3125rem, .73vw + .6563rem, 1.5313rem);
+		--kb-step-2: clamp(1.75rem, .97vw + .875rem, 2.0417rem);
+		--kb-step-3: clamp(2.05rem, 1.1vw + 1rem, 2.4rem);
+		--kb-step-4: clamp(2.375rem, 1.32vw + 1.1875rem, 2.7708rem);
+		--kb-step-5: clamp(3.375rem, 1.88vw + 1.6875rem, 3.9375rem);
+	}
+}
+body { font-size: var(--kb-step-0); font-weight: 400; line-height: 1.6; letter-spacing: .2px; }
+.kb-entry, .kb-entry p, .kb-entry li { font-size: var(--kb-step-0); }
+
+/* Tous les titres en gras */
+h1, h2, h3, h4, h5, h6,
+.kb-hero__title, .kb-page-hero__title, .kb-section-title, .kb-post-hero__title,
+.kb-card__title, .kb-flip__title, .kb-heritage__title, .kb-modal__title,
+.kb-post-nav__title, .kb-hero__card-title, .kb-footer__title, .kb-cover .kb-cover__quote,
+.kb-stats .kb-stat__value, .kb-entry .kb-timeline li strong:first-child {
+	font-weight: 700;
+	letter-spacing: 0;
+}
+h1, .kb-hero__title, .kb-page-hero__title { line-height: 1.08; }
+h2, h3, h4, h5, .kb-section-title { line-height: 1.18; }
+h6 { text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+h1 em, h2 em, h3 em, .kb-hero__title em, .kb-page-hero__title em, .kb-section-title em, .kb-heritage__title em { font-weight: 700; font-style: italic; }
+
+/* Italique pour les citations, légendes, commentaires et textes d'accompagnement */
+blockquote, .wp-block-quote, .wp-block-pullquote, .kb-entry blockquote p,
+figcaption, .wp-element-caption, .wp-caption-text,
+.comment-content, .kb-cover .kb-cover__quote, .kb-footer__about,
+.kb-mayor__caption span, .kb-heritage__motto {
+	font-style: italic;
+}
+.kb-entry .kb-lede, .kb-topo__body p:first-child { font-weight: 400; }
+
+/* ==========================================================================
+   22. En-tête style whitehouse.gov : bande d'annonce fine, menu à gauche,
+       logo au centre, recherche à droite, liens en ligne dessous
+   ========================================================================== */
+body { --kb-ticker-h: 0px; --kb-bar-h: 64px; --kb-nav-h: 46px; --kb-header-h: calc(var(--kb-ticker-h) + var(--kb-bar-h) + var(--kb-nav-h)); }
+body.kb-has-ticker { --kb-ticker-h: 24px; --kb-header-h: calc(var(--kb-ticker-h) + var(--kb-bar-h) + var(--kb-nav-h)); }
+@media (min-width: 900px) {
+	body { --kb-bar-h: 84px; --kb-nav-h: 50px; }
+	body.kb-has-ticker { --kb-ticker-h: 32px; }
+}
+html { scroll-padding-top: 9rem; }
+
+.kb-header.kb-header--wh {
+	position: fixed;
+	inset: 0 0 auto;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 150;
+	border: 0;
+	border-radius: 0;
+	background: var(--kb-white);
+	box-shadow: 0 1px 0 var(--kb-line-soft);
+	color: var(--kb-ink);
+	transform: none;
+	transition: background-color .35s var(--kb-ease), box-shadow .35s var(--kb-ease);
+	backdrop-filter: none;
+}
+.kb-header--wh .kb-header__bar,
+.kb-header.is-scrolled.kb-header--wh .kb-header__bar { height: var(--kb-bar-h); background: transparent; box-shadow: none; backdrop-filter: none; }
+.kb-header--wh .kb-header__inner,
+.kb-header.is-scrolled.kb-header--wh .kb-header__inner { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1rem; height: 100%; padding-inline: var(--kb-gutter); }
+.kb-header__side { display: flex; align-items: center; }
+.kb-header__side--end { justify-content: flex-end; }
+.kb-header--wh .kb-menu-toggle { display: inline-grid; margin-left: -.6rem; }
+.kb-header--wh .kb-search-toggle { margin-right: -.6rem; }
+.kb-header--wh .kb-icon-btn { width: 48px; height: 48px; color: inherit; background: transparent; border-color: transparent; }
+.kb-header--wh .kb-icon-btn .kb-icon { width: 28px; height: 28px; stroke-width: 2; }
+.kb-header--wh .kb-brand { justify-self: center; gap: 0; }
+.kb-header--wh .kb-brand__logo { width: auto; height: calc(var(--kb-bar-h) - 14px); max-height: none; }
+.kb-header--wh .kb-brand__text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Bande d'annonce (coordonnées + actualités), même taille que whitehouse.gov */
+.kb-header--wh .kb-ticker,
+.kb-header.is-scrolled.kb-header--wh .kb-ticker { height: var(--kb-ticker-h); overflow: hidden; border: 0; border-bottom: 1px solid var(--kb-line-soft); background: var(--kb-white); box-shadow: none; transition: height .35s var(--kb-ease); }
+.kb-header--wh .kb-ticker__inner,
+.kb-header.is-scrolled.kb-header--wh .kb-ticker__inner { max-width: none; height: 100%; padding: 0; gap: 0; }
+.kb-header--wh .kb-ticker__viewport { height: 100%; -webkit-mask-image: none; mask-image: none; }
+.kb-header--wh .kb-ticker__item { font-size: 10px; font-weight: 500; letter-spacing: .15em; text-transform: uppercase; line-height: 1; }
+.kb-header--wh .kb-ticker__item::after { content: "•"; width: auto; height: auto; margin: 0 1.1em; background: none; transform: none; color: var(--kb-copper); }
+.kb-header--wh .kb-ticker__item a,
+.kb-header--wh .kb-ticker__item span { font-weight: 500; color: var(--kb-ink); }
+.kb-header--wh .kb-ticker__item time { margin-right: .7em; font-weight: 600; color: var(--kb-copper-dark); }
+.kb-header--wh .kb-ticker__toggle { width: var(--kb-ticker-h); height: var(--kb-ticker-h); min-width: 0; border: 0; border-left: 1px solid var(--kb-line-soft); border-radius: 0; background: var(--kb-white); }
+.kb-header--wh .kb-ticker__toggle .kb-icon { width: 10px; height: 10px; }
+@media (min-width: 440px) { .kb-header--wh .kb-ticker__item { font-size: 11px; } }
+@media (min-width: 900px) { .kb-header--wh .kb-ticker__item { font-size: 12px; } .kb-header--wh .kb-ticker__toggle .kb-icon { width: 12px; height: 12px; } }
+
+/* Liens du menu en ligne (défilement horizontal sur mobile, flèche à droite) */
+.kb-header__nav { height: var(--kb-nav-h); overflow: hidden; transition: height .35s var(--kb-ease), opacity .35s; }
+.kb-header__nav-inner { position: relative; height: 100%; padding-inline: var(--kb-gutter); }
+.kb-header__nav-inner::before { content: ""; position: absolute; top: 0; left: var(--kb-gutter); right: var(--kb-gutter); height: 1px; background: var(--kb-line); }
+.kb-header__nav-scroll { height: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.kb-header__nav-scroll::-webkit-scrollbar { display: none; }
+.kb-header__nav .kb-nav__menu { display: flex; align-items: center; gap: clamp(1.5rem, 3.2vw, 2.75rem); width: max-content; height: 100%; margin: 0 auto; padding: 0 .25rem; list-style: none; }
+.kb-header__nav .kb-nav__menu > li > a {
+	display: inline-flex;
+	align-items: center;
+	min-height: 44px;
+	padding: 0;
+	border-radius: 0;
+	background: none;
+	font-size: 11px;
+	font-weight: 500;
+	letter-spacing: .15em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	color: inherit;
+}
+@media (min-width: 900px) { .kb-header__nav .kb-nav__menu > li > a { font-size: 12px; } }
+.kb-header__nav .kb-nav__menu > li > a:hover { background: none; color: var(--kb-copper-dark); }
+.kb-header__nav .kb-nav__menu > li > a::after { bottom: 8px; left: 0; right: 0; height: 2px; background: var(--kb-copper); }
+.kb-header__nav-more { position: absolute; top: 0; right: calc(var(--kb-gutter) - .75rem); display: none; place-items: center; width: 44px; height: 100%; padding: 0; border: 0; background: linear-gradient(90deg, rgba(255, 255, 255, 0), var(--kb-white) 45%); color: inherit; cursor: pointer; }
+.kb-header__nav-more .kb-icon { width: 22px; height: 22px; stroke-width: 2.2; }
+.kb-header__nav.has-more .kb-header__nav-more { display: grid; }
+
+/* Au défilement : barre blanche compacte, logo au centre (comme la 2e capture) */
+.kb-header.is-scrolled.kb-header--wh { background: var(--kb-white); box-shadow: 0 1px 0 var(--kb-line-soft), 0 14px 30px -24px rgba(11, 42, 31, .45); color: var(--kb-ink); }
+.kb-header.is-scrolled.kb-header--wh .kb-ticker { height: 0; border-bottom-color: transparent; }
+.kb-header.is-scrolled.kb-header--wh .kb-header__nav { height: 0; opacity: 0; }
+
+/* Accueil : en-tête transparent posé sur les photos */
+body.home .kb-header--wh:not(.is-scrolled) { background: linear-gradient(180deg, rgba(0, 0, 40, .5) 0%, rgba(0, 0, 40, .18) 70%, rgba(0, 0, 40, 0) 100%); box-shadow: none; color: var(--kb-white); }
+body.home .kb-header--wh:not(.is-scrolled) .kb-header__nav-inner::before { background: rgba(255, 255, 255, .55); }
+body.home .kb-header--wh:not(.is-scrolled) .kb-header__nav-more { background: linear-gradient(90deg, rgba(0, 0, 40, 0), rgba(0, 0, 40, .35) 45%); }
+body.home .kb-header--wh:not(.is-scrolled) .kb-nav__menu > li > a:hover { color: var(--kb-gold-light); }
+body.home .kb-header--wh:not(.is-scrolled) .kb-brand__logo { filter: drop-shadow(0 4px 14px rgba(0, 0, 0, .35)); }
+body.home.kb-header-solid .kb-main { padding-top: 0; }
+.kb-hero.kb-hero--center { min-height: 100vh; min-height: 100svh; padding-top: var(--kb-header-h); }
+
+/* L'ancienne bande de coordonnées n'est plus utilisée (reprise dans la bande d'annonce) */
+.kb-topbar { display: none; }
+
+/* Héros : mention du pays au-dessus de l'emblème, emblème réduit sur téléphone */
+.kb-hero--center .kb-hero__eyebrow { margin-bottom: clamp(.75rem, 2.2svh, 1.4rem); }
+@media (max-width: 600px) {
+	.kb-hero--center .kb-hero__emblem { height: clamp(60px, 10svh, 88px); margin-bottom: .75rem; }
+}
+
+/* ==========================================================================
+   23. Pop-up du Maire style whitehouse.gov : fond sombre, emblème, « Bienvenue »,
+       mot du Maire, bouton, portrait détouré sur un demi-cercle
+   ========================================================================== */
+.kb-modal.kb-modal--wh {
+	width: min(100%, 34rem);
+	max-width: 34rem;
+	max-height: calc(100dvh - 1.5rem);
+	padding: 0;
+	overflow: hidden auto;
+	border: 0;
+	border-radius: 22px;
+	background: #111614;
+	color: var(--kb-white);
+	box-shadow: 0 40px 80px -30px rgba(0, 0, 0, .7);
+	scrollbar-width: none;
+}
+.kb-modal--wh::-webkit-scrollbar { display: none; }
+.kb-modal--wh::backdrop { background: rgba(0, 0, 30, .55); backdrop-filter: blur(3px); }
+.kb-modal--wh .kb-modal__inner { display: block; position: relative; padding: 0; background: none; border: 0; box-shadow: none; }
+.kb-modal--wh .kb-modal__inner::after { display: none; }
+.kb-modal--wh .kb-modal__close { top: 1rem; right: 1rem; width: 44px; height: 44px; border: 0 !important; outline-offset: 2px; background: transparent; color: var(--kb-copper); box-shadow: none; z-index: 3; }
+.kb-modal--wh .kb-modal__close:hover { background: rgba(255, 255, 255, .06); color: var(--kb-gold); }
+.kb-modal--wh .kb-modal__close .kb-icon { width: 28px; height: 28px; stroke-width: 1.6; }
+.kb-modal--wh .kb-modal__content { display: flex; flex-direction: column; align-items: center; margin: 0; padding: clamp(2.75rem, 7vw, 3.5rem) clamp(1.5rem, 6vw, 3rem) 1.5rem; text-align: center; }
+.kb-modal__logo { width: auto; height: clamp(72px, 16vw, 104px); margin-bottom: clamp(1.25rem, 4vw, 2rem); opacity: .95; }
+.kb-modal--wh .kb-modal__title { margin: 0 0 .9rem; font-size: clamp(2rem, 9vw, 2.9rem); font-weight: 700; line-height: 1.05; letter-spacing: .01em; text-transform: uppercase; color: var(--kb-white); }
+.kb-modal--wh .kb-modal__excerpt { max-width: 26rem; margin-bottom: 1.5rem; font-size: var(--kb-step-1); line-height: 1.45; color: rgba(255, 255, 255, .9); }
+.kb-modal--wh .kb-modal__excerpt p { margin: 0; }
+.kb-modal--wh .kb-modal__excerpt p:first-child::before { display: none; }
+.kb-modal--wh .kb-btn { width: 100%; max-width: 22rem; justify-content: center; }
+.kb-modal__portrait { position: relative; display: flex; justify-content: center; align-items: flex-end; height: clamp(15rem, 62vw, 19rem); margin: .5rem 0 0; overflow: hidden; isolation: isolate; }
+.kb-modal__portrait::before { content: ""; position: absolute; left: 50%; top: 34%; z-index: -1; width: 122%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 50% 30%, var(--kb-green-700), var(--kb-green-900) 70%); transform: translateX(-50%); box-shadow: inset 0 2px 0 rgba(212, 168, 83, .55); }
+.kb-modal__photo { position: relative; width: auto; height: 100%; max-width: 92%; object-fit: contain; object-position: bottom center; filter: drop-shadow(0 12px 24px rgba(0, 0, 0, .45)); }
+.kb-modal__caption { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; padding: 2.25rem 1rem .9rem; background: linear-gradient(to top, rgba(6, 23, 15, .92), rgba(6, 23, 15, 0)); text-align: center; }
+.kb-modal__name { display: block; font-size: var(--kb-step-0); font-style: normal; font-weight: 700; color: var(--kb-white); }
+.kb-modal__role { display: block; font-size: var(--kb-step--1); font-style: italic; color: var(--kb-gold-light); }
+@media (max-width: 600px) {
+	.kb-modal.kb-modal--wh { width: 100%; max-width: none; margin: auto 0 0; border-radius: 22px 22px 0 0; max-height: 94dvh; }
+}
+
+/* ==========================================================================
+   24. Pied de page : cadre des logos seul (Ville en grand à gauche, RDC et
+       Haut-Katanga empilés à droite, à sa hauteur), textes à part dessous
+   ========================================================================== */
+.kb-heritage { overflow: visible; border-radius: 0; background: none; color: var(--kb-ink); box-shadow: none; }
+.kb-heritage::before { display: none; }
+.kb-heritage__frame { position: relative; isolation: isolate; overflow: hidden; display: grid; place-items: center; padding: clamp(1.5rem, 5vw, 2.5rem); border-radius: var(--kb-radius-lg); background: var(--kb-green-900); box-shadow: var(--kb-shadow-soft); }
+.kb-heritage__frame::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(0, 0, 40, .25), rgba(6, 23, 15, .55)); }
+.kb-heritage__frame .kb-heritage__photo { z-index: -2; }
+.kb-heritage__frame:hover .kb-heritage__photo { transform: scale(1.09); }
+.kb-heritage__frame--plain::before { background: linear-gradient(160deg, var(--kb-green-700), var(--kb-green-900)); }
+/* --kb-seal : hauteur de l'emblème ; les deux logos de droite se partagent cette hauteur */
+.kb-heritage__seal { --kb-seal: clamp(132px, 34vw, 196px); --kb-seal-gap: clamp(.5rem, 1.6vw, .75rem); display: flex; align-items: center; gap: clamp(.75rem, 2.5vw, 1.25rem); margin: 0; padding: 0; list-style: none; }
+.kb-heritage__seal ul { display: flex; flex-direction: column; gap: var(--kb-seal-gap); margin: 0; padding: 0; list-style: none; }
+.kb-heritage__emblem,
+.kb-heritage__emblem--main { width: auto; height: auto; padding: 0; border-radius: 50%; background: rgba(255, 255, 255, .95); box-shadow: 0 0 0 1px rgba(212, 168, 83, .6), 0 14px 30px -14px rgba(0, 0, 0, .7); }
+.kb-heritage__emblem--main { width: var(--kb-seal); height: var(--kb-seal); padding: calc(var(--kb-seal) * .1); box-shadow: 0 0 0 2px var(--kb-gold), 0 18px 36px -16px rgba(0, 0, 0, .75); }
+.kb-heritage__stack .kb-heritage__emblem { width: calc((var(--kb-seal) - var(--kb-seal-gap)) / 2); height: calc((var(--kb-seal) - var(--kb-seal-gap)) / 2); padding: calc(var(--kb-seal) * .06); }
+.kb-heritage__emblem img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.kb-heritage__body { display: flex; flex-direction: column; align-items: center; gap: .6rem; padding: 1.5rem .5rem 0; text-align: center; }
+.kb-heritage__line { margin: 0; font-size: var(--kb-step--1); font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--kb-copper-dark); }
+.kb-heritage__title { max-width: 26ch; margin: 0; font-size: var(--kb-step-3); font-weight: 700; line-height: 1.15; color: var(--kb-green-900); }
+.kb-heritage__title em { color: var(--kb-copper); }
+.kb-heritage__motto { color: var(--kb-muted); }
+.kb-heritage__motto svg { color: var(--kb-copper); }
+.kb-heritage .kb-social a { border-color: var(--kb-line); background: transparent; color: var(--kb-green-900); }
+.kb-heritage .kb-social a:hover,
+.kb-heritage .kb-social a:focus-visible { border-color: var(--kb-green-900); background: var(--kb-green-900); color: var(--kb-white); }
+
+/* ==========================================================================
+   25. Carrousel des actualités style presidence.cd : photo plein cadre,
+       carte sombre à gauche, grande icône ronde de la catégorie, flèches en
+       demi-cercle sur les bords, bouton « Tout voir » à la couleur de la catégorie
+   ========================================================================== */
+.kb-carousel--pres { --kb-cat: var(--kb-green-700); min-height: 0; border-radius: 8px; background: #0b1510; box-shadow: var(--kb-shadow); }
+.kb-carousel--pres .kb-carousel__viewport { min-height: clamp(30rem, 118vw, 44rem); }
+@media (min-width: 700px) { .kb-carousel--pres .kb-carousel__viewport { min-height: clamp(30rem, 52vw, 40rem); } }
+.kb-carousel--pres .kb-carousel__slide { justify-content: center; align-items: flex-start; transition: opacity 1s var(--kb-ease), visibility 1s; }
+.kb-carousel--pres .kb-carousel__media::after { background: linear-gradient(90deg, rgba(0, 0, 0, .35) 0%, rgba(0, 0, 0, .05) 60%), linear-gradient(0deg, rgba(0, 0, 0, .25), rgba(0, 0, 0, 0) 40%); }
+.kb-carousel--pres .kb-carousel__media .kb-thumb-fallback { display: grid; place-items: center; background: linear-gradient(160deg, var(--kb-green-700), var(--kb-green-900)); color: rgba(255, 255, 255, .25); }
+
+.kb-carousel--pres .kb-carousel__body {
+	max-width: min(calc(100% - 6.5rem), 27rem);
+	margin: clamp(5.5rem, 26vw, 7rem) 0 1.5rem clamp(3.25rem, 9vw, 4.5rem);
+	padding: clamp(1.25rem, 4vw, 1.75rem);
+	border-radius: 6px;
+	background: rgba(0, 0, 0, .62);
+	box-shadow: 0 24px 48px -24px rgba(0, 0, 0, .6);
+	opacity: 0;
+	transform: translateX(-28px);
+	transition: opacity .8s var(--kb-ease-out) .25s, transform .9s var(--kb-ease-out) .25s;
+}
+@supports (backdrop-filter: blur(1px)) { .kb-carousel--pres .kb-carousel__body { background: rgba(0, 0, 0, .5); backdrop-filter: blur(6px) saturate(130%); } }
+@media (min-width: 700px) { .kb-carousel--pres .kb-carousel__body { margin-top: clamp(5rem, 14vw, 9rem); } }
+.kb-carousel--pres .kb-carousel__slide.is-active .kb-carousel__body { opacity: 1; transform: none; }
+.kb-carousel__cat { margin: 0 0 .5rem; font-size: var(--kb-step-1); font-weight: 700; line-height: 1.2; letter-spacing: .02em; text-transform: uppercase; color: var(--kb-white); }
+.kb-carousel--pres .kb-carousel__title { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 0 0 .6rem; font-size: var(--kb-step-1); font-weight: 600; line-height: 1.3; }
+.kb-carousel--pres .kb-carousel__title a { color: rgba(255, 255, 255, .95); }
+.kb-carousel--pres .kb-carousel__excerpt { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--kb-step-0); line-height: 1.55; color: rgba(255, 255, 255, .85); }
+.kb-carousel__foot { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-top: 1.1rem; }
+.kb-carousel__cta { display: inline-flex; align-items: center; min-height: 44px; padding: .55rem 1.4rem; border-radius: 4px; background: var(--kb-cat); color: var(--kb-white); font-size: var(--kb-step-0); font-weight: 600; text-decoration: none; transition: filter .25s, transform .25s; }
+.kb-carousel__cta:hover, .kb-carousel__cta:focus-visible { color: var(--kb-white); filter: brightness(1.12); transform: translateY(-2px); }
+.kb-carousel--pres .kb-carousel__foot .kb-date { font-size: var(--kb-step--1); color: rgba(255, 255, 255, .75); }
+
+/* Grande icône ronde (couleur de la catégorie, anneau blanc, légère transparence) */
+.kb-carousel__icon {
+	--kb-ic: clamp(84px, 24vw, 184px);
+	position: absolute;
+	top: clamp(1rem, 4vw, 4.5rem);
+	right: clamp(1rem, 6vw, 4rem);
+	z-index: 2;
+	display: grid;
+	place-items: center;
+	width: var(--kb-ic);
+	height: var(--kb-ic);
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--kb-cat) 90%, transparent);
+	box-shadow: inset 0 0 0 calc(var(--kb-ic) * .055) color-mix(in srgb, var(--kb-cat) 90%, transparent), inset 0 0 0 calc(var(--kb-ic) * .055 + 2px) rgba(255, 255, 255, .85), 0 18px 40px -16px rgba(0, 0, 0, .55);
+	color: var(--kb-white);
+	opacity: 0;
+	transform: scale(.6) rotate(-20deg);
+	transition: opacity .6s var(--kb-ease-out) .45s, transform .9s cubic-bezier(.34, 1.56, .64, 1) .45s;
+}
+.kb-carousel__icon .kb-icon { width: 46%; height: 46%; stroke-width: 1.7; }
+.kb-carousel--pres .kb-carousel__slide.is-active .kb-carousel__icon { opacity: 1; transform: none; }
+
+/* Flèches en demi-cercle sur les bords */
+.kb-carousel--pres .kb-carousel__controls { position: static; inset: auto; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .6rem clamp(1rem, 3vw, 1.5rem); background: #0b1510; }
+.kb-carousel--pres .kb-carousel__arrows { position: static; display: contents; }
+.kb-carousel--pres [data-carousel-prev],
+.kb-carousel--pres [data-carousel-next] {
+	position: absolute;
+	top: calc(50% - 1.75rem);
+	z-index: 3;
+	width: clamp(40px, 7vw, 56px);
+	height: clamp(80px, 14vw, 108px);
+	margin-top: calc(clamp(80px, 14vw, 108px) / -2);
+	border: 0;
+	background: rgba(0, 0, 0, .45);
+	color: var(--kb-white);
+	transition: background-color .25s, width .25s;
+}
+.kb-carousel--pres [data-carousel-prev] { left: 0; border-radius: 0 999px 999px 0; }
+.kb-carousel--pres [data-carousel-next] { right: 0; border-radius: 999px 0 0 999px; }
+.kb-carousel--pres [data-carousel-prev]:hover,
+.kb-carousel--pres [data-carousel-next]:hover { background: var(--kb-cat, rgba(0, 0, 0, .7)); color: var(--kb-white); border-color: transparent; }
+.kb-carousel--pres [data-carousel-prev] .kb-icon,
+.kb-carousel--pres [data-carousel-next] .kb-icon { width: 1.4rem; height: 1.4rem; stroke-width: 2.2; }
+.kb-carousel--pres [data-carousel-toggle] { order: 2; width: 40px; height: 40px; margin-left: auto; }
+.kb-carousel--pres .kb-carousel__timer { position: relative; inset: auto; }
+@media (prefers-reduced-motion: reduce) {
+	.kb-carousel--pres .kb-carousel__body,
+	.kb-carousel--pres .kb-carousel__icon { opacity: 1; transform: none; transition: none; }
+}
+
+/* ==========================================================================
+   26. Même modèle d'en-tête sur toutes les pages : barre transparente posée sur
+       une photo (voile bleu), logo de la barre visible seulement au défilement,
+       barre attachée en verre ; en-têtes de page centrés avec l'emblème
+   ========================================================================== */
+.kb-header-overlay.kb-header-solid .kb-main { padding-top: 0; }
+.kb-header-overlay .kb-header--wh:not(.is-scrolled) { background: linear-gradient(180deg, rgba(0, 0, 40, .5) 0%, rgba(0, 0, 40, .18) 70%, rgba(0, 0, 40, 0) 100%); box-shadow: none; color: var(--kb-white); }
+.kb-header-overlay .kb-header--wh:not(.is-scrolled) .kb-header__nav-inner::before { background: rgba(255, 255, 255, .55); }
+.kb-header-overlay .kb-header--wh:not(.is-scrolled) .kb-header__nav-more { background: linear-gradient(90deg, rgba(0, 0, 40, 0), rgba(0, 0, 40, .35) 45%); }
+.kb-header-overlay .kb-header--wh:not(.is-scrolled) .kb-nav__menu > li > a:hover { color: var(--kb-gold-light); }
+/* Un seul emblème à la fois : celui de la barre n'apparaît qu'au défilement */
+.kb-header--wh .kb-brand { transition: opacity .4s var(--kb-ease), transform .4s var(--kb-ease), visibility .4s; }
+.kb-header-overlay .kb-header--wh:not(.is-scrolled) .kb-brand { opacity: 0; visibility: hidden; transform: translateY(-8px) scale(.9); }
+
+/* Barre attachée en verre (blanc translucide flouté) */
+.kb-header.is-scrolled.kb-header--wh { background: rgba(255, 255, 255, .9); }
+@supports (backdrop-filter: blur(1px)) {
+	.kb-header.is-scrolled.kb-header--wh { background: rgba(255, 255, 255, .66); backdrop-filter: saturate(170%) blur(18px); -webkit-backdrop-filter: saturate(170%) blur(18px); }
+}
+
+/* En-têtes de pages et d'articles : photo + voile bleu, contenu centré sous la barre */
+.kb-page-hero--wh,
+.kb-post-hero--wh {
+	align-items: center;
+	justify-content: center;
+	min-height: clamp(26rem, 68svh, 40rem);
+	padding: calc(var(--kb-header-h) + 1.5rem) 0 clamp(2rem, 6vw, 3.5rem);
+	text-align: center;
+	color: var(--kb-white);
+}
+.kb-page-hero--wh::after { display: none; }
+.kb-page-hero--wh.kb-page-hero--image::before,
+.kb-post-hero--wh.kb-post-hero--image::before {
+	background:
+		linear-gradient(to top, rgba(6, 23, 15, .6) 0%, rgba(6, 23, 15, 0) 45%),
+		linear-gradient(rgba(0, 0, 75, .48), rgba(0, 0, 75, .48));
+}
+.kb-page-hero--wh:not(.kb-page-hero--image) { background: linear-gradient(160deg, #0b1f5c, var(--kb-green-900)); }
+.kb-page-hero--wh .kb-page-hero__inner,
+.kb-post-hero--wh .kb-post-hero__inner { display: flex; flex-direction: column; align-items: center; }
+.kb-page-hero__emblem { width: auto; height: clamp(56px, 9svh, 96px); margin: 0 auto clamp(.75rem, 2svh, 1.25rem); filter: drop-shadow(0 8px 22px rgba(0, 0, 0, .35)); animation: kb-rise 1s var(--kb-ease-out) both; }
+.kb-page-hero--wh .kb-eyebrow { justify-content: center; color: var(--kb-white); }
+.kb-page-hero--wh .kb-eyebrow::after { content: ""; width: 2.5rem; height: 1px; background: currentColor; }
+.kb-page-hero--wh .kb-page-hero__title,
+.kb-post-hero--wh .kb-post-hero__title { max-width: 22ch; margin-inline: auto; color: var(--kb-white); text-shadow: 0 2px 20px rgba(0, 0, 0, .3); }
+.kb-page-hero--wh .kb-page-hero__desc { margin-inline: auto; color: rgba(255, 255, 255, .92); }
+.kb-post-hero--wh .kb-post-hero__meta { justify-content: center; color: rgba(255, 255, 255, .9); }
+.kb-post-hero--wh .kb-post-hero__meta .kb-date { color: var(--kb-gold-light); }
+.kb-post-hero--wh .kb-meta { justify-content: center; }
+.kb-page-hero--wh .kb-searchform { margin-inline: auto; }
+
+/* Titre de l'accueil sur deux lignes : « Ville de Kasumbalesa » en dessous */
+.kb-hero__title em { display: block; }
+.kb-hero--center .kb-hero__title { max-width: none; }
+
+/* Boutons compacts (taille d'origine) au lieu de la pleine largeur */
+.kb-hero--center .kb-hero__actions { width: auto; max-width: none; gap: .75rem; }
+.kb-hero--center .kb-hero__actions .kb-btn,
+.kb-modal--wh .kb-btn { flex: 0 0 auto; width: auto; min-height: 44px; padding: .4rem .45rem .4rem 1.25rem; gap: .75rem; font-size: .8125rem; }
+.kb-hero--center .kb-hero__actions .kb-btn .kb-btn__icon,
+.kb-modal--wh .kb-btn .kb-btn__icon { width: 34px; height: 34px; }
+@media (max-width: 600px) {
+	.kb-hero--center .kb-hero__actions .kb-btn { font-size: .75rem; padding-left: 1rem; }
+}
+
+/* Pop-up du Maire en clair */
+.kb-modal.kb-modal--wh { background: var(--kb-white); color: var(--kb-ink); box-shadow: 0 40px 80px -30px rgba(11, 42, 31, .45); }
+.kb-modal--wh::backdrop { background: rgba(11, 42, 31, .4); }
+.kb-modal--wh .kb-modal__title { color: var(--kb-green-900); }
+.kb-modal--wh .kb-modal__excerpt { color: var(--kb-muted); }
+.kb-modal--wh .kb-modal__close { color: var(--kb-copper-dark); }
+.kb-modal--wh .kb-modal__close:hover { background: var(--kb-mist); color: var(--kb-copper); }
+.kb-modal__logo { opacity: 1; }
+
+/* ==========================================================================
+   27. Pied de page sur ordinateur : textes alignés à droite du cadre des logos,
+       une information par ligne
+   ========================================================================== */
+.kb-heritage__line span { display: block; }
+@media (min-width: 1100px) {
+	.kb-footer__top { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.kb-footer__brand { grid-column: 1 / -1; }
+	.kb-heritage { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: clamp(2rem, 4vw, 3.5rem); }
+	.kb-heritage__body { align-items: flex-start; gap: .75rem; padding: 0; text-align: left; }
+	.kb-heritage__line { font-size: clamp(.875rem, .8vw, 1.0625rem); line-height: 1.6; }
+	.kb-heritage__title { max-width: none; font-size: clamp(1.75rem, 2.3vw, 2.6rem); white-space: nowrap; }
+	.kb-heritage .kb-social { justify-content: flex-start; }
+}
+
+/* ==========================================================================
+   28. Haut de chaque page identique à l'accueil : pays, emblème, titre de la
+       page, texte et deux boutons vers d'autres pages
+   ========================================================================== */
+.kb-page-hero--wh,
+.kb-post-hero--wh { min-height: 100vh; min-height: 100svh; }
+.kb-page-hero--wh .kb-hero__eyebrow,
+.kb-post-hero--wh .kb-hero__eyebrow {
+	display: flex;
+	justify-content: center;
+	gap: .75em;
+	max-width: 100%;
+	margin: 0 auto clamp(.75rem, 2.2svh, 1.4rem);
+	font-size: clamp(.55rem, 2.3vw, .875rem);
+	letter-spacing: clamp(.03em, .4vw, .2em);
+	white-space: nowrap;
+	color: var(--kb-white);
+}
+.kb-page-hero--wh .kb-hero__eyebrow::before,
+.kb-page-hero--wh .kb-hero__eyebrow::after,
+.kb-post-hero--wh .kb-hero__eyebrow::before,
+.kb-post-hero--wh .kb-hero__eyebrow::after { content: ""; flex: 0 1 2.5rem; min-width: .75rem; height: 1px; align-self: center; background: var(--kb-gold); }
+@media (max-width: 420px) {
+	.kb-page-hero--wh .kb-hero__eyebrow::before, .kb-page-hero--wh .kb-hero__eyebrow::after,
+	.kb-post-hero--wh .kb-hero__eyebrow::before, .kb-post-hero--wh .kb-hero__eyebrow::after { display: none; }
+}
+.kb-page-hero--wh .kb-page-hero__emblem,
+.kb-post-hero--wh .kb-page-hero__emblem { height: clamp(72px, 15svh, 200px); }
+@media (max-width: 600px) {
+	.kb-page-hero--wh .kb-page-hero__emblem,
+	.kb-post-hero--wh .kb-page-hero__emblem { height: clamp(60px, 10svh, 88px); }
+}
+.kb-page-hero__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .75rem; margin-top: clamp(1.25rem, 3svh, 2rem); }
+.kb-page-hero__actions .kb-btn { flex: 0 0 auto; width: auto; min-height: 44px; padding: .4rem .45rem .4rem 1.25rem; gap: .75rem; font-size: .8125rem; }
+.kb-page-hero__actions .kb-btn .kb-btn__icon { width: 34px; height: 34px; }
+@media (max-width: 600px) { .kb-page-hero__actions .kb-btn { font-size: .75rem; padding-left: 1rem; } }
+.kb-page-hero--wh .kb-page-hero__actions .kb-btn--ghost { --kb-btn-fg: var(--kb-white); --kb-btn-border: rgba(255, 255, 255, .7); }
+.js .kb-page-hero__actions,
+.js .kb-page-hero--wh .kb-hero__eyebrow,
+.js .kb-post-hero--wh .kb-hero__eyebrow { opacity: 1; transform: none; }
+.kb-page-hero__actions { animation: kb-rise 1.1s .45s var(--kb-ease-out) both; }
+
+/* ==========================================================================
+   29. Pied de page : logos seuls, sans photo ni fond ; pop-up : titre façon
+       whitehouse.gov (Instrument Serif majuscules), portrait sans ombre,
+       nom du Maire bien lisible
+   ========================================================================== */
+.kb-heritage__frame { padding: 0; border-radius: 0; background: none; box-shadow: none; place-items: start; }
+.kb-heritage__frame::before { display: none; }
+.kb-heritage__emblem,
+.kb-heritage__emblem--main,
+.kb-heritage__stack .kb-heritage__emblem { padding: 0; border-radius: 0; background: none; box-shadow: none; }
+@media (max-width: 1099px) { .kb-heritage__frame { place-items: center; } }
+
+.kb-modal--wh .kb-modal__title {
+	margin: 0 0 1rem;
+	font-family: "Instrument Serif", "Times New Roman", serif;
+	font-size: clamp(2.3rem, 10.5vw, 3.1rem);
+	font-weight: 400;
+	line-height: 1.04;
+	letter-spacing: .01em;
+	text-transform: uppercase;
+	color: var(--kb-ink);
+}
+.kb-modal__photo { filter: none; }
+.kb-modal__portrait { flex-direction: column; align-items: center; justify-content: flex-end; height: auto; padding-top: 1rem; }
+.kb-modal__photo { height: clamp(13rem, 54vw, 16.5rem); }
+.kb-modal__caption { position: relative; inset: auto; width: 100%; padding: .8rem 1rem 1rem; background: var(--kb-green-900); }
+.kb-modal__name { font-size: var(--kb-step-1); color: var(--kb-white); }
+.kb-modal__role { font-size: var(--kb-step-0); color: var(--kb-gold-light); }
