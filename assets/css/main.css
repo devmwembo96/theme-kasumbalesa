@@ -3724,3 +3724,32 @@ body.home.kb-header-solid .kb-main { padding-top: 0; }
 .js .kb-page-hero--wh .kb-hero__eyebrow,
 .js .kb-post-hero--wh .kb-hero__eyebrow { opacity: 1; transform: none; }
 .kb-page-hero__actions { animation: kb-rise 1.1s .45s var(--kb-ease-out) both; }
+
+/* ==========================================================================
+   29. Pied de page : logos seuls, sans photo ni fond ; pop-up : titre façon
+       whitehouse.gov (Instrument Serif majuscules), portrait sans ombre,
+       nom du Maire bien lisible
+   ========================================================================== */
+.kb-heritage__frame { padding: 0; border-radius: 0; background: none; box-shadow: none; place-items: start; }
+.kb-heritage__frame::before { display: none; }
+.kb-heritage__emblem,
+.kb-heritage__emblem--main,
+.kb-heritage__stack .kb-heritage__emblem { padding: 0; border-radius: 0; background: none; box-shadow: none; }
+@media (max-width: 1099px) { .kb-heritage__frame { place-items: center; } }
+
+.kb-modal--wh .kb-modal__title {
+	margin: 0 0 1rem;
+	font-family: "Instrument Serif", "Times New Roman", serif;
+	font-size: clamp(2.3rem, 10.5vw, 3.1rem);
+	font-weight: 400;
+	line-height: 1.04;
+	letter-spacing: .01em;
+	text-transform: uppercase;
+	color: var(--kb-ink);
+}
+.kb-modal__photo { filter: none; }
+.kb-modal__portrait { flex-direction: column; align-items: center; justify-content: flex-end; height: auto; padding-top: 1rem; }
+.kb-modal__photo { height: clamp(13rem, 54vw, 16.5rem); }
+.kb-modal__caption { position: relative; inset: auto; width: 100%; padding: .8rem 1rem 1rem; background: var(--kb-green-900); }
+.kb-modal__name { font-size: var(--kb-step-1); color: var(--kb-white); }
+.kb-modal__role { font-size: var(--kb-step-0); color: var(--kb-gold-light); }

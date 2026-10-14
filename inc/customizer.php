@@ -169,7 +169,7 @@ function kb_customize_register( $wp_customize ) {
 	$add( 'mayor_role', 'kb_intro', 'text', __( 'Fonction (signature)', 'kasumbalesa' ) );
 	$add( 'mayor_signature', 'kb_intro', 'image', __( 'Signature manuscrite (image PNG transparente, facultatif)', 'kasumbalesa' ) );
 	$add( 'popup_eyebrow', 'kb_intro', 'text', __( 'Surtitre du pop-up', 'kasumbalesa' ) );
-	$add( 'popup_title', 'kb_intro', 'text', __( 'Pop-up – titre (ex. Bienvenue !)', 'kasumbalesa' ) );
+	$add( 'popup_title', 'kb_intro', 'textarea', __( 'Pop-up – titre (retour à la ligne permis)', 'kasumbalesa' ) );
 	$add( 'popup_button', 'kb_intro', 'text', __( 'Texte du bouton du pop-up', 'kasumbalesa' ) );
 
 	// Héros.
@@ -279,7 +279,6 @@ function kb_customize_register( $wp_customize ) {
 	// Bandeau institutionnel du pied de page.
 	$add( 'heritage_emblem_1', 'kb_topo', 'image', __( 'Pied de page – armoiries de la RDC', 'kasumbalesa' ) );
 	$add( 'heritage_emblem_2', 'kb_topo', 'image', __( 'Pied de page – logo de la province du Haut-Katanga', 'kasumbalesa' ) );
-	$add( 'heritage_photo', 'kb_topo', 'image', __( 'Pied de page – photo de la montagne', 'kasumbalesa' ) );
 	$add( 'heritage_line', 'kb_topo', 'text', __( 'Pied de page – appartenance (pays, province)', 'kasumbalesa' ) );
 	$add( 'heritage_title', 'kb_topo', 'text', __( 'Pied de page – titre (*mot* = accent doré)', 'kasumbalesa' ) );
 	$add( 'heritage_motto', 'kb_topo', 'text', __( 'Pied de page – devise', 'kasumbalesa' ) );

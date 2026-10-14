@@ -22,7 +22,7 @@ $kb_logo = (int) get_theme_mod( 'custom_logo' );
 				echo wp_get_attachment_image( $kb_logo, 'medium', false, array( 'class' => 'kb-modal__logo', 'alt' => '', 'loading' => 'lazy' ) );
 			}
 			?>
-			<h2 class="kb-modal__title" id="kb-modal-title"><?php echo esc_html( kb_mod( 'popup_title' ) ); ?></h2>
+			<h2 class="kb-modal__title" id="kb-modal-title"><?php echo nl2br( esc_html( kb_mod( 'popup_title' ) ) ); // phpcs:ignore ?></h2>
 			<div class="kb-modal__excerpt">
 				<?php echo wpautop( esc_html( kb_mayor_excerpt( $kb_page, 40 ) ) ); // phpcs:ignore ?>
 			</div>

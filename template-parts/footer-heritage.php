@@ -1,7 +1,6 @@
 <?php
 /**
- * Bandeau institutionnel du pied de page : un cadre (photo de la montagne) qui ne contient que
- * les logos — emblème de la Ville en grand à gauche, armoiries de la RDC et logo du Haut-Katanga
+ * Bandeau institutionnel du pied de page : les logos seuls, sans fond — emblème de la Ville en grand à gauche, armoiries de la RDC et logo du Haut-Katanga
  * empilés à sa droite — puis, à part, l'appartenance, le titre, la devise et les réseaux.
  *
  * @package Kasumbalesa
@@ -13,7 +12,6 @@ $kb_img = static function ( $key ) {
 };
 $kb_rdc      = $kb_img( 'heritage_emblem_1' );
 $kb_province = $kb_img( 'heritage_emblem_2' );
-$kb_photo    = $kb_img( 'heritage_photo' );
 $kb_city     = wp_attachment_is_image( (int) get_theme_mod( 'custom_logo' ) ) ? (int) get_theme_mod( 'custom_logo' ) : 0;
 $kb_emblem   = static function ( $id, $label, $main = false ) {
 	if ( ! $id ) {
@@ -27,12 +25,7 @@ $kb_emblem   = static function ( $id, $label, $main = false ) {
 };
 ?>
 <div class="kb-heritage">
-	<div class="kb-heritage__frame<?php echo $kb_photo ? '' : ' kb-heritage__frame--plain'; ?>">
-		<?php
-		if ( $kb_photo ) {
-			echo wp_get_attachment_image( $kb_photo, 'kb-hero', false, array( 'class' => 'kb-heritage__photo', 'alt' => '', 'loading' => 'lazy', 'sizes' => '(min-width: 1100px) 50vw, 100vw' ) );
-		}
-		?>
+	<div class="kb-heritage__frame">
 		<ul class="kb-heritage__seal">
 			<?php $kb_emblem( $kb_city, __( 'Emblème de la Ville de Kasumbalesa', 'kasumbalesa' ), true ); ?>
 			<?php if ( $kb_rdc || $kb_province ) : ?>
