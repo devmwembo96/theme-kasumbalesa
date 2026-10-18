@@ -265,6 +265,7 @@ defined( 'ABSPATH' ) || exit;
 					<label class="check"><input type="checkbox" data-a="daily"><span>Limite journalière</span></label>
 					<label class="check"><input type="checkbox" data-a="news"><span>Annonce dans 15 min</span></label>
 					<label class="check"><input type="checkbox" data-a="weekend"><span>Rappel du plan le week-end</span></label>
+					<label class="check"><input type="checkbox" data-a="signals"><span>Signaux et invalidation (EA MT5)</span></label>
 				</div>
 				<div class="row"><button type="button" class="btn ghost sm" id="tg-test">Envoyer un message de test</button><button type="button" class="btn ghost sm danger" id="tg-off">Déconnecter</button></div>
 			</div>

@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.3.0
+Stable tag: 2.4.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -92,6 +92,20 @@ Plan de semaine élargi, rédigé exclusivement par Claude (onglet Plan en lectu
 * Le samedi et le dimanche, « Cette semaine », le résumé de l’onglet Jour et la commande
   Telegram /plan portent sur la semaine qui commence.
 
+EA MT5 version 2 : plan dynamique et signaux d’exécution (signal seulement)
+* L’EA lit le plan (GET /mt5/plan, texte) chaque minute et le trace : zones, niveaux,
+  invalidation, range attendu ; redessine dès que le plan ou son état change.
+* Surveillance M15 : invalidation touchée, zone testée ou cassée → POST /mt5/event, état
+  « live » du plan (bandeau et zones dans l’onglet Plan), alerte Telegram immédiate.
+* Signal : touche d’une zone de Claude, extrême dans la zone, cassure de structure M1 dans
+  le sens de la zone ; setup 1 si balayage de liquidité, sinon setup 2 avec le biais.
+  Stop derrière l’extrême ; BUY/SELL NOW si stop ≤ 4 $, sinon BUY/SELL LIMIT au prix où le
+  stop revient à 4 $ (30 min). Filtres : 2R de place, annonces, spread, limites du jour.
+  Flèche, position longue / courte dessinée, lot calculé ; alertes MT5, mobile, Telegram.
+  Aucun ordre n’est passé par l’EA.
+* L’EA envoie aussi les bougies du courtier (D1, H4, H1) chaque heure : GET /candles, pour
+  que Claude analyse aux prix exacts de FundedNext.
+
 À venir : calendrier économique automatique, rapport hebdomadaire, tâche planifiée Claude
 qui rédige le plan (après l’EA MT5, pour des niveaux aux prix du courtier).
 
@@ -114,6 +128,7 @@ includes/class-cx-guard.php    Réglages des connexions, jetons, limite de débi
 includes/class-cx-ingest.php   Points d’entrée MT5 et TradingView
 includes/class-cx-telegram.php Bot Telegram, alertes, WP-Cron
 includes/class-cx-plan.php     Plan élargi rédigé par Claude : format, publication protégée
+includes/class-cx-live.php     Plan pour l’EA, événements et signaux, bougies du courtier
 assets/mt5/CarnetXAU.mq5.txt   EA MetaTrader 5
 templates/app.php              Balisage des onglets
 assets/                        CSS, JS, service worker, icônes

@@ -357,9 +357,13 @@ class CX_Plan {
 			$updates[] = $update;
 			usort( $updates, fn( $a, $b ) => strcmp( $a['date'], $b['date'] ) );
 			$content['updates'] = $updates;
+			// Nouvelle prévision dans la relecture : l'invalidation touchée par l'EA est levée.
+			if ( isset( $in['prediction'] ) ) {
+				unset( $content['live']['invalidated'] );
+			}
 		} elseif ( isset( $in['prediction'] ) ) {
-			// Nouvelle publication complète : on repart d'un historique vide.
-			unset( $content['initial'], $content['updates'] );
+			// Nouvelle publication complète : on repart d'un historique et d'un état vides.
+			unset( $content['initial'], $content['updates'], $content['live'] );
 		}
 		foreach ( $spec as $k => $type ) {
 			if ( array_key_exists( $k, $in ) ) {

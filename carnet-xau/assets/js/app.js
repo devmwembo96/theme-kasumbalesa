@@ -276,7 +276,8 @@ function levelMap(c){
   const add=(tag,a,txt)=>{const n=document.createElementNS(ns,tag);for(const k in a)n.setAttribute(k,a[k]);if(txt!=null)n.textContent=txt;s.append(n);return n};
   if(Number.isFinite(num(p.range_low))&&Number.isFinite(num(p.range_high)))add("rect",{x:W-34,y:Y(num(p.range_high)),width:10,height:Math.max(2,Y(num(p.range_low))-Y(num(p.range_high))),rx:3,fill:"var(--gold-soft)",stroke:"var(--gold)"});
   zones.forEach(z=>{const lo=num(z.low),hi=num(z.high);if(!Number.isFinite(lo)||!Number.isFinite(hi))return;const buy=z.side!=="vente";
-    add("rect",{x:150,y:Y(hi),width:W-200,height:Math.max(3,Y(lo)-Y(hi)),rx:4,fill:buy?"var(--win-soft)":"var(--loss-soft)",stroke:buy?"var(--win)":"var(--loss)","stroke-opacity":z.state==="testee"?".4":"1"});
+    const dead=z.state==="cassee";
+    add("rect",{x:150,y:Y(hi),width:W-200,height:Math.max(3,Y(lo)-Y(hi)),rx:4,fill:dead?"var(--sunk)":buy?"var(--win-soft)":"var(--loss-soft)",stroke:dead?"var(--line)":buy?"var(--win)":"var(--loss)","stroke-opacity":z.state==="testee"?".4":"1","stroke-dasharray":dead?"4 3":"0"});
     add("text",{x:160,y:(Y(hi)+Y(lo))/2+4,"font-size":"12",fill:buy?"var(--win)":"var(--loss)"},(z.type||"Zone")+" "+(z.tf||"")+" "+"★".repeat(z.strength||0));
   });
   const labels=[];
@@ -287,6 +288,8 @@ function levelMap(c){
   return s;
 }
 let VIEW_INITIAL=false;
+const zoneKey=z=>Number(z.low).toFixed(2)+"-"+Number(z.high).toFixed(2)+"-"+(z.side==="vente"?"s":"b");
+function liveState(p,z){const l=((p.content||{}).live||{}).zones||{};return (l[zoneKey(z)]||{}).state||z.state||"vierge"}
 function renderPlanView(p){
   const box=$("#plan-view");
   if(!p){box.replaceChildren(el("div",{class:"empty",text:"Le plan de cette semaine n’a pas encore été publié par Claude."}));return}
@@ -298,6 +301,7 @@ function renderPlanView(p){
       (p.sc||[]).length?el("ul",null,...p.sc.map(s=>el("li",{text:s.text}))):null,p.review?el("p",{class:"pre",text:"Bilan : "+p.review}):null));return}
   const updates=c.updates||[], lastUpd=updates.filter(u=>u.status==="mis_a_jour").pop();
   if(VIEW_INITIAL&&c.initial)c=Object.assign({},c,c.initial);
+  c=Object.assign({},c,{zones:(c.zones||[]).map(z=>Object.assign({},z,{state:liveState(p,z)}))});
   const pr=c.prediction||{}, refs=c.refs||{}, out=[];
   if(lastUpd&&p.content.initial){
     const d=new Date(lastUpd.date+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"});
@@ -306,6 +310,8 @@ function renderPlanView(p){
     out.push(el("div",{class:"alert "+(VIEW_INITIAL?"warn":"go"),style:"display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px"},
       el("span",{style:"flex:1;min-width:200px",text:VIEW_INITIAL?"Version publiée le dimanche (avant les mises à jour).":"Plan mis à jour "+d+(lastUpd.reason?" : "+lastUpd.reason:".")}),tg));
   }
+  const live=p.content.live||{};
+  if(live.invalidated)out.push(el("div",{class:"alert stop",style:"margin-bottom:12px",text:"Invalidation touchée (EA MT5) le "+new Date(live.invalidated.at.replace(" ","T")).toLocaleString("fr-FR",{weekday:"long",hour:"2-digit",minute:"2-digit"})+(live.invalidated.price!=null?" à "+px(live.invalidated.price):"")+" : plus de signal dans le sens du biais jusqu’à la prochaine relecture de Claude."}));
   out.push(el("p",{class:"hint byline",text:(p.publishedAt?"Rédigé par Claude":"Bilan rédigé par Claude")+(p.publishedAt?" le "+new Date(p.publishedAt.replace(" ","T")).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+" à "+p.publishedAt.slice(11,16):"")+"."}));
   // 1. Prévision (absente d’une semaine qui n’a qu’un bilan)
   const hasPred=[pr.bull,pr.bear,pr.range].some(x=>x>0)||pr.summary;
@@ -335,7 +341,7 @@ function renderPlanView(p){
   // 3. Structure
   if((c.structure||[]).length)out.push(card("Structure par unité de temps",table(["UT","Tendance","Dernier BoS / ChoCh","Zone","Note"],c.structure.map(s=>[s.tf,el("span",{class:"bias "+({h:"h",b:"b",r:"n"}[s.trend]||"n"),text:TREND_L[s.trend]||"—"}),s.last,PD_L[s.pd]||"",s.note]))));
   // 4. Zones
-  if((c.zones||[]).length)out.push(card("Zones",table(["Zone","Type","UT","Réaction","Force","État","Note"],c.zones.slice().sort((a,b)=>num(b.high)-num(a.high)).map(z=>[px(z.low)+" – "+px(z.high),z.type,z.tf,el("span",{class:"bias "+(z.side==="vente"?"b":"h"),text:z.side==="vente"?"Vente":"Achat"}),"★".repeat(z.strength||0),z.state==="testee"?"Testée":"Vierge",z.note]))));
+  if((c.zones||[]).length)out.push(card("Zones",table(["Zone","Type","UT","Réaction","Force","État","Note"],c.zones.slice().sort((a,b)=>num(b.high)-num(a.high)).map(z=>[px(z.low)+" – "+px(z.high),z.type,z.tf,el("span",{class:"bias "+(z.side==="vente"?"b":"h"),text:z.side==="vente"?"Vente":"Achat"}),"★".repeat(z.strength||0),{testee:"Testée",cassee:"Cassée"}[z.state]||"Vierge",z.note]))));
   // 5. Niveaux de liquidité
   if((c.levels||[]).length)out.push(card("Niveaux de liquidité",table(["Prix","Type","Note"],c.levels.slice().sort((a,b)=>num(b.price)-num(a.price)).map(l=>[px(l.price),l.type,l.note]))));
   // 7. Fondamentaux

@@ -85,6 +85,7 @@ class CX_Telegram {
 				'daily'   => true,
 				'news'    => true,
 				'weekend' => true,
+				'signals' => true,
 			),
 			is_array( $c['alerts'] ?? null ) ? $c['alerts'] : array()
 		);
@@ -227,7 +228,7 @@ class CX_Telegram {
 	 */
 	public static function set_alerts( $alerts ) {
 		$c = self::cfg();
-		foreach ( array( 'daily', 'news', 'weekend' ) as $k ) {
+		foreach ( array( 'daily', 'news', 'weekend', 'signals' ) as $k ) {
 			if ( isset( $alerts[ $k ] ) ) {
 				$c['alerts'][ $k ] = (bool) $alerts[ $k ];
 			}

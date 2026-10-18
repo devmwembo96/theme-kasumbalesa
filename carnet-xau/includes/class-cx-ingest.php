@@ -53,7 +53,7 @@ class CX_Ingest {
 	 * @param string $key Clé reçue.
 	 * @return array|null
 	 */
-	private static function account_by_key( $key ) {
+	public static function account_by_key( $key ) {
 		global $wpdb;
 		if ( ! is_string( $key ) || strlen( $key ) < 16 ) {
 			return null;

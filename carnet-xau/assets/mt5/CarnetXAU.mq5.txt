@@ -1,35 +1,119 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — envoie au Carnet XAU les trades fermés et,        |
-//| à intervalle régulier, le solde, l'équité et la perte du jour.    |
+//| CarnetXAU.mq5 — version 2                                        |
+//|                                                                  |
+//| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
+//|    la perte du jour et les bougies du courtier (D1, H4, H1).     |
+//| 2. Lit le plan de Claude et le trace sur le graphique : zones,   |
+//|    niveaux, invalidation, range attendu. Redessine dès que le    |
+//|    plan change (relecture de 17 h New York, zone cassée…).       |
+//| 3. Surveille l'invalidation et les zones en temps réel (M15).    |
+//| 4. Signal BUY NOW / SELL NOW quand les conditions du plan sont   |
+//|    réunies, position longue ou courte dessinée, lot calculé.     |
+//|    Alertes : fenêtre MT5, notification mobile, Telegram.         |
+//|                                                                  |
+//| SIGNAL SEULEMENT : l'EA n'ouvre, ne modifie et ne ferme aucune   |
+//| position. Vous décidez et passez l'ordre vous-même.              |
 //|                                                                  |
 //| Installation :                                                   |
-//| 1. Renommer ce fichier en CarnetXAU.mq5 et le placer dans         |
-//|    Fichier › Ouvrir le dossier des données › MQL5 › Experts.      |
-//| 2. L'ouvrir dans MetaEditor et compiler (F7).                    |
-//| 3. MT5 : Outils › Options › Expert Advisors : cocher              |
-//|    « Autoriser WebRequest pour les URL listées » et ajouter       |
-//|    https://ville-de-kasumbalesa.cd                                |
-//| 4. Glisser l'EA sur un graphique (XAUUSD), onglet « Paramètres » :|
-//|    coller la clé MT5 du compte (onglet Comptes du carnet).        |
-//|    Cocher « Autoriser le trading algorithmique » n'est pas         |
-//|    nécessaire : l'EA ne passe aucun ordre.                        |
+//| 1. Renommer ce fichier en CarnetXAU.mq5, le placer dans          |
+//|    Fichier › Ouvrir le dossier des données › MQL5 › Experts,     |
+//|    l'ouvrir dans MetaEditor et compiler (F7).                    |
+//| 2. MT5 : Outils › Options › Expert Advisors : cocher             |
+//|    « Autoriser WebRequest pour les URL listées » et ajouter      |
+//|    https://ville-de-kasumbalesa.cd                               |
+//| 3. Notifications mobiles : Outils › Options › Notifications,     |
+//|    activer et saisir le MetaQuotes ID de l'application MT5.      |
+//| 4. Glisser l'EA sur un graphique XAUUSD (M1 conseillé) et coller |
+//|    la clé MT5 du compte (onglet Comptes du carnet).              |
 //|                                                                  |
-//| L'EA ne fait que lire le compte : il n'ouvre, ne modifie et ne    |
-//| ferme aucune position. Le serveur ignore les trades déjà reçus,   |
-//| il peut donc renvoyer les derniers jours sans créer de doublon.   |
+//| Règles du signal (calculées à partir du plan de Claude) :        |
+//| - le prix touche une zone de Claude non cassée ;                 |
+//| - extrême de la touche dans la zone (mèche tolérée), puis        |
+//|   cassure de structure M1 dans le sens de la zone : clôture      |
+//|   au-delà du dernier sommet (achat) ou creux (vente) précédent ; |
+//| - setup 1 si l'extrême a balayé un niveau de liquidité de Claude |
+//|   (ou le bord de la zone) ; sinon setup 2, seulement dans le     |
+//|   sens du biais dominant ;                                       |
+//| - stop derrière l'extrême + marge, entre 1,50 et 4,00 $ ; s'il  |
+//|   est plus large : BUY LIMIT / SELL LIMIT au prix où le stop     |
+//|   revient à 4,00 $ (repli attendu, valable 30 minutes) ;         |
+//| - au moins 2R de place jusqu'à la prochaine zone ou niveau       |
+//|   opposé (objectif = ce niveau, sinon 3R) ;                      |
+//| - filtres : pas d'annonce dans 15 min (ni dans les 30 min        |
+//|   passées), spread ≤ spread max % du stop, limites du jour       |
+//|   (trades, pertes, 80 % de la perte journalière), invalidation   |
+//|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "1.00"
-#property description "Envoie les trades fermés et le solde au Carnet XAU (lecture seule)."
+#property version   "2.00"
+#property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 input string InpUrl         = "https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
 input string InpKey         = "";    // Clé MT5 du compte (onglet Comptes)
-input string InpSymbol      = "XAU"; // N'envoyer que les symboles qui contiennent… (vide = tous)
+input string InpSymbol      = "XAU"; // Trades envoyés : symboles qui contiennent… (vide = tous)
 input int    InpDaysBack    = 3;     // Jours d'historique renvoyés à chaque synchronisation
-input int    InpSnapshotSec = 60;    // Intervalle des instantanés, en secondes (15 minimum)
+input int    InpSnapshotSec = 60;    // Intervalle de synchronisation, en secondes (15 minimum)
+input bool   InpDrawPlan    = true;  // Tracer le plan de Claude
+input bool   InpSignals     = true;  // Calculer les signaux BUY NOW / SELL NOW
+input double InpSLBuffer    = 0.30;  // Marge du stop derrière l'extrême ($, en plus du spread)
+input int    InpTouchBars   = 30;    // Bougies M1 où chercher la touche de zone
+input int    InpSwingBars   = 10;    // Bougies M1 avant l'extrême pour le sommet / creux à casser
+input int    InpCooldownMin = 60;    // Minutes sans nouveau signal sur la même zone
+input bool   InpUseLimit    = true;  // Stop trop large : proposer un ordre limite (stop ramené au maximum)
+input int    InpLimitMin    = 30;    // Validité d'un signal limite, en minutes
+input bool   InpAlertPopup  = true;  // Alerte : fenêtre et son MT5
+input bool   InpAlertPush   = true;  // Alerte : notification mobile MT5
+input bool   InpAlertCarnet = true;  // Alerte : carnet et Telegram
 
-bool     g_dirty    = true; // un trade a été fermé depuis le dernier envoi
-datetime g_lastFull = 0;    // dernier envoi de l'historique
+//--- Plan reçu du carnet
+struct CxZone
+  {
+   string key;
+   string type;
+   string tf;
+   double lo;
+   double hi;
+   bool   buy;
+   int    strength;
+   string state;     // vierge, testee, cassee
+   datetime lastSignal;
+  };
+struct CxLevel { double price; string type; };
+
+CxZone   g_zones[];
+CxLevel  g_levels[];
+datetime g_news[];
+string   g_newsName[];
+string   g_hash = "", g_week = "";
+int      g_bull = 0, g_bear = 0, g_range = 0;
+double   g_inval = 0, g_rlo = 0, g_rhi = 0, g_ref = 0;
+bool     g_invalidated = false;
+double   g_risk = 50, g_riskRed = 35, g_redAt = 300, g_contract = 100, g_spreadMax = 15;
+double   g_stopMin = 1.5, g_stopMax = 4.0, g_dailyLim = 300, g_size = 6000, g_floor = 5400;
+int      g_maxTrades = 4, g_maxLoss = 3;
+bool     g_planOk = false;
+
+//--- Signal limite en attente (repli vers le prix d'entrée)
+struct CxPending
+  {
+   bool     active;
+   bool     buy;
+   double   entry;
+   datetime expires;
+   string   id;
+   string   label;
+  };
+CxPending g_pend;
+
+//--- État
+bool     g_dirty = true;
+datetime g_lastFull = 0, g_lastCandles = 0, g_lastM1 = 0, g_lastM15 = 0, g_lastSignal = 0;
+string   g_status = "";
+int      g_signalCount = 0;
+
+#define PFX_PLAN "CXP_"
+#define PFX_SIG  "CXS_"
+#define PFX_UI   "CXU_"
 
 //+------------------------------------------------------------------+
 int OnInit()
@@ -41,29 +125,100 @@ int OnInit()
      }
    EventSetTimer((int)MathMax(15, InpSnapshotSec));
    Sync();
+   FetchPlan();
+   SendCandles();
+   DrawPanel();
    return(INIT_SUCCEEDED);
   }
 
-void OnDeinit(const int reason) { EventKillTimer(); }
+void OnDeinit(const int reason)
+  {
+   EventKillTimer();
+   ObjectsDeleteAll(0, PFX_PLAN);
+   ObjectsDeleteAll(0, PFX_UI);
+  }
 
-void OnTimer() { Sync(); }
+void OnTimer()
+  {
+   static datetime day = 0;
+   if(ServerDayStart() != day)
+     {
+      day = ServerDayStart();
+      g_signalCount = 0;          // compteur « aujourd'hui »
+     }
+   Sync();
+   FetchPlan();
+   if(TimeCurrent() - g_lastCandles >= 3600)
+      SendCandles();
+   DrawPanel();
+  }
+
+void OnTick()
+  {
+   datetime m1 = iTime(_Symbol, PERIOD_M1, 0);
+   if(m1 == g_lastM1)
+      return;
+   g_lastM1 = m1;               // nouvelle bougie M1 : la précédente vient de clôturer
+   datetime m15 = iTime(_Symbol, PERIOD_M15, 0);
+   if(m15 != g_lastM15)
+     {
+      g_lastM15 = m15;
+      Monitor();                // invalidation et zones sur clôture M15
+     }
+   if(g_pend.active)
+      CheckPending();
+   if(InpSignals && g_planOk && !g_pend.active)
+      CheckSignals();
+  }
+
+//--- Signal limite : prix d'entrée atteint, ou délai écoulé.
+void CheckPending()
+  {
+   double hi = iHigh(_Symbol, PERIOD_M1, 1), lo = iLow(_Symbol, PERIOD_M1, 1);
+   if(g_pend.buy ? lo <= g_pend.entry : hi >= g_pend.entry)
+     {
+      g_pend.active = false;
+      Notify("Carnet XAU : " + g_pend.label + " atteint à " + Fr(g_pend.entry, 2) + " — conditions réunies, à vous de décider.");
+      g_status = g_pend.label + " atteint à " + TimeToString(TimeCurrent(), TIME_MINUTES) + ".";
+      DrawPanel();
+     }
+   else if(TimeCurrent() > g_pend.expires)
+     {
+      g_pend.active = false;
+      string names[] = {"_TP", "_SL", "_2R", "_T"};
+      for(int i = 0; i < ArraySize(names); i++)
+         ObjectSetInteger(0, g_pend.id + names[i], OBJPROP_COLOR, C'225,225,225');
+      ObjectSetString(0, g_pend.id + "_T", OBJPROP_TEXT, g_pend.label + " annulé (prix non atteint en " + IntegerToString(InpLimitMin) + " min)");
+      Notify("Carnet XAU : " + g_pend.label + " " + Fr(g_pend.entry, 2) + " annulé, prix non atteint en " + IntegerToString(InpLimitMin) + " min.");
+      g_status = g_pend.label + " annulé (délai écoulé).";
+      ChartRedraw();
+      DrawPanel();
+     }
+  }
 
 void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest &request, const MqlTradeResult &result)
   {
    if(trans.type == TRADE_TRANSACTION_DEAL_ADD)
-      g_dirty = true; // envoyé au prochain passage du minuteur
+      g_dirty = true;
   }
 
 //+------------------------------------------------------------------+
-//| Décalage entre l'heure du serveur du courtier et l'heure UTC.     |
+//| Outils                                                            |
 //+------------------------------------------------------------------+
 long ServerOffset()
   {
    long off = (long)(TimeTradeServer() - TimeGMT());
-   return (long)MathRound(off / 900.0) * 900; // arrondi au quart d'heure
+   return (long)MathRound(off / 900.0) * 900;
   }
 
 string Num(double v, int digits) { return DoubleToString(v, digits); }
+
+string Fr(double v, int digits)
+  {
+   string s = DoubleToString(v, digits);
+   StringReplace(s, ".", ",");
+   return s;
+  }
 
 string JsonText(string s)
   {
@@ -81,8 +236,38 @@ bool Contains(const long &list[], long v)
   }
 
 //+------------------------------------------------------------------+
-//| Une position entièrement fermée, en JSON (vide sinon).            |
-//| Sorties partielles additionnées ; stop = SL de l'ordre d'entrée.  |
+//| HTTP                                                              |
+//+------------------------------------------------------------------+
+int Http(string method, string url, string body, string contentType, string &response)
+  {
+   char data[], result[];
+   string resultHeaders;
+   if(body != "")
+     {
+      int len = StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
+      ArrayResize(data, (int)MathMax(0, len - 1));
+     }
+   string headers = "X-CX-Key: " + InpKey + "\r\n";
+   if(contentType != "")
+      headers += "Content-Type: " + contentType + "\r\n";
+   ResetLastError();
+   int code = WebRequest(method, url, headers, 15000, data, result, resultHeaders);
+   if(code == -1)
+     {
+      int err = GetLastError();
+      g_status = (err == 4014) ? "Ajoutez l'adresse du site dans Outils › Options › Expert Advisors › WebRequest."
+                               : "Erreur WebRequest " + IntegerToString(err);
+      Print("Carnet XAU : ", g_status);
+      return -1;
+     }
+   response = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
+   if(code != 200)
+      Print("Carnet XAU : réponse ", code, " ", response);
+   return code;
+  }
+
+//+------------------------------------------------------------------+
+//| Synchronisation : trades fermés et instantané                     |
 //+------------------------------------------------------------------+
 string PositionJson(long position, long offset)
   {
@@ -93,7 +278,6 @@ string PositionJson(long position, long offset)
    double   inVol = 0, inValue = 0, outVol = 0, outValue = 0;
    double   profit = 0, commission = 0, swap = 0, sl = 0, tp = 0;
    datetime openTime = 0, closeTime = 0;
-
    int total = HistoryDealsTotal();
    for(int i = 0; i < total; i++)
      {
@@ -137,7 +321,6 @@ string PositionJson(long position, long offset)
       return "";
    if(StringLen(InpSymbol) > 0 && StringFind(symbol, InpSymbol) < 0)
       return "";
-
    return "{\"ticket\":\"" + IntegerToString(position) + "\""
           + ",\"symbol\":" + JsonText(symbol)
           + ",\"side\":\"" + (side == DEAL_TYPE_BUY ? "buy" : "sell") + "\""
@@ -154,17 +337,12 @@ string PositionJson(long position, long offset)
           + "}";
   }
 
-//+------------------------------------------------------------------+
-//| Positions fermées des derniers jours.                             |
-//+------------------------------------------------------------------+
 string TradesJson()
   {
    long     offset = ServerOffset();
    datetime now    = TimeCurrent();
    if(!HistorySelect(now - InpDaysBack * 86400, now + 60))
       return "";
-
-   // 1. Relever les positions (HistorySelectByPosition change la sélection en cours).
    long positions[];
    int  total = HistoryDealsTotal();
    for(int i = 0; i < total; i++)
@@ -181,13 +359,11 @@ string TradesJson()
          positions[n] = pos;
         }
      }
-
-   // 2. Décrire celles qui sont entièrement fermées.
    string items = "";
    for(int i = 0; i < ArraySize(positions); i++)
      {
       if(PositionSelectByTicket((ulong)positions[i]))
-         continue; // encore ouverte (sortie partielle)
+         continue;
       string item = PositionJson(positions[i], offset);
       if(item != "")
          items += (items == "" ? "" : ",") + item;
@@ -195,76 +371,52 @@ string TradesJson()
    return items;
   }
 
-//+------------------------------------------------------------------+
-//| Solde, équité et perte du jour (depuis minuit, heure du serveur). |
-//+------------------------------------------------------------------+
-string SnapshotJson()
+datetime ServerDayStart()
   {
-   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   double equity  = AccountInfoDouble(ACCOUNT_EQUITY);
-
    MqlDateTime s;
    TimeToStruct(TimeTradeServer(), s);
    s.hour = 0;
    s.min  = 0;
    s.sec  = 0;
-   datetime dayStart = StructToTime(s);
+   return StructToTime(s);
+  }
 
-   // Solde de début de journée = solde actuel − tout ce qui a été réalisé depuis minuit.
+//--- Résultat réalisé depuis minuit (heure du serveur), nombre de trades et de pertes du jour.
+double TodayStats(int &trades, int &losses)
+  {
+   trades = 0;
+   losses = 0;
    double realised = 0;
-   if(HistorySelect(dayStart, TimeCurrent() + 60))
+   if(!HistorySelect(ServerDayStart(), TimeCurrent() + 60))
+      return 0;
+   int total = HistoryDealsTotal();
+   for(int i = 0; i < total; i++)
      {
-      int total = HistoryDealsTotal();
-      for(int i = 0; i < total; i++)
+      ulong  deal = HistoryDealGetTicket(i);
+      double pnl  = HistoryDealGetDouble(deal, DEAL_PROFIT) + HistoryDealGetDouble(deal, DEAL_COMMISSION)
+                    + HistoryDealGetDouble(deal, DEAL_SWAP) + HistoryDealGetDouble(deal, DEAL_FEE);
+      realised += pnl;
+      long entry = HistoryDealGetInteger(deal, DEAL_ENTRY);
+      if(entry == DEAL_ENTRY_OUT || entry == DEAL_ENTRY_OUT_BY)
         {
-         ulong deal = HistoryDealGetTicket(i);
-         realised += HistoryDealGetDouble(deal, DEAL_PROFIT) + HistoryDealGetDouble(deal, DEAL_COMMISSION)
-                     + HistoryDealGetDouble(deal, DEAL_SWAP) + HistoryDealGetDouble(deal, DEAL_FEE);
+         trades++;
+         if(pnl < 0)
+            losses++;
         }
      }
-   double dayStartBalance = balance - realised;
-   double dailyLoss       = dayStartBalance - equity; // positif = perte
+   return realised;
+  }
 
+string SnapshotJson()
+  {
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double equity  = AccountInfoDouble(ACCOUNT_EQUITY);
+   int t, l;
+   double realised = TodayStats(t, l);
+   double dailyLoss = (balance - realised) - equity; // positif = perte
    return "{\"balance\":" + Num(balance, 2) + ",\"equity\":" + Num(equity, 2) + ",\"daily_loss\":" + Num(dailyLoss, 2) + "}";
   }
 
-//+------------------------------------------------------------------+
-//| Envoi au carnet.                                                  |
-//+------------------------------------------------------------------+
-bool Post(string json)
-  {
-   char data[], result[];
-   string resultHeaders;
-   int len = StringToCharArray(json, data, 0, WHOLE_ARRAY, CP_UTF8);
-   ArrayResize(data, (int)MathMax(0, len - 1)); // sans le zéro final
-   string headers = "Content-Type: application/json\r\nX-CX-Key: " + InpKey + "\r\n";
-
-   ResetLastError();
-   int code = WebRequest("POST", InpUrl, headers, 15000, data, result, resultHeaders);
-   if(code == -1)
-     {
-      int err = GetLastError();
-      if(err == 4014)
-         Print("Carnet XAU : ajoutez l'adresse du site dans Outils › Options › Expert Advisors › WebRequest.");
-      else
-         Print("Carnet XAU : erreur WebRequest ", err);
-      return false;
-     }
-   string body = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
-   if(code != 200)
-     {
-      Print("Carnet XAU : réponse ", code, " ", body);
-      return false;
-     }
-   if(StringFind(body, "\"inserted\":0") < 0 && StringFind(body, "\"inserted\"") >= 0)
-      Print("Carnet XAU : ", body);
-   return true;
-  }
-
-//+------------------------------------------------------------------+
-//| Instantané à chaque passage ; historique après une fermeture de   |
-//| trade, et toutes les 10 minutes par sécurité.                     |
-//+------------------------------------------------------------------+
 void Sync()
   {
    bool   full = g_dirty || TimeCurrent() - g_lastFull >= 600;
@@ -272,11 +424,536 @@ void Sync()
    if(full)
       json += ",\"trades\":[" + TradesJson() + "]";
    json += ",\"snapshot\":" + SnapshotJson() + "}";
-
-   if(Post(json) && full)
+   string resp;
+   if(Http("POST", InpUrl, json, "application/json", resp) == 200 && full)
      {
       g_dirty    = false;
       g_lastFull = TimeCurrent();
      }
+  }
+
+//--- Bougies du courtier (D1, H4, H1), heures en UTC, pour l'analyse de Claude.
+void AddCandles(string &body, ENUM_TIMEFRAMES tf, string name, int count, long offset)
+  {
+   MqlRates r[];
+   int n = CopyRates(_Symbol, tf, 1, count, r);
+   for(int i = 0; i < n; i++)
+      body += name + "|" + IntegerToString((long)r[i].time - offset) + "|" + Num(r[i].open, 2) + "|" + Num(r[i].high, 2)
+              + "|" + Num(r[i].low, 2) + "|" + Num(r[i].close, 2) + "\n";
+  }
+
+void SendCandles()
+  {
+   long offset = ServerOffset();
+   string body = "";
+   AddCandles(body, PERIOD_D1, "D1", 120, offset);
+   AddCandles(body, PERIOD_H4, "H4", 300, offset);
+   AddCandles(body, PERIOD_H1, "H1", 500, offset);
+   string resp;
+   if(body != "" && Http("POST", InpUrl + "/candles", body, "text/plain", resp) == 200)
+      g_lastCandles = TimeCurrent();
+  }
+
+//+------------------------------------------------------------------+
+//| Lecture du plan                                                   |
+//+------------------------------------------------------------------+
+void FetchPlan()
+  {
+   string resp;
+   if(Http("GET", InpUrl + "/plan", "", "", resp) != 200)
+      return;
+   string lines[];
+   int n = StringSplit(resp, '\n', lines);
+   if(n < 1)
+      return;
+   string head[];
+   if(StringSplit(lines[0], '|', head) < 3 || head[0] != "V")
+      return;
+   if(head[1] == g_hash)
+      return;                    // rien de nouveau
+
+   // Conserver l'heure du dernier signal par zone d'une version à l'autre.
+   string   oldKeys[];
+   datetime oldSig[];
+   int oz = ArraySize(g_zones);
+   ArrayResize(oldKeys, oz);
+   ArrayResize(oldSig, oz);
+   for(int i = 0; i < oz; i++)
+     {
+      oldKeys[i] = g_zones[i].key;
+      oldSig[i]  = g_zones[i].lastSignal;
+     }
+
+   ArrayResize(g_zones, 0);
+   ArrayResize(g_levels, 0);
+   ArrayResize(g_news, 0);
+   ArrayResize(g_newsName, 0);
+   g_bull = 0; g_bear = 0; g_range = 0;
+   g_inval = 0; g_rlo = 0; g_rhi = 0; g_ref = 0; g_invalidated = false;
+
+   for(int i = 1; i < n; i++)
+     {
+      string f[];
+      int c = StringSplit(lines[i], '|', f);
+      if(c < 2)
+         continue;
+      if(f[0] == "B" && c >= 4)
+        {
+         g_bull = (int)StringToInteger(f[1]);
+         g_bear = (int)StringToInteger(f[2]);
+         g_range = (int)StringToInteger(f[3]);
+        }
+      else if(f[0] == "I" && c >= 6)
+        {
+         g_inval = StringToDouble(f[1]);
+         g_rlo   = StringToDouble(f[2]);
+         g_rhi   = StringToDouble(f[3]);
+         g_ref   = StringToDouble(f[4]);
+         g_invalidated = (f[5] == "1");
+        }
+      else if(f[0] == "Z" && c >= 9)
+        {
+         int k = ArraySize(g_zones);
+         ArrayResize(g_zones, k + 1);
+         g_zones[k].key      = f[1];
+         g_zones[k].type     = f[2];
+         g_zones[k].tf       = f[3];
+         g_zones[k].lo       = StringToDouble(f[4]);
+         g_zones[k].hi       = StringToDouble(f[5]);
+         g_zones[k].buy      = (f[6] != "vente");
+         g_zones[k].strength = (int)StringToInteger(f[7]);
+         g_zones[k].state    = f[8];
+         g_zones[k].lastSignal = 0;
+         for(int j = 0; j < oz; j++)
+            if(oldKeys[j] == f[1])
+               g_zones[k].lastSignal = oldSig[j];
+        }
+      else if(f[0] == "L" && c >= 3)
+        {
+         int k = ArraySize(g_levels);
+         ArrayResize(g_levels, k + 1);
+         g_levels[k].price = StringToDouble(f[1]);
+         g_levels[k].type  = f[2];
+        }
+      else if(f[0] == "N" && c >= 4)
+        {
+         int k = ArraySize(g_news);
+         ArrayResize(g_news, k + 1);
+         ArrayResize(g_newsName, k + 1);
+         g_news[k]     = (datetime)StringToInteger(f[1]);  // UTC
+         g_newsName[k] = f[3];
+        }
+      else if(f[0] == "R" && c >= 13)
+        {
+         g_risk      = StringToDouble(f[1]);
+         g_riskRed   = StringToDouble(f[2]);
+         g_redAt     = StringToDouble(f[3]);
+         g_contract  = StringToDouble(f[4]);
+         g_maxTrades = (int)StringToInteger(f[5]);
+         g_maxLoss   = (int)StringToInteger(f[6]);
+         g_spreadMax = StringToDouble(f[7]);
+         g_stopMin   = StringToDouble(f[8]);
+         g_stopMax   = StringToDouble(f[9]);
+         g_dailyLim  = StringToDouble(f[10]);
+         g_size      = StringToDouble(f[11]);
+         g_floor     = StringToDouble(f[12]);
+        }
+     }
+   g_hash   = head[1];
+   g_week   = head[2];
+   g_planOk = (ArraySize(g_zones) > 0);
+   g_status = g_planOk ? "Plan de Claude reçu (" + IntegerToString(ArraySize(g_zones)) + " zones)." : "Aucun plan publié pour la semaine.";
+   if(InpDrawPlan)
+      DrawPlan();
+  }
+
+//+------------------------------------------------------------------+
+//| Tracé du plan                                                     |
+//+------------------------------------------------------------------+
+void ObjBase(string name)
+  {
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+  }
+
+void Text(string name, datetime t, double price, string txt, color clr, int size)
+  {
+   ObjectCreate(0, name, OBJ_TEXT, 0, t, price);
+   ObjectSetString(0, name, OBJPROP_TEXT, txt);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, size);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
+   ObjBase(name);
+  }
+
+void HLine(string name, double price, color clr, ENUM_LINE_STYLE style, int width, string tip)
+  {
+   ObjectCreate(0, name, OBJ_HLINE, 0, 0, price);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_STYLE, style);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+   ObjectSetInteger(0, name, OBJPROP_BACK, true);
+   ObjectSetString(0, name, OBJPROP_TOOLTIP, tip);
+   ObjBase(name);
+  }
+
+void Rect(string name, datetime t1, double p1, datetime t2, double p2, color clr, string tip)
+  {
+   ObjectCreate(0, name, OBJ_RECTANGLE, 0, t1, p1, t2, p2);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_FILL, true);
+   ObjectSetInteger(0, name, OBJPROP_BACK, true);
+   ObjectSetString(0, name, OBJPROP_TOOLTIP, tip);
+   ObjBase(name);
+  }
+
+void DrawPlan()
+  {
+   ObjectsDeleteAll(0, PFX_PLAN);
+   datetime t1 = iTime(_Symbol, PERIOD_D1, 5);
+   datetime t2 = TimeCurrent() + 5 * 86400;
+   datetime tl = TimeCurrent() + 2 * PeriodSeconds(PERIOD_CURRENT) * 10;
+
+   for(int i = 0; i < ArraySize(g_zones); i++)
+     {
+      CxZone z = g_zones[i];
+      bool broken = (z.state == "cassee");
+      color clr = broken ? C'225,225,225' : (z.buy ? C'200,238,214' : C'248,212,206');
+      string tip = z.type + " " + z.tf + " " + Fr(z.lo, 2) + "–" + Fr(z.hi, 2) + (z.buy ? " (achat)" : " (vente)") + (broken ? " — cassée" : "");
+      Rect(PFX_PLAN + "Z" + IntegerToString(i), t1, z.lo, t2, z.hi, clr, tip);
+      string stars = "";
+      for(int s = 0; s < z.strength; s++)
+         stars += "*";
+      Text(PFX_PLAN + "ZT" + IntegerToString(i), tl, z.hi, z.type + " " + z.tf + " " + stars + (broken ? " (cassée)" : ""),
+           broken ? clrGray : (z.buy ? C'31,122,90' : C'178,58,46'), 8);
+     }
+   for(int i = 0; i < ArraySize(g_levels); i++)
+     {
+      HLine(PFX_PLAN + "L" + IntegerToString(i), g_levels[i].price, clrDimGray, STYLE_DASH, 1, g_levels[i].type + " " + Fr(g_levels[i].price, 2));
+      Text(PFX_PLAN + "LT" + IntegerToString(i), tl, g_levels[i].price, g_levels[i].type + " " + Fr(g_levels[i].price, 2), clrDimGray, 8);
+     }
+   if(g_inval > 0)
+     {
+      HLine(PFX_PLAN + "INV", g_inval, g_invalidated ? clrGray : clrRed, STYLE_DASHDOT, 2, "Invalidation " + Fr(g_inval, 2));
+      Text(PFX_PLAN + "INVT", tl, g_inval, "Invalidation " + Fr(g_inval, 2) + (g_invalidated ? " — TOUCHÉE" : ""), clrRed, 8);
+     }
+   if(g_rlo > 0 && g_rhi > 0)
+     {
+      HLine(PFX_PLAN + "RLO", g_rlo, clrGoldenrod, STYLE_DOT, 1, "Range attendu (bas)");
+      HLine(PFX_PLAN + "RHI", g_rhi, clrGoldenrod, STYLE_DOT, 1, "Range attendu (haut)");
+     }
+   ChartRedraw();
+  }
+
+//--- Bandeau d'état en haut à gauche.
+void Label(string name, int y, string txt, color clr)
+  {
+   if(ObjectFind(0, name) < 0)
+     {
+      ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, name, OBJPROP_XDISTANCE, 10);
+      ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 9);
+      ObjBase(name);
+     }
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetString(0, name, OBJPROP_TEXT, txt);
+  }
+
+void DrawPanel()
+  {
+   string bias = (g_bull > g_bear) ? "Haussier" : (g_bear > g_bull ? "Baissier" : "Neutre");
+   Label(PFX_UI + "1", 20, "Carnet XAU · plan de Claude " + (g_week == "" ? "—" : "semaine du " + g_week) + " · " + bias
+         + " " + IntegerToString(g_bull) + " / " + IntegerToString(g_bear) + " / " + IntegerToString(g_range) + " %", clrGoldenrod);
+   Label(PFX_UI + "2", 36, g_inval > 0 ? "Invalidation " + Fr(g_inval, 2) + (g_invalidated ? " : TOUCHÉE (signaux dans ce sens bloqués)" : " : intacte") : "Pas d'invalidation",
+         g_invalidated ? clrRed : clrDimGray);
+   Label(PFX_UI + "3", 52, "Signaux : " + (InpSignals ? IntegerToString(g_signalCount) + " aujourd'hui (signal seulement, aucun ordre passé)" : "désactivés"), clrDimGray);
+   Label(PFX_UI + "4", 68, g_status, clrDimGray);
+   ChartRedraw();
+  }
+
+//+------------------------------------------------------------------+
+//| Événements vers le carnet                                         |
+//+------------------------------------------------------------------+
+void SendEvent(string json)
+  {
+   if(!InpAlertCarnet)
+      return;
+   string resp;
+   Http("POST", InpUrl + "/event", json, "application/json", resp);
+  }
+
+int Dominant() { return (g_bull > g_bear) ? 1 : (g_bear > g_bull ? -1 : 0); }
+
+//--- Surveillance sur clôture M15 : invalidation et zones.
+void Monitor()
+  {
+   if(!g_planOk)
+      return;
+   double c  = iClose(_Symbol, PERIOD_M15, 1);
+   double hi = iHigh(_Symbol, PERIOD_M15, 1);
+   double lo = iLow(_Symbol, PERIOD_M15, 1);
+   long   now = (long)TimeGMT();
+   bool   changed = false;
+   int    d = Dominant();
+
+   if(!g_invalidated && g_inval > 0 && ((d == 1 && c < g_inval) || (d == -1 && c > g_inval)))
+     {
+      g_invalidated = true;
+      changed = true;
+      Notify("Carnet XAU : invalidation " + Fr(g_inval, 2) + " touchée (clôture M15 " + Fr(c, 2) + ").");
+      SendEvent("{\"type\":\"invalidation\",\"price\":" + Num(c, 2) + ",\"time\":" + IntegerToString(now) + "}");
+     }
+   for(int i = 0; i < ArraySize(g_zones); i++)
+     {
+      if(g_zones[i].state == "cassee")
+         continue;
+      bool broken = g_zones[i].buy ? (c < g_zones[i].lo) : (c > g_zones[i].hi);
+      if(broken)
+        {
+         g_zones[i].state = "cassee";
+         changed = true;
+         SendEvent("{\"type\":\"zone\",\"key\":" + JsonText(g_zones[i].key) + ",\"state\":\"cassee\",\"price\":" + Num(c, 2) + ",\"time\":" + IntegerToString(now) + "}");
+        }
+      else if(g_zones[i].state == "vierge" && lo <= g_zones[i].hi && hi >= g_zones[i].lo)
+        {
+         g_zones[i].state = "testee";
+         SendEvent("{\"type\":\"zone\",\"key\":" + JsonText(g_zones[i].key) + ",\"state\":\"testee\",\"price\":" + Num(c, 2) + ",\"time\":" + IntegerToString(now) + "}");
+        }
+     }
+   if(changed && InpDrawPlan)
+      DrawPlan();
+   if(changed)
+      DrawPanel();
+  }
+
+void Notify(string msg)
+  {
+   if(InpAlertPopup)
+      Alert(msg);
+   if(InpAlertPush)
+      SendNotification(msg);
+  }
+
+//+------------------------------------------------------------------+
+//| Signaux                                                           |
+//+------------------------------------------------------------------+
+bool NewsBlocked(string &why)
+  {
+   datetime now = TimeGMT();
+   for(int i = 0; i < ArraySize(g_news); i++)
+     {
+      long dt = (long)g_news[i] - (long)now;
+      if(dt <= 15 * 60 && dt >= -30 * 60)
+        {
+         why = "annonce " + g_newsName[i];
+         return true;
+        }
+     }
+   return false;
+  }
+
+//--- Prochain objectif opposé au-delà du prix d'entrée (zone, niveau ou range attendu).
+double NextTarget(bool buy, double entry)
+  {
+   double best = 0;
+   for(int i = 0; i < ArraySize(g_zones); i++)
+     {
+      if(g_zones[i].state == "cassee" || g_zones[i].buy == buy)
+         continue;
+      double p = buy ? g_zones[i].lo : g_zones[i].hi;
+      if(buy ? p > entry : p < entry)
+         if(best == 0 || (buy ? p < best : p > best))
+            best = p;
+     }
+   for(int i = 0; i < ArraySize(g_levels); i++)
+     {
+      double p = g_levels[i].price;
+      if(buy ? p > entry : p < entry)
+         if(best == 0 || (buy ? p < best : p > best))
+            best = p;
+     }
+   double r = buy ? g_rhi : g_rlo;
+   if(r > 0 && (buy ? r > entry : r < entry))
+      if(best == 0 || (buy ? r < best : r > best))
+         best = r;
+   return best;
+  }
+
+//--- L'extrême a-t-il balayé un niveau de liquidité (ou le bord de la zone) avant de revenir ?
+bool Swept(bool buy, double extreme, double closeAtExtreme, double zoneEdge)
+  {
+   if(buy ? (extreme < zoneEdge && closeAtExtreme > zoneEdge) : (extreme > zoneEdge && closeAtExtreme < zoneEdge))
+      return true;
+   for(int i = 0; i < ArraySize(g_levels); i++)
+     {
+      double p = g_levels[i].price;
+      if(buy ? (extreme < p && closeAtExtreme > p) : (extreme > p && closeAtExtreme < p))
+         return true;
+     }
+   return false;
+  }
+
+void CheckSignals()
+  {
+   int need = InpTouchBars + InpSwingBars + 2;
+   MqlRates r[];
+   ArraySetAsSeries(r, true);
+   if(CopyRates(_Symbol, PERIOD_M1, 1, need, r) < need)
+      return;                                     // r[0] = dernière bougie M1 clôturée
+   if(TimeCurrent() - g_lastSignal < 600)
+      return;                                     // 10 minutes entre deux signaux
+
+   int d = Dominant();
+   for(int i = 0; i < ArraySize(g_zones); i++)
+     {
+      CxZone z = g_zones[i];
+      if(z.state == "cassee")
+         continue;
+      if(TimeCurrent() - z.lastSignal < InpCooldownMin * 60)
+         continue;
+      bool buy = z.buy;
+      int  dir = buy ? 1 : -1;
+      if(g_invalidated && dir == d)
+         continue;                                // plan invalidé dans ce sens
+
+      // Extrême de la touche : plus bas (achat) ou plus haut (vente) des bougies qui ont touché la zone.
+      int e = -1;
+      for(int k = 1; k <= InpTouchBars; k++)
+        {
+         bool touched = (r[k].low <= z.hi && r[k].high >= z.lo);
+         if(!touched)
+            continue;
+         if(e < 0 || (buy ? r[k].low < r[e].low : r[k].high > r[e].high))
+            e = k;
+        }
+      if(e < 1)
+         continue;
+      double extreme = buy ? r[e].low : r[e].high;
+      // L'extrême peut déborder de la zone en mèche, mais pas clôturer au-delà.
+      if(buy ? r[e].close < z.lo : r[e].close > z.hi)
+         continue;
+
+      // Sommet (achat) ou creux (vente) à casser : avant l'extrême.
+      double swing = buy ? 0 : DBL_MAX;
+      for(int k = e + 1; k <= e + InpSwingBars && k < need; k++)
+         swing = buy ? MathMax(swing, r[k].high) : MathMin(swing, r[k].low);
+      // Cassure fraîche : la dernière bougie clôture au-delà, la précédente non.
+      bool brk = buy ? (r[0].close > swing && r[1].close <= swing) : (r[0].close < swing && r[1].close >= swing);
+      if(!brk)
+         continue;
+
+      bool   sweep = Swept(buy, extreme, r[e].close, buy ? z.lo : z.hi);
+      string setup = sweep ? "1" : "2";
+      if(!sweep && dir != d)
+         continue;                                // setup 2 : seulement avec le biais
+
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double spread = ask - bid;
+      double entry = buy ? ask : bid;
+      double sl    = buy ? extreme - InpSLBuffer - spread : extreme + InpSLBuffer + spread;
+      double stop  = MathAbs(entry - sl);
+      string kind  = "NOW";
+      if(stop > g_stopMax && InpUseLimit)
+        {
+         // Ordre limite : entrée au prix où le stop revient au maximum autorisé.
+         entry = buy ? sl + g_stopMax : sl - g_stopMax;
+         stop  = g_stopMax;
+         kind  = "LIMIT";
+        }
+      string why   = "";
+      if(stop < g_stopMin || stop > g_stopMax)
+         why = "stop " + Fr(stop, 2) + " $ hors de " + Fr(g_stopMin, 2) + "–" + Fr(g_stopMax, 2) + " $";
+      else if(spread > stop * g_spreadMax / 100.0)
+         why = "spread " + Fr(spread, 2) + " $ trop large";
+      else if(NewsBlocked(why))
+         why = why + " (15 min avant / 30 min après)";
+
+      double target = NextTarget(buy, entry);
+      double tp     = target > 0 ? target : (buy ? entry + 3 * stop : entry - 3 * stop);
+      double rr     = stop > 0 ? MathAbs(tp - entry) / stop : 0;
+      if(why == "" && rr < 2.0)
+         why = "moins de 2R de place (" + Fr(rr, 1) + "R)";
+
+      int trades, losses;
+      double pnl = TodayStats(trades, losses);
+      if(why == "" && trades >= g_maxTrades)
+         why = "limite de " + IntegerToString(g_maxTrades) + " trades atteinte";
+      if(why == "" && losses >= g_maxLoss)
+         why = IntegerToString(losses) + " pertes aujourd'hui";
+      if(why == "" && -pnl >= 0.8 * g_dailyLim)
+         why = "proche de la limite de perte journalière";
+
+      g_zones[i].lastSignal = TimeCurrent();
+      if(why != "")
+        {
+         g_status = "Signal " + (buy ? "achat" : "vente") + " ignoré sur " + z.type + " " + z.tf + " : " + why + ".";
+         DrawPanel();
+         continue;
+        }
+
+      // Lot : risque (réduit si le compte est à −seuil), plafonné à la marge − 5 $.
+      double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+      double risk = (balance - g_size <= -g_redAt) ? g_riskRed : g_risk;
+      double margin = balance - g_floor;
+      if(risk > margin - 5)
+         risk = MathMax(0, margin - 5);
+      double lot = MathFloor(risk / (stop * g_contract) * 100.0 + 1e-9) / 100.0;
+      if(lot < 0.01)
+        {
+         g_status = "Signal ignoré : lot inférieur à 0,01.";
+         DrawPanel();
+         continue;
+        }
+      ShowSignal(buy, kind, setup, z, entry, sl, tp, rr, lot, stop, r[0].time);
+      g_lastSignal = TimeCurrent();
+      return;
+     }
+  }
+
+void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, double sl, double tp, double rr, double lot, double stop, datetime t)
+  {
+   g_signalCount++;
+   string id = PFX_SIG + IntegerToString((long)t);
+   datetime t2 = t + 60 * 60;
+   string label = (buy ? "BUY " : "SELL ") + kind;
+   if(kind == "LIMIT")
+     {
+      g_pend.active  = true;
+      g_pend.buy     = buy;
+      g_pend.entry   = entry;
+      g_pend.expires = TimeCurrent() + InpLimitMin * 60;
+      g_pend.id      = id;
+      g_pend.label   = label;
+     }
+
+   ObjectCreate(0, id + "_A", buy ? OBJ_ARROW_BUY : OBJ_ARROW_SELL, 0, t, entry);
+   ObjectSetInteger(0, id + "_A", OBJPROP_WIDTH, 3);
+   ObjBase(id + "_A");
+   // Position dessinée : objectif en vert, stop en rouge (comme l'outil position longue / courte).
+   Rect(id + "_TP", t, entry, t2, tp, C'190,235,205', "Objectif " + Fr(tp, 2));
+   Rect(id + "_SL", t, entry, t2, sl, C'245,200,195', "Stop " + Fr(sl, 2));
+   double p2r = buy ? entry + 2 * stop : entry - 2 * stop;
+   ObjectCreate(0, id + "_2R", OBJ_TREND, 0, t, p2r, t2, p2r);
+   ObjectSetInteger(0, id + "_2R", OBJPROP_STYLE, STYLE_DOT);
+   ObjectSetInteger(0, id + "_2R", OBJPROP_COLOR, clrSeaGreen);
+   ObjectSetInteger(0, id + "_2R", OBJPROP_RAY_RIGHT, false);
+   ObjBase(id + "_2R");
+   Text(id + "_T", t, buy ? tp : sl, label + " · " + Fr(lot, 2) + " lot · SL " + Fr(sl, 2) + " · TP " + Fr(tp, 2) + " (" + Fr(rr, 1) + "R) · setup " + setup,
+        buy ? C'31,122,90' : C'178,58,46', 9);
+   ChartRedraw();
+
+   string msg = "Carnet XAU : " + label + " " + _Symbol + " — " + z.type + " " + z.tf + ", entrée " + Fr(entry, 2) + ", stop " + Fr(sl, 2)
+                + ", objectif " + Fr(tp, 2) + " (" + Fr(rr, 1) + "R), lot " + Fr(lot, 2)
+                + (kind == "LIMIT" ? ", valable " + IntegerToString(InpLimitMin) + " min" : "") + ". Signal seulement : à vous de décider.";
+   Notify(msg);
+   g_status = label + " " + TimeToString(TimeCurrent(), TIME_MINUTES) + " sur " + z.type + " " + z.tf + ".";
+   SendEvent("{\"type\":\"signal\",\"kind\":\"" + (kind == "LIMIT" ? "limit" : "now") + "\",\"side\":\"" + (buy ? "buy" : "sell") + "\",\"setup\":\"" + setup + "\",\"zone\":"
+             + JsonText(z.type + " " + z.tf + " " + Num(z.lo, 2) + "-" + Num(z.hi, 2)) + ",\"entry\":" + Num(entry, 2) + ",\"sl\":" + Num(sl, 2)
+             + ",\"tp\":" + Num(tp, 2) + ",\"lot\":" + Num(lot, 2) + ",\"rr\":" + Num(rr, 2) + ",\"stop\":" + Num(stop, 2)
+             + ",\"time\":" + IntegerToString((long)TimeGMT()) + "}");
+   DrawPanel();
   }
 //+------------------------------------------------------------------+
