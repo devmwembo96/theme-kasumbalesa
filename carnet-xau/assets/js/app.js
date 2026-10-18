@@ -89,7 +89,7 @@ $$(".cx-nav button").forEach(b=>b.addEventListener("click",()=>showTab(b.dataset
 function showTab(t){
   $$(".cx-nav button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
   ["jour","plan","journal","stats","comptes"].forEach(x=>{$("#tab-"+x).hidden=x!==t});
-  if(t==="stats"){renderStats();mcNote();loadReliability()}
+  if(t==="stats"){renderStats();mcNote();loadReliability();loadClaudeSignals()}
   if(t==="comptes"){renderAccounts();loadConnections()}
   const top=ROOT.getBoundingClientRect().top+window.scrollY;
   if(window.scrollY>top)window.scrollTo(0,Math.max(0,top-100));
@@ -576,6 +576,32 @@ async function loadReliability(){
     kv("Zones atteintes qui ont réagi",pc(zr)),kv("Invalidation touchée",pc(rate("invalidation_hit")))),
     table(["Semaine","Verdict","Note","Biais juste"],rv.slice().reverse().map(p=>[new Date(p.week+"T12:00:00").toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"}),{bonne:"Bonne",partielle:"Partielle",mauvaise:"Mauvaise"}[p.review.verdict],p.review.score!=null?p.review.score+" / 10":"—",p.review.bias_ok==null?"—":p.review.bias_ok?"Oui":"Non"])),
     el("p",{class:"hint",style:"margin-top:8px",text:"Sur "+rv.length+" semaine"+(rv.length>1?"s":"")+". Fiable à partir d’une dizaine de semaines."}));
+}
+
+/* ---------- signaux Claude (trades virtuels de l’EA) ---------- */
+const CS_STATUS={attente:"Limite en attente",ouvert:"En cours",gagne:"Gagné",perdu:"Perdu",be:"À zéro",annule:"Annulé"};
+async function loadClaudeSignals(){
+  const box=$("#csignals");let list=[];
+  try{list=await api("claude-signals")}catch(e){box.replaceChildren(el("div",{class:"empty",text:"Lecture impossible : "+errMsg(e)}));return}
+  if(!list.length){box.replaceChildren(el("div",{class:"empty",text:"Aucun signal pour l’instant : ils arriveront quand l’EA tournera sur MT5."}));return}
+  const done=list.filter(s=>["gagne","perdu","be"].includes(s.status));
+  const st=arr=>{const w=arr.filter(s=>s.r>0).length,l=arr.filter(s=>s.r<0).length,sum=arr.reduce((a,s)=>a+(s.r||0),0);
+    return {n:arr.length,w,l,wr:w+l?w/(w+l):null,avg:arr.length?sum/arr.length:null,sum,hit2r:arr.length?arr.filter(s=>s.hit2r).length/arr.length:null}};
+  const a=st(done), pc=v=>v==null?"—":fmt(v*100,0)+" %", rs=v=>v==null?"—":(v>=0?"+":"−")+fmt(Math.abs(v),2)+"R";
+  const cancelled=list.filter(s=>s.status==="annule").length, open=list.filter(s=>s.status==="ouvert"||s.status==="attente").length, taken=list.filter(s=>s.taken).length;
+  const grp=(label,arr)=>{const g=st(arr);return [label,String(g.n),pc(g.wr),rs(g.avg),rs(g.sum)]};
+  const rows=[grp("Setup 1",done.filter(s=>s.setup==="1")),grp("Setup 2",done.filter(s=>s.setup==="2")),grp("BUY / SELL NOW",done.filter(s=>s.kind==="now")),grp("LIMIT",done.filter(s=>s.kind==="limit")),grp("Achat",done.filter(s=>s.side==="buy")),grp("Vente",done.filter(s=>s.side==="sell"))].filter(r=>r[1]!=="0");
+  box.replaceChildren(
+    el("div",{class:"kpis"},kv("Taux de réussite",pc(a.wr),a.w+" gagnés · "+a.l+" perdus"),kv("R moyen",rs(a.avg)),kv("Total",rs(a.sum),done.length+" signaux clôturés"),kv("2R atteint",pc(a.hit2r)),
+      kv("En cours",String(open)),kv("Limites annulées",String(cancelled)),kv("Pris par vous",list.length?fmt(taken/list.length*100,0)+" %":"—",taken+" sur "+list.length)),
+    rows.length?table(["Groupe","Clôturés","Réussite","R moyen","Total"],rows):null,
+    el("h4",{class:"sub",text:"Derniers signaux"}),
+    table(["Date","Signal","Zone","Entrée / stop / objectif","Statut","Résultat","Pris"],list.slice(0,30).map(s=>[
+      new Date(s.at.replace(" ","T")).toLocaleString("fr-FR",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}),
+      el("span",{class:"bias "+(s.side==="sell"?"b":"h"),text:(s.side==="sell"?"SELL ":"BUY ")+(s.kind==="limit"?"LIMIT":"NOW")+(s.setup?" · S"+s.setup:"")}),
+      s.zone,px(s.entry)+" / "+px(s.sl)+" / "+px(s.tp),CS_STATUS[s.status]||s.status,
+      s.r==null?"—":rs(s.r)+(s.hit2r?" (2R)":""),s.taken?"Oui":"Non"])),
+    el("p",{class:"hint",style:"margin-top:8px",text:"Taux de réussite calculé sur les signaux clôturés (gagnés et perdus) ; les limites annulées n’en font pas partie. « Pris » : un trade de votre journal dans le même sens, à 15 minutes près. Fiable à partir d’une trentaine de signaux."}));
 }
 
 /* ---------- simulateur Monte-Carlo ---------- */

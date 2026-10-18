@@ -11,7 +11,7 @@ defined( 'WP_UNINSTALL_PLUGIN' ) || exit;
 
 global $wpdb;
 
-foreach ( array( 'accounts', 'trades', 'plans', 'payouts', 'signals', 'snapshots' ) as $cx_table ) {
+foreach ( array( 'accounts', 'trades', 'plans', 'payouts', 'signals', 'snapshots', 'csignals' ) as $cx_table ) {
 	$wpdb->query( 'DROP TABLE IF EXISTS ' . $wpdb->prefix . 'cx_' . $cx_table ); // phpcs:ignore WordPress.DB.PreparedSQL,WordPress.DB.DirectDatabaseQuery
 }
 

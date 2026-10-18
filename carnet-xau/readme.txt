@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.4.0
+Stable tag: 2.5.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -105,6 +105,19 @@ EA MT5 version 2 : plan dynamique et signaux d’exécution (signal seulement)
   Aucun ordre n’est passé par l’EA.
 * L’EA envoie aussi les bougies du courtier (D1, H4, H1) chaque heure : GET /candles, pour
   que Claude analyse aux prix exacts de FundedNext.
+
+Signaux Claude : trades virtuels et taux de réussite (version 2.5)
+* Chaque signal de l’EA devient un trade virtuel « Signal Claude », suivi par l’EA jusqu’à
+  sa clôture, que vous l’ayez pris ou non : sortie de 50 % à 2R puis stop au prix d’entrée.
+  Stop touché −1R ; objectif après 2R 1 + 0,5 × R de l’objectif ; retour à l’entrée après
+  2R +1R ; limite non déclenchée en 30 min « annulé » (hors taux) ; clôture forcée à 24 h.
+* L’EA garde son suivi dans le fichier CarnetXAU_signaux.csv (redémarrage de MT5 sans perte)
+  et envoie chaque changement (POST /mt5/event, type signal_update) ; Telegram annonce la
+  clôture. Un signal renvoyé n’est jamais compté deux fois (référence unique).
+* Onglet Stats › Signaux Claude (EA MT5) : taux de réussite, R moyen et total, 2R atteint,
+  en cours, limites annulées, part des signaux pris par vous (trade du journal dans le même
+  sens à 15 min près), détail par setup, type et sens, 30 derniers signaux.
+  GET /claude-signals ; inclus dans la sauvegarde JSON.
 
 À venir : calendrier économique automatique, rapport hebdomadaire, tâche planifiée Claude
 qui rédige le plan (après l’EA MT5, pour des niveaux aux prix du courtier).

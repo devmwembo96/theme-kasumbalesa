@@ -97,6 +97,7 @@ class CX_Install {
 		$payouts  = self::table( 'payouts' );
 		$signals  = self::table( 'signals' );
 		$snaps    = self::table( 'snapshots' );
+		$csig     = self::table( 'csignals' );
 
 		dbDelta(
 			"CREATE TABLE $accounts (
@@ -201,6 +202,33 @@ CREATE TABLE $snaps (
   perte_jour decimal(12,2) NOT NULL DEFAULT 0,
   PRIMARY KEY  (id),
   KEY account_horodatage (account_id,horodatage)
+) $c;
+CREATE TABLE $csig (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  account_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  ref varchar(32) NOT NULL DEFAULT '',
+  semaine date DEFAULT NULL,
+  signale_le datetime NOT NULL,
+  sens varchar(5) NOT NULL DEFAULT 'buy',
+  genre varchar(6) NOT NULL DEFAULT 'now',
+  setup varchar(2) NOT NULL DEFAULT '',
+  zone varchar(80) NOT NULL DEFAULT '',
+  entree decimal(12,2) DEFAULT NULL,
+  stop_prix decimal(12,2) DEFAULT NULL,
+  objectif decimal(12,2) DEFAULT NULL,
+  stop_usd decimal(8,2) DEFAULT NULL,
+  lot decimal(8,2) DEFAULT NULL,
+  rr decimal(6,2) DEFAULT NULL,
+  statut varchar(10) NOT NULL DEFAULT 'ouvert',
+  ouvert_le datetime DEFAULT NULL,
+  ferme_le datetime DEFAULT NULL,
+  resultat_r decimal(6,2) DEFAULT NULL,
+  atteint_2r tinyint(1) NOT NULL DEFAULT 0,
+  mfe_r decimal(6,2) DEFAULT NULL,
+  mae_r decimal(6,2) DEFAULT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY account_ref (account_id,ref),
+  KEY signale_le (signale_le)
 ) $c;"
 		);
 	}

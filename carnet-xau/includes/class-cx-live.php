@@ -57,6 +57,15 @@ class CX_Live {
 		}
 		register_rest_route(
 			CX_Rest::NS,
+			'/claude-signals',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( __CLASS__, 'list_signals' ),
+				'permission_callback' => array( 'CX_Rest', 'can' ),
+			)
+		);
+		register_rest_route(
+			CX_Rest::NS,
 			'/candles',
 			array(
 				'methods'             => 'GET',
@@ -205,7 +214,7 @@ class CX_Live {
 			return $acc;
 		}
 		$in   = (array) $req->get_json_params();
-		$type = CX_Repo::pick( $in['type'] ?? '', array( 'signal', 'invalidation', 'zone' ), '' );
+		$type = CX_Repo::pick( $in['type'] ?? '', array( 'signal', 'signal_update', 'invalidation', 'zone' ), '' );
 		$ts   = CX_Repo::num( $in['time'] ?? null, 946684800, 4102444800 );
 		$at   = ( new DateTimeImmutable( '@' . (int) ( $ts ?? time() ) ) )->setTimezone( CX_Repo::tz() );
 		$num  = fn( $k ) => CX_Repo::num( $in[ $k ] ?? null, 0, 1e6 );
@@ -229,6 +238,36 @@ class CX_Live {
 				'stop'  => CX_Repo::num( $in['stop'] ?? null, 0, 1000 ),
 			);
 			$label = ( 'sell' === $side ? 'SELL ' : 'BUY ' ) . ( 'limit' === $kind ? 'LIMIT' : 'NOW' ) . ( $data['setup'] ? ' · setup ' . $data['setup'] : '' );
+			// Trade virtuel « Signal Claude » : suivi jusqu'à sa clôture (signal_update), qu'il soit pris ou non.
+			$ref = preg_replace( '/[^0-9A-Za-z_-]/', '', (string) ( $in['ref'] ?? '' ) );
+			$ref = '' !== $ref ? $ref : (string) $at->getTimestamp();
+			$t   = CX_Install::table( 'csignals' );
+			$dup = (bool) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $t WHERE account_id = %d AND ref = %s", $acc['id'], $ref ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+			if ( $dup ) {
+				// Signal déjà reçu (renvoi de l'EA) : ni doublon, ni second message.
+				return new WP_REST_Response( array( 'ok' => true, 'already' => true ), 200 );
+			}
+			$wpdb->insert(
+				$t,
+				array(
+					'account_id' => (int) $acc['id'],
+					'ref'        => $ref,
+					'semaine'    => self::week(),
+					'signale_le' => $at->format( 'Y-m-d H:i:s' ),
+					'sens'       => $side,
+					'genre'      => $kind,
+					'setup'      => $data['setup'],
+					'zone'       => $data['zone'],
+					'entree'     => $data['entry'],
+					'stop_prix'  => $data['sl'],
+					'objectif'   => $data['tp'],
+					'stop_usd'   => $data['stop'],
+					'lot'        => $data['lot'],
+					'rr'         => $data['rr'],
+					'statut'     => 'limit' === $kind ? 'attente' : 'ouvert',
+					'ouvert_le'  => 'limit' === $kind ? null : $at->format( 'Y-m-d H:i:s' ),
+				)
+			);
 			$wpdb->insert(
 				CX_Install::table( 'signals' ),
 				array(
@@ -259,6 +298,10 @@ class CX_Live {
 				);
 			}
 			return new WP_REST_Response( array( 'ok' => true ), 200 );
+		}
+
+		if ( 'signal_update' === $type ) {
+			return self::signal_update( $acc, $in, $at, $send );
 		}
 
 		// Invalidation et zones : état « live » du plan, lu par l'interface, l'EA et la relecture de Claude.
@@ -302,6 +345,105 @@ class CX_Live {
 			CX_Telegram::send( $msg );
 		}
 		return new WP_REST_Response( array( 'ok' => true ), 200 );
+	}
+
+	/**
+	 * Suivi d'un trade virtuel « Signal Claude » : limite déclenchée ou annulée, clôture.
+	 *
+	 * Corps : {"type":"signal_update","ref":"…","status":"ouvert|annule|gagne|perdu|be",
+	 * "result_r":…,"reached_2r":true,"mfe":…,"mae":…,"time":unix}.
+	 *
+	 * @param array             $acc  Compte.
+	 * @param array             $in   Corps.
+	 * @param DateTimeImmutable $at   Heure de l'événement.
+	 * @param bool              $send Envoyer sur Telegram.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	private static function signal_update( $acc, $in, $at, $send ) {
+		global $wpdb;
+		$t      = CX_Install::table( 'csignals' );
+		$ref    = preg_replace( '/[^0-9A-Za-z_-]/', '', (string) ( $in['ref'] ?? '' ) );
+		$status = CX_Repo::pick( $in['status'] ?? '', array( 'ouvert', 'annule', 'gagne', 'perdu', 'be' ), '' );
+		$row    = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $t WHERE account_id = %d AND ref = %s", $acc['id'], $ref ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+		if ( ! $row || ! $status ) {
+			return CX_Repo::invalid( 'Signal inconnu ou statut invalide.' );
+		}
+		if ( in_array( $row->statut, array( 'annule', 'gagne', 'perdu', 'be' ), true ) ) {
+			return new WP_REST_Response( array( 'ok' => true, 'already' => true ), 200 ); // déjà clôturé
+		}
+		$data = array( 'statut' => $status );
+		if ( 'ouvert' === $status ) {
+			$data['ouvert_le'] = $at->format( 'Y-m-d H:i:s' );
+		} else {
+			$data['ferme_le']   = $at->format( 'Y-m-d H:i:s' );
+			$data['resultat_r'] = 'annule' === $status ? null : CX_Repo::num( $in['result_r'] ?? null, -5, 50 );
+			$data['atteint_2r'] = empty( $in['reached_2r'] ) ? 0 : 1;
+			$data['mfe_r']      = CX_Repo::num( $in['mfe'] ?? null, -50, 50 );
+			$data['mae_r']      = CX_Repo::num( $in['mae'] ?? null, -50, 50 );
+		}
+		$wpdb->update( $t, $data, array( 'id' => (int) $row->id ) );
+		if ( $send && in_array( $status, array( 'gagne', 'perdu', 'be' ), true ) ) {
+			$r = (float) ( $data['resultat_r'] ?? 0 );
+			CX_Telegram::send(
+				sprintf(
+					"%s Signal Claude %s du %s : <b>%s%sR</b>%s",
+					$r > 0 ? '✅' : ( $r < 0 ? '❌' : '➖' ),
+					'sell' === $row->sens ? 'SELL' : 'BUY',
+					substr( $row->signale_le, 11, 5 ),
+					$r > 0 ? '+' : ( $r < 0 ? '−' : '' ),
+					number_format( abs( $r ), 1, ',', '' ),
+					$data['atteint_2r'] ? ' (2R atteint, sortie partielle)' : ''
+				)
+			);
+		}
+		return new WP_REST_Response( array( 'ok' => true ), 200 );
+	}
+
+	/**
+	 * Signaux Claude (trades virtuels), du plus récent au plus ancien, avec les trades du
+	 * journal pris dans les 15 minutes, dans le même sens (« pris par vous »).
+	 *
+	 * @return WP_REST_Response
+	 */
+	public static function list_signals() {
+		global $wpdb;
+		$t      = CX_Install::table( 'csignals' );
+		$rows   = $wpdb->get_results( "SELECT * FROM $t ORDER BY signale_le DESC, id DESC LIMIT 500" ); // phpcs:ignore WordPress.DB.PreparedSQL
+		$trades = CX_Repo::trades();
+		$out    = array();
+		foreach ( $rows as $r ) {
+			$ts    = strtotime( $r->signale_le );
+			$taken = false;
+			foreach ( $trades as $tr ) {
+				if ( (int) $tr['accountId'] === (int) $r->account_id && $tr['time'] && ( 'buy' === $r->sens ? 'achat' : 'vente' ) === $tr['dir']
+					&& abs( strtotime( $tr['date'] . ' ' . $tr['time'] ) - $ts ) <= 15 * 60 ) {
+					$taken = true;
+					break;
+				}
+			}
+			$out[] = array(
+				'id'       => (int) $r->id,
+				'at'       => $r->signale_le,
+				'week'     => $r->semaine,
+				'side'     => $r->sens,
+				'kind'     => $r->genre,
+				'setup'    => $r->setup,
+				'zone'     => $r->zone,
+				'entry'    => null === $r->entree ? null : (float) $r->entree,
+				'sl'       => null === $r->stop_prix ? null : (float) $r->stop_prix,
+				'tp'       => null === $r->objectif ? null : (float) $r->objectif,
+				'stop'     => null === $r->stop_usd ? null : (float) $r->stop_usd,
+				'rr'       => null === $r->rr ? null : (float) $r->rr,
+				'status'   => $r->statut,
+				'closedAt' => $r->ferme_le,
+				'r'        => null === $r->resultat_r ? null : (float) $r->resultat_r,
+				'hit2r'    => (bool) $r->atteint_2r,
+				'mfe'      => null === $r->mfe_r ? null : (float) $r->mfe_r,
+				'mae'      => null === $r->mae_r ? null : (float) $r->mae_r,
+				'taken'    => $taken,
+			);
+		}
+		return new WP_REST_Response( $out, 200 );
 	}
 
 	/**

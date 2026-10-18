@@ -14,6 +14,11 @@
 //| SIGNAL SEULEMENT : l'EA n'ouvre, ne modifie et ne ferme aucune   |
 //| position. Vous décidez et passez l'ordre vous-même.              |
 //|                                                                  |
+//| Chaque signal est suivi comme un trade virtuel « Signal Claude » |
+//| (50 % à 2R puis stop au prix d'entrée) jusqu'à sa clôture ; le   |
+//| résultat en R part au carnet : taux de réussite propre aux       |
+//| signaux, séparé de vos trades.                                   |
+//|                                                                  |
 //| Installation :                                                   |
 //| 1. Renommer ce fichier en CarnetXAU.mq5, le placer dans          |
 //|    Fichier › Ouvrir le dossier des données › MQL5 › Experts,     |
@@ -93,17 +98,28 @@ double   g_stopMin = 1.5, g_stopMax = 4.0, g_dailyLim = 300, g_size = 6000, g_fl
 int      g_maxTrades = 4, g_maxLoss = 3;
 bool     g_planOk = false;
 
-//--- Signal limite en attente (repli vers le prix d'entrée)
-struct CxPending
+//--- Trade virtuel « Signal Claude » : chaque signal est suivi jusqu'à sa clôture, pris ou non,
+//    avec la gestion du carnet (50 % à 2R, puis stop au prix d'entrée). Sauvegardé dans un fichier.
+struct CxTrack
   {
-   bool     active;
+   string   ref;       // identifiant envoyé au carnet
+   string   id;        // préfixe des objets dessinés
+   string   label;
    bool     buy;
    double   entry;
-   datetime expires;
-   string   id;
-   string   label;
+   double   sl;
+   double   tp;
+   double   stop;
+   int      status;    // 0 limite en attente, 1 ouvert, 2 terminé
+   bool     hit2r;
+   double   mfe;       // meilleur mouvement, en R
+   double   mae;       // pire mouvement, en R
+   datetime expires;   // fin de validité de la limite
+   datetime opened;
   };
-CxPending g_pend;
+CxTrack  g_tracks[];
+#define TRACK_FILE "CarnetXAU_signaux.csv"
+#define TRACK_MAX_HOURS 24
 
 //--- État
 bool     g_dirty = true;
@@ -124,6 +140,7 @@ int OnInit()
       return(INIT_PARAMETERS_INCORRECT);
      }
    EventSetTimer((int)MathMax(15, InpSnapshotSec));
+   LoadTracks();
    Sync();
    FetchPlan();
    SendCandles();
@@ -165,35 +182,161 @@ void OnTick()
       g_lastM15 = m15;
       Monitor();                // invalidation et zones sur clôture M15
      }
-   if(g_pend.active)
-      CheckPending();
-   if(InpSignals && g_planOk && !g_pend.active)
+   ProcessTracks();
+   if(InpSignals && g_planOk && !PendingLimit())
       CheckSignals();
   }
 
-//--- Signal limite : prix d'entrée atteint, ou délai écoulé.
-void CheckPending()
+//+------------------------------------------------------------------+
+//| Suivi des signaux (trades virtuels)                               |
+//+------------------------------------------------------------------+
+bool PendingLimit()
   {
-   double hi = iHigh(_Symbol, PERIOD_M1, 1), lo = iLow(_Symbol, PERIOD_M1, 1);
-   if(g_pend.buy ? lo <= g_pend.entry : hi >= g_pend.entry)
+   for(int i = 0; i < ArraySize(g_tracks); i++)
+      if(g_tracks[i].status == 0)
+         return true;
+   return false;
+  }
+
+void SaveTracks()
+  {
+   int h = FileOpen(TRACK_FILE, FILE_WRITE | FILE_CSV | FILE_ANSI, ';');
+   if(h == INVALID_HANDLE)
+      return;
+   for(int i = 0; i < ArraySize(g_tracks); i++)
      {
-      g_pend.active = false;
-      Notify("Carnet XAU : " + g_pend.label + " atteint à " + Fr(g_pend.entry, 2) + " — conditions réunies, à vous de décider.");
-      g_status = g_pend.label + " atteint à " + TimeToString(TimeCurrent(), TIME_MINUTES) + ".";
-      DrawPanel();
+      CxTrack t = g_tracks[i];
+      if(t.status == 2)
+         continue;                               // seuls les signaux en cours sont gardés
+      FileWrite(h, t.ref, t.id, t.label, (int)t.buy, Num(t.entry, 2), Num(t.sl, 2), Num(t.tp, 2), Num(t.stop, 2),
+                t.status, (int)t.hit2r, Num(t.mfe, 2), Num(t.mae, 2), (long)t.expires, (long)t.opened);
      }
-   else if(TimeCurrent() > g_pend.expires)
+   FileClose(h);
+  }
+
+void LoadTracks()
+  {
+   ArrayResize(g_tracks, 0);
+   if(!FileIsExist(TRACK_FILE))
+      return;
+   int h = FileOpen(TRACK_FILE, FILE_READ | FILE_CSV | FILE_ANSI, ';');
+   if(h == INVALID_HANDLE)
+      return;
+   while(!FileIsEnding(h))
      {
-      g_pend.active = false;
-      string names[] = {"_TP", "_SL", "_2R", "_T"};
-      for(int i = 0; i < ArraySize(names); i++)
-         ObjectSetInteger(0, g_pend.id + names[i], OBJPROP_COLOR, C'225,225,225');
-      ObjectSetString(0, g_pend.id + "_T", OBJPROP_TEXT, g_pend.label + " annulé (prix non atteint en " + IntegerToString(InpLimitMin) + " min)");
-      Notify("Carnet XAU : " + g_pend.label + " " + Fr(g_pend.entry, 2) + " annulé, prix non atteint en " + IntegerToString(InpLimitMin) + " min.");
-      g_status = g_pend.label + " annulé (délai écoulé).";
-      ChartRedraw();
-      DrawPanel();
+      string ref = FileReadString(h);
+      if(ref == "")
+         break;
+      int k = ArraySize(g_tracks);
+      ArrayResize(g_tracks, k + 1);
+      g_tracks[k].ref     = ref;
+      g_tracks[k].id      = FileReadString(h);
+      g_tracks[k].label   = FileReadString(h);
+      g_tracks[k].buy     = (StringToInteger(FileReadString(h)) == 1);
+      g_tracks[k].entry   = StringToDouble(FileReadString(h));
+      g_tracks[k].sl      = StringToDouble(FileReadString(h));
+      g_tracks[k].tp      = StringToDouble(FileReadString(h));
+      g_tracks[k].stop    = StringToDouble(FileReadString(h));
+      g_tracks[k].status  = (int)StringToInteger(FileReadString(h));
+      g_tracks[k].hit2r   = (StringToInteger(FileReadString(h)) == 1);
+      g_tracks[k].mfe     = StringToDouble(FileReadString(h));
+      g_tracks[k].mae     = StringToDouble(FileReadString(h));
+      g_tracks[k].expires = (datetime)StringToInteger(FileReadString(h));
+      g_tracks[k].opened  = (datetime)StringToInteger(FileReadString(h));
      }
+   FileClose(h);
+  }
+
+void TrackEvent(int i, string status, string extra)
+  {
+   SendEvent("{\"type\":\"signal_update\",\"ref\":" + JsonText(g_tracks[i].ref) + ",\"status\":\"" + status + "\"" + extra
+             + ",\"time\":" + IntegerToString((long)TimeGMT()) + "}");
+  }
+
+//--- Clôture d'un trade virtuel : résultat en R envoyé au carnet.
+void CloseTrack(int i, double r)
+  {
+   g_tracks[i].status = 2;
+   string st  = (r > 0.05) ? "gagne" : (r < -0.05 ? "perdu" : "be");
+   string res = (r >= 0 ? "+" : "−") + Fr(MathAbs(r), 1) + "R";
+   g_status = "Signal Claude " + g_tracks[i].label + " clôturé : " + res + ".";
+   ObjectSetString(0, g_tracks[i].id + "_T", OBJPROP_TEXT, g_tracks[i].label + " — résultat " + res);
+   TrackEvent(i, st, ",\"result_r\":" + Num(r, 2) + ",\"reached_2r\":" + (g_tracks[i].hit2r ? "true" : "false")
+              + ",\"mfe\":" + Num(g_tracks[i].mfe, 2) + ",\"mae\":" + Num(g_tracks[i].mae, 2));
+   ChartRedraw();
+   DrawPanel();
+  }
+
+//--- À chaque bougie M1 clôturée : limite déclenchée ou annulée, stop, 2R, objectif, retour au prix d'entrée.
+void ProcessTracks()
+  {
+   double hi = iHigh(_Symbol, PERIOD_M1, 1), lo = iLow(_Symbol, PERIOD_M1, 1), cl = iClose(_Symbol, PERIOD_M1, 1);
+   bool changed = false;
+   for(int i = 0; i < ArraySize(g_tracks); i++)
+     {
+      if(g_tracks[i].status == 2)
+         continue;
+      bool   buy = g_tracks[i].buy;
+      double e   = g_tracks[i].entry, st = g_tracks[i].stop;
+      if(g_tracks[i].status == 0)
+        {
+         if(buy ? lo <= e : hi >= e)
+           {
+            g_tracks[i].status = 1;
+            g_tracks[i].opened = TimeCurrent();
+            changed = true;
+            Notify("Carnet XAU : " + g_tracks[i].label + " atteint à " + Fr(e, 2) + " — conditions réunies, à vous de décider.");
+            TrackEvent(i, "ouvert", "");
+           }
+         else if(TimeCurrent() > g_tracks[i].expires)
+           {
+            g_tracks[i].status = 2;
+            changed = true;
+            string names[] = {"_TP", "_SL", "_2R", "_T"};
+            for(int n = 0; n < ArraySize(names); n++)
+               ObjectSetInteger(0, g_tracks[i].id + names[n], OBJPROP_COLOR, C'225,225,225');
+            ObjectSetString(0, g_tracks[i].id + "_T", OBJPROP_TEXT, g_tracks[i].label + " annulé (prix non atteint en " + IntegerToString(InpLimitMin) + " min)");
+            Notify("Carnet XAU : " + g_tracks[i].label + " " + Fr(e, 2) + " annulé, prix non atteint en " + IntegerToString(InpLimitMin) + " min.");
+            TrackEvent(i, "annule", "");
+            g_status = g_tracks[i].label + " annulé (délai écoulé).";
+            ChartRedraw();
+           }
+         continue;
+        }
+      // Position ouverte : mouvements en R depuis l'entrée.
+      double up   = buy ? (hi - e) / st : (e - lo) / st;   // meilleur mouvement de la bougie
+      double down = buy ? (lo - e) / st : (e - hi) / st;   // pire mouvement de la bougie
+      g_tracks[i].mfe = MathMax(g_tracks[i].mfe, up);
+      g_tracks[i].mae = MathMin(g_tracks[i].mae, down);
+      double rrTp = MathAbs(g_tracks[i].tp - e) / st;
+      changed = true;
+      if(!g_tracks[i].hit2r)
+        {
+         if(down <= -1.0)
+            CloseTrack(i, -1.0);                           // stop touché (prudence : vérifié en premier)
+         else if(up >= 2.0)
+           {
+            g_tracks[i].hit2r = true;                      // 50 % sortis à 2R, stop au prix d'entrée
+            if(up >= rrTp)
+               CloseTrack(i, 1.0 + 0.5 * rrTp);
+           }
+        }
+      else
+        {
+         if(up >= rrTp)
+            CloseTrack(i, 1.0 + 0.5 * rrTp);               // objectif atteint
+         else if(down <= 0)
+            CloseTrack(i, 1.0);                            // retour au prix d'entrée : +1R acquis à 2R
+        }
+      // Au-delà de 24 h : clôture virtuelle au dernier cours.
+      if(g_tracks[i].status == 1 && TimeCurrent() - g_tracks[i].opened > TRACK_MAX_HOURS * 3600)
+        {
+         double now = buy ? (cl - e) / st : (e - cl) / st;
+         CloseTrack(i, g_tracks[i].hit2r ? 1.0 + 0.5 * now : now);
+        }
+     }
+   if(changed)
+      SaveTracks();
   }
 
 void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest &request, const MqlTradeResult &result)
@@ -919,15 +1062,24 @@ void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, do
    string id = PFX_SIG + IntegerToString((long)t);
    datetime t2 = t + 60 * 60;
    string label = (buy ? "BUY " : "SELL ") + kind;
-   if(kind == "LIMIT")
-     {
-      g_pend.active  = true;
-      g_pend.buy     = buy;
-      g_pend.entry   = entry;
-      g_pend.expires = TimeCurrent() + InpLimitMin * 60;
-      g_pend.id      = id;
-      g_pend.label   = label;
-     }
+   string ref = IntegerToString((long)t);
+   int k = ArraySize(g_tracks);
+   ArrayResize(g_tracks, k + 1);
+   g_tracks[k].ref     = ref;
+   g_tracks[k].id      = id;
+   g_tracks[k].label   = label;
+   g_tracks[k].buy     = buy;
+   g_tracks[k].entry   = entry;
+   g_tracks[k].sl      = sl;
+   g_tracks[k].tp      = tp;
+   g_tracks[k].stop    = stop;
+   g_tracks[k].status  = (kind == "LIMIT") ? 0 : 1;
+   g_tracks[k].hit2r   = false;
+   g_tracks[k].mfe     = 0;
+   g_tracks[k].mae     = 0;
+   g_tracks[k].expires = TimeCurrent() + InpLimitMin * 60;
+   g_tracks[k].opened  = (kind == "LIMIT") ? 0 : TimeCurrent();
+   SaveTracks();
 
    ObjectCreate(0, id + "_A", buy ? OBJ_ARROW_BUY : OBJ_ARROW_SELL, 0, t, entry);
    ObjectSetInteger(0, id + "_A", OBJPROP_WIDTH, 3);
@@ -950,7 +1102,7 @@ void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, do
                 + (kind == "LIMIT" ? ", valable " + IntegerToString(InpLimitMin) + " min" : "") + ". Signal seulement : à vous de décider.";
    Notify(msg);
    g_status = label + " " + TimeToString(TimeCurrent(), TIME_MINUTES) + " sur " + z.type + " " + z.tf + ".";
-   SendEvent("{\"type\":\"signal\",\"kind\":\"" + (kind == "LIMIT" ? "limit" : "now") + "\",\"side\":\"" + (buy ? "buy" : "sell") + "\",\"setup\":\"" + setup + "\",\"zone\":"
+   SendEvent("{\"type\":\"signal\",\"ref\":" + JsonText(ref) + ",\"kind\":\"" + (kind == "LIMIT" ? "limit" : "now") + "\",\"side\":\"" + (buy ? "buy" : "sell") + "\",\"setup\":\"" + setup + "\",\"zone\":"
              + JsonText(z.type + " " + z.tf + " " + Num(z.lo, 2) + "-" + Num(z.hi, 2)) + ",\"entry\":" + Num(entry, 2) + ",\"sl\":" + Num(sl, 2)
              + ",\"tp\":" + Num(tp, 2) + ",\"lot\":" + Num(lot, 2) + ",\"rr\":" + Num(rr, 2) + ",\"stop\":" + Num(stop, 2)
              + ",\"time\":" + IntegerToString((long)TimeGMT()) + "}");

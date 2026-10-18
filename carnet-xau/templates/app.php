@@ -158,6 +158,7 @@ defined( 'ABSPATH' ) || exit;
 	</div>
 	<div class="kpis" id="kpis"></div>
 	<div class="panel"><h3>Fiabilité des prévisions de Claude</h3><div id="reliability"></div></div>
+	<div class="panel"><h3>Signaux Claude (EA MT5)</h3><p class="hint">Chaque signal est suivi comme un trade virtuel, pris ou non : 50 % à 2R puis stop au prix d’entrée. Résultats séparés de vos trades.</p><div id="csignals"></div></div>
 	<div class="panel" id="mc-panel">
 		<h3>Simulateur de challenge (Monte-Carlo)</h3>
 		<p class="hint">Rejoue des milliers de challenges avec vos résultats et les règles du compte actif : objectif, perte journalière, perte maximale, jours minimum, trades et pertes maximum par jour, risque réduit.</p>

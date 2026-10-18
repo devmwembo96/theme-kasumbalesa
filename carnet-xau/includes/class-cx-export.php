@@ -97,6 +97,7 @@ class CX_Export {
 				'trades'     => CX_Repo::trades(),
 				'plans'      => CX_Repo::plans(),
 				'payouts'    => CX_Repo::payouts(),
+				'claudeSignals' => CX_Live::list_signals()->get_data(),
 			),
 			JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
 		);
