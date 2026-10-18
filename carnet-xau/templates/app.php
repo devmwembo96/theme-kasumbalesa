@@ -162,6 +162,15 @@ defined( 'ABSPATH' ) || exit;
 		<select id="sf-account" class="auto" aria-label="Compte analysé"></select>
 	</div>
 	<div class="kpis" id="kpis"></div>
+	<div class="panel" id="report-panel">
+		<h3>Rapport de la semaine</h3>
+		<div class="weeknav">
+			<button type="button" class="btn ghost sm" id="rp-prev" aria-label="Semaine précédente">‹</button>
+			<strong id="rp-label"></strong>
+			<button type="button" class="btn ghost sm" id="rp-next" aria-label="Semaine suivante">›</button>
+		</div>
+		<div id="report"></div>
+	</div>
 	<div class="panel"><h3>Fiabilité des prévisions de Claude</h3><div id="reliability"></div></div>
 	<div class="panel"><h3>Signaux Claude (EA MT5)</h3><p class="hint">Chaque signal est suivi comme un trade virtuel, pris ou non : 50 % à 2R puis stop au prix d’entrée. Résultats séparés de vos trades.</p><div id="csignals"></div></div>
 	<div class="panel" id="mc-panel">
@@ -272,6 +281,7 @@ defined( 'ABSPATH' ) || exit;
 					<label class="check"><input type="checkbox" data-a="news"><span>Annonce économique dans 15 min (calendrier USD et plan)</span></label>
 					<label class="check"><input type="checkbox" data-a="weekend"><span>Rappel du plan le week-end</span></label>
 					<label class="check"><input type="checkbox" data-a="signals"><span>Signaux et invalidation (EA MT5)</span></label>
+					<label class="check"><input type="checkbox" data-a="report"><span>Rapport de la semaine (samedi 9 h)</span></label>
 				</div>
 				<div class="row"><button type="button" class="btn ghost sm" id="tg-test">Envoyer un message de test</button><button type="button" class="btn ghost sm danger" id="tg-off">Déconnecter</button></div>
 			</div>

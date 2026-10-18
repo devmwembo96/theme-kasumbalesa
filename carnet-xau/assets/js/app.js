@@ -89,7 +89,7 @@ $$(".cx-nav button").forEach(b=>b.addEventListener("click",()=>showTab(b.dataset
 function showTab(t){
   $$(".cx-nav button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
   ["jour","plan","journal","stats","comptes"].forEach(x=>{$("#tab-"+x).hidden=x!==t});
-  if(t==="stats"){renderStats();mcNote();loadReliability();loadClaudeSignals()}
+  if(t==="stats"){renderStats();mcNote();loadReport();loadReliability();loadClaudeSignals()}
   if(t==="comptes"){renderAccounts();loadConnections()}
   const top=ROOT.getBoundingClientRect().top+window.scrollY;
   if(window.scrollY>top)window.scrollTo(0,Math.max(0,top-100));
@@ -575,7 +575,7 @@ function bars(id,groups){
   }));
 }
 function hourBucket(t){const h=parseInt((t.time||"").slice(0,2),10);if(!Number.isFinite(h))return "?";if(h<9)return "asie";if(h<14)return "londres";if(h<18)return "ny";return "soir"}
-$("#sf-account").addEventListener("change",()=>{renderStats();mcNote()});
+$("#sf-account").addEventListener("change",()=>{renderStats();mcNote();loadReport()});
 function renderStats(){
   const acc=$("#sf-account").value, T=TRADES.filter(t=>!acc||String(t.accountId)===acc);
   const a=agg(T);
@@ -601,6 +601,35 @@ function renderStats(){
   bars("#by-filter",[{label:"Sur niveau clé",list:T.filter(t=>t.onLevel)},{label:"Hors niveau",list:T.filter(t=>!t.onLevel)},{label:"Avec le biais",list:T.filter(t=>t.withBias)},{label:"Contre / sans biais",list:T.filter(t=>!t.withBias)}]);
   bars("#by-rules",[{label:"Règles respectées",list:T.filter(t=>t.rules)},{label:"Hors règles",list:T.filter(t=>!t.rules)}]);
   bars("#by-emotion",[...Object.keys(EMO_L).map(k=>({label:EMO_L[k],list:T.filter(t=>t.emotion===k)})),{label:"Non renseignée",list:T.filter(t=>!t.emotion)}]);
+}
+
+/* ---------- rapport de la semaine ---------- */
+let RP_WEEK=mondayOf(new Date());
+const sR=v=>v==null?"—":(v>0?"+":v<0?"−":"")+fmt(Math.abs(v),2)+"R";
+const sPct=v=>v==null?"—":fmt(v*100,0)+" %";
+$("#rp-prev").addEventListener("click",()=>{RP_WEEK.setDate(RP_WEEK.getDate()-7);loadReport()});
+$("#rp-next").addEventListener("click",()=>{RP_WEEK.setDate(RP_WEEK.getDate()+7);loadReport()});
+async function loadReport(){
+  const wid=weekId(RP_WEEK), acc=$("#sf-account").value||(ACTIVE?String(ACTIVE.id):""), box=$("#report");
+  $("#rp-label").textContent=weekLabel(RP_WEEK);
+  $("#rp-next").disabled=RP_WEEK>=mondayOf(new Date());
+  let d;try{d=await api("report?week="+wid+(acc?"&account="+acc:""))}catch(e){box.replaceChildren(el("div",{class:"empty",text:"Lecture impossible : "+errMsg(e)}));return}
+  if(wid!==weekId(RP_WEEK))return;
+  const t=d.totals, p=d.progress, q=d.discipline, co=d.claude&&d.claude.coaching;
+  const k=[[String(t.n),"Trades"],[sPct(t.wr),"Réussite"],[sR(t.sumR),"Total"],[money(t.pnl),"Résultat"]];
+  const out=[el("div",{class:"kpis"},...k.map(([v,l])=>el("div",{class:"kpi"},el("div",{class:"v",text:v}),el("div",{class:"k",text:l}))))];
+  if(t.n)out.push(el("p",{class:"hint",style:"margin:8px 0 0",text:"Règles respectées "+q.rules+"/"+t.n+" · sur niveau clé "+q.onLevel+"/"+t.n+" · avec le biais "+q.withBias+"/"+t.n+" · série de pertes max "+q.streak+(q.overDays.length?" · limites dépassées : "+q.overDays.join(", "):"")}));
+  out.push(el("p",{class:"hint",style:"margin:6px 0 0",text:"Étape : "+money(p.profit)+" sur "+money(p.target)+" (reste "+money(p.left)+", "+(p.source==="mt5"?"solde MT5":"journal")+")."}));
+  const cb=el("div",{class:"coach"});
+  if(co&&(co.summary||(co.actions||[]).length)){
+    cb.append(el("div",{class:"coach-h"},el("b",{text:"Analyse de Claude"}),co.discipline!=null&&co.discipline!==""?el("span",{class:"tag",text:"Discipline "+fmt(co.discipline,1)+"/10"}):null));
+    if(co.summary)cb.append(el("p",{text:co.summary}));
+    [["strengths","Points forts"],["weaknesses","À corriger"],["actions","Pour la semaine prochaine"]].forEach(([key,label])=>{const l=co[key]||[];if(l.length)cb.append(el("div",{class:"coach-l"},el("b",{text:label}),el("ul",null,...l.map(x=>el("li",{text:x})))))});
+  }else cb.append(el("p",{class:"hint",style:"margin:0",text:"Analyse du journal par Claude : publiée avec le bilan de la semaine."}));
+  out.push(cb);
+  const a=el("a",{class:"btn gold",href:d.url,target:"_blank",rel:"noopener",text:"Ouvrir le rapport (PDF)"});
+  out.push(el("div",{class:"row",style:"margin-top:12px"},a));
+  box.replaceChildren(...out);
 }
 
 /* ---------- fiabilité des prévisions de Claude ---------- */

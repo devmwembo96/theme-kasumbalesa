@@ -266,6 +266,13 @@ class CX_Plan {
 				'failed'           => array( 'list', 'text', 8 ),
 				'lesson'           => 'long',
 			),
+			'coaching'     => array(
+				'summary'    => 'long',
+				'discipline' => 'score',
+				'strengths'  => array( 'list', 'text', 6 ),
+				'weaknesses' => array( 'list', 'text', 6 ),
+				'actions'    => array( 'list', 'text', 5 ),
+			),
 			'sources'      => 'long',
 		);
 	}

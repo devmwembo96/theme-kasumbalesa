@@ -4,7 +4,7 @@
  * - alerte à 80 % puis à 100 % de la limite de perte journalière ;
  * - annonce économique du plan dans moins de 15 minutes ;
  * - rappel du plan le week-end (samedi 10 h, dimanche 18 h) s'il n'est pas prêt ;
- * - commandes /jour, /plan, /aide.
+ * - commandes /jour, /plan, /rapport, /aide.
  *
  * Liaison sécurisée : seul le chat qui envoie « /start CODE » (code affiché dans le carnet)
  * reçoit les alertes ; les requêtes du webhook doivent porter l'en-tête secret de Telegram.
@@ -86,6 +86,7 @@ class CX_Telegram {
 				'news'    => true,
 				'weekend' => true,
 				'signals' => true,
+				'report'  => true,
 			),
 			is_array( $c['alerts'] ?? null ) ? $c['alerts'] : array()
 		);
@@ -228,7 +229,7 @@ class CX_Telegram {
 	 */
 	public static function set_alerts( $alerts ) {
 		$c = self::cfg();
-		foreach ( array( 'daily', 'news', 'weekend', 'signals' ) as $k ) {
+		foreach ( array( 'daily', 'news', 'weekend', 'signals', 'report' ) as $k ) {
 			if ( isset( $alerts[ $k ] ) ) {
 				$c['alerts'][ $k ] = (bool) $alerts[ $k ];
 			}
@@ -285,6 +286,9 @@ class CX_Telegram {
 			// Le week-end, le plan utile est celui de la semaine qui commence.
 			$now = new DateTimeImmutable( 'now', CX_Repo::tz() );
 			self::send( self::plan_summary( (int) $now->format( 'N' ) >= 6 ? $now->modify( 'next monday' )->format( 'Y-m-d' ) : self::monday( $now ) ) );
+		} elseif ( '/rapport' === $cmd ) {
+			$a = self::active();
+			self::send( $a ? CX_Report::summary( CX_Report::data( $a, CX_Report::week() ) ) : 'Aucun compte.' );
 		} else {
 			self::send( self::help() );
 		}
@@ -297,7 +301,7 @@ class CX_Telegram {
 	 * @return string
 	 */
 	private static function help() {
-		return "Commandes :\n/jour — trades et résultat du jour\n/plan — plan de la semaine\n/aide — cette aide\n\nAlertes : limite journalière, annonce dans 15 min, rappel du plan le week-end.";
+		return "Commandes :\n/jour — trades et résultat du jour\n/plan — plan de la semaine\n/rapport — rapport de la semaine\n/aide — cette aide\n\nAlertes : limite journalière, annonce dans 15 min, rappel du plan le week-end, rapport le samedi.";
 	}
 
 	/* ------------------------------------------------------------------
@@ -321,7 +325,7 @@ class CX_Telegram {
 	 * @param float $v Montant.
 	 * @return string
 	 */
-	private static function usd( $v ) {
+	public static function usd( $v ) {
 		return ( $v < 0 ? '−' : '' ) . number_format( abs( $v ), 2, ',', ' ' ) . ' $';
 	}
 
@@ -330,7 +334,7 @@ class CX_Telegram {
 	 *
 	 * @return array|null
 	 */
-	private static function active() {
+	public static function active() {
 		foreach ( CX_Repo::accounts() as $a ) {
 			if ( $a['active'] ) {
 				return $a;

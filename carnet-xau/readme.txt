@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.7.0
+Stable tag: 2.8.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -137,7 +137,20 @@ Calendrier branché sur Telegram, l’EA et Claude (version 2.7)
 * Claude : GET /calendar?week={lundi} donne les annonces de la semaine pour rédiger le plan
   (docs/PLAN-CLAUDE.md).
 
-À venir : rapport hebdomadaire, tâche planifiée Claude
+Rapport hebdomadaire (version 2.8)
+* Onglet Stats › Rapport de la semaine : trades, réussite, R, résultat, discipline (règles,
+  niveau clé, biais, série de pertes, limites du jour), avancement de l’étape (solde MT5 ou
+  journal), analyse du journal par Claude ; semaines précédentes avec ‹ ›.
+* Page imprimable /?cx_report={lundi}&account={id} (bouton « Imprimer / Enregistrer en
+  PDF », mise en page A4) : résultats, jour par jour, setups, discipline, émotions, analyse
+  de Claude, plan et verdict, signaux Claude, annonces, liste des trades. noindex, sans cache.
+* Analyse du journal rédigée par Claude : clé « coaching » du plan (résumé, note de
+  discipline, points forts, à corriger, actions), publiée avec le jeton du plan.
+  GET /report?week= donne les chiffres à Claude (docs/PLAN-CLAUDE.md).
+* Telegram : résumé le samedi à partir de 9 h (case « Rapport de la semaine ») avec le lien
+  du rapport ; commande /rapport.
+
+À venir : tâche planifiée Claude
 qui rédige le plan (après l’EA MT5, pour des niveaux aux prix du courtier).
 
 == Désinstallation ==
@@ -161,6 +174,7 @@ includes/class-cx-telegram.php Bot Telegram, alertes, WP-Cron
 includes/class-cx-plan.php     Plan élargi rédigé par Claude : format, publication protégée
 includes/class-cx-live.php     Plan pour l’EA, événements et signaux, bougies du courtier
 includes/class-cx-calendar.php Calendrier économique (ForexFactory)
+includes/class-cx-report.php   Rapport hebdomadaire, page imprimable, envoi du samedi
 assets/mt5/CarnetXAU.mq5.txt   EA MetaTrader 5
 templates/app.php              Balisage des onglets
 assets/                        CSS, JS, service worker, icônes

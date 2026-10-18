@@ -33,6 +33,31 @@ GET https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/candles
   l'alerte Telegram 15 minutes avant.
 - `candles` : bougies D1, H4, H1 du courtier (prix FundedNext), envoyées par l'EA.
 
+## Analyse du journal (clé `coaching`, avec le bilan du vendredi)
+
+Lire d'abord les chiffres de la semaine : `GET /wp-json/carnet-xau/v1/report?week={lundi}`
+(trades, réussite, R, discipline, émotions, avancement de l'étape, signaux Claude). Puis
+publier sur le même lundi, avec le même jeton :
+
+```json
+{
+  "coaching": {
+    "summary": "Bilan en 3 à 5 phrases : ce qui a rapporté, ce qui a coûté, et pourquoi.",
+    "discipline": 7.5,
+    "strengths": ["Stop respecté sur tous les trades"],
+    "weaknesses": ["Deux ventes contre le biais du plan"],
+    "actions": ["Une action concrète et mesurable pour la semaine prochaine"]
+  }
+}
+```
+
+- `discipline` : note sur 10 (règles respectées, limites du jour, trades sur niveau clé et
+  avec le biais, émotions « revanche » ou « pressé »).
+- 6 points forts et 6 points à corriger au plus, 5 actions au plus ; la première action est
+  reprise dans le rapport Telegram du samedi 9 h.
+- Le rapport imprimable (PDF) : `/?cx_report={lundi}` ; aucun message n'est envoyé à la
+  publication de `coaching`.
+
 ## Règles de la relecture quotidienne
 
 Par défaut, le plan est **maintenu**. Mise à jour (`mis_a_jour`) seulement sur un déclencheur précis, cité dans `reason` :
