@@ -616,7 +616,7 @@ async function loadReport(){
   let d;try{d=await api("report?week="+wid+(acc?"&account="+acc:""))}catch(e){box.replaceChildren(el("div",{class:"empty",text:"Lecture impossible : "+errMsg(e)}));return}
   if(wid!==weekId(RP_WEEK))return;
   const t=d.totals, p=d.progress, q=d.discipline, co=d.claude&&d.claude.coaching;
-  const k=[[String(t.n),"Trades"],[sPct(t.wr),"Réussite"],[sR(t.sumR),"Total"],[money(t.pnl),"Résultat"]];
+  const k=[[String(t.n),"Trades"],[sPct(t.wr),"Réussite"],[t.n?sR(t.sumR):"—","Total"],[money(t.pnl),"Résultat"]];
   const out=[el("div",{class:"kpis"},...k.map(([v,l])=>el("div",{class:"kpi"},el("div",{class:"v",text:v}),el("div",{class:"k",text:l}))))];
   if(t.n)out.push(el("p",{class:"hint",style:"margin:8px 0 0",text:"Règles respectées "+q.rules+"/"+t.n+" · sur niveau clé "+q.onLevel+"/"+t.n+" · avec le biais "+q.withBias+"/"+t.n+" · série de pertes max "+q.streak+(q.overDays.length?" · limites dépassées : "+q.overDays.join(", "):"")}));
   out.push(el("p",{class:"hint",style:"margin:6px 0 0",text:"Étape : "+money(p.profit)+" sur "+money(p.target)+" (reste "+money(p.left)+", "+(p.source==="mt5"?"solde MT5":"journal")+")."}));

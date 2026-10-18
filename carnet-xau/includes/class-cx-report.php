@@ -383,7 +383,7 @@ class CX_Report {
 		$o     .= '<p class="sub">' . esc_html( $d['account']['name'] . ' · ' . ( $status[ $d['account']['status'] ] ?? '' ) . ' · ' . self::nf( $d['account']['size'], 0 ) . ' $ · édité le ' . wp_date( 'j F Y à H:i', null, CX_Repo::tz() ) ) . '</p></header>';
 
 		// Résultats.
-		$o .= '<section><h2>Résultats</h2><div class="kpis">' . $kpi( (string) $n, 'Trades' ) . $kpi( self::pct( $t['wr'] ), 'Réussite' ) . $kpi( self::r( $t['sumR'] ), 'Total' ) . $kpi( self::r( $t['avgR'] ), 'R moyen' ) . $kpi( self::nf( $t['pnl'] ) . ' $', 'Résultat' ) . $kpi( null === $t['pf'] ? '∞' : self::nf( $t['pf'] ), 'Facteur de profit' ) . '</div>';
+		$o .= '<section><h2>Résultats</h2><div class="kpis">' . $kpi( (string) $n, 'Trades' ) . $kpi( self::pct( $t['wr'] ), 'Réussite' ) . $kpi( $n ? self::r( $t['sumR'] ) : '—', 'Total' ) . $kpi( self::r( $t['avgR'] ), 'R moyen' ) . $kpi( self::nf( $t['pnl'] ) . ' $', 'Résultat' ) . $kpi( null === $t['pf'] ? '∞' : self::nf( $t['pf'] ), 'Facteur de profit' ) . '</div>';
 		if ( $n ) {
 			$o .= '<p>' . esc_html( sprintf( '%d gagnant(s), %d perdant(s). Meilleur trade %s, pire trade %s.', $t['wins'], $t['losses'], self::r( $t['best'] ), self::r( $t['worst'] ) ) ) . '</p>';
 		}
