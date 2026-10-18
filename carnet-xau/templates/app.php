@@ -197,6 +197,19 @@ defined( 'ABSPATH' ) || exit;
 		<select id="sf-account" class="auto" aria-label="Compte analysé"></select>
 	</div>
 	<div class="kpis" id="kpis"></div>
+	<div class="panel" id="mc-panel">
+		<h3>Simulateur de challenge (Monte-Carlo)</h3>
+		<p class="hint">Rejoue des milliers de challenges avec vos résultats et les règles du compte actif : objectif, perte journalière, perte maximale, jours minimum, trades et pertes maximum par jour, risque réduit.</p>
+		<div class="grid g4">
+			<label class="f">Résultats utilisés<select id="mc-src"><option value="trades">Mes trades</option><option value="hyp">Hypothèse</option></select></label>
+			<label class="f">Réussite (%)<input id="mc-wr" type="number" value="40" min="1" max="99" step="1" inputmode="numeric"></label>
+			<label class="f">Gain moyen d’un trade gagnant (R)<input id="mc-avg" type="number" value="2" min="0.1" step="0.1" inputmode="decimal"></label>
+			<label class="f">Trades par jour<input id="mc-tpd" type="number" value="2" min="1" step="1" inputmode="numeric"></label>
+		</div>
+		<p class="hint" id="mc-note" style="margin-top:10px"></p>
+		<div class="row"><button type="button" class="btn gold" id="mc-run">Lancer la simulation</button></div>
+		<div id="mc-out"></div>
+	</div>
 	<div class="panel"><h3>Courbe des résultats (en R cumulés)</h3><div id="curve"></div></div>
 	<div class="panel"><h3>Par setup</h3><p class="hint">Barre = taux de réussite. Le trait marque 33 %, le seuil de rentabilité à 2R.</p><div class="bars" id="by-setup"></div></div>
 	<div class="panel"><h3>Par niveau ou déclencheur</h3><div class="bars" id="by-level"></div></div>

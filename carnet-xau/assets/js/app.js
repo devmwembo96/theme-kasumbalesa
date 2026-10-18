@@ -23,6 +23,8 @@ const errMsg=e=>(e&&e.message)||"erreur";
 /* ---------- semaines ---------- */
 function mondayOf(d){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());const w=(x.getDay()+6)%7;x.setDate(x.getDate()-w);return x}
 function weekId(mon){return dateStr(mon)}
+// Semaine à préparer : la semaine en cours, ou la suivante le samedi et le dimanche.
+function planWeek(){const d=new Date(),m=mondayOf(d);if(d.getDay()===6||d.getDay()===0)m.setDate(m.getDate()+7);return m}
 function weekLabel(mon){const e=new Date(mon);e.setDate(e.getDate()+4);const o={day:"numeric",month:"short"};return "Semaine du "+mon.toLocaleDateString("fr-FR",o)+" au "+e.toLocaleDateString("fr-FR",o)}
 
 /* ---------- API REST ---------- */
@@ -77,7 +79,7 @@ const ls={
 const STATUS_L={phase1:"Phase 1",phase2:"Phase 2",finance:"Compte financé",echoue:"Échoué",retire:"Retiré"};
 const EMO_L={calme:"Calme",presse:"Pressé",revanche:"Revanche",fatigue:"Fatigue"};
 let ACCOUNTS=[], ACTIVE=null, S={}, TRADES=[], PAYOUTS=[], SNAPS={};
-let PLAN_WEEK=mondayOf(new Date()), CUR_PLAN=null, THIS_WEEK_PLAN=null, EDIT_ID=null, CAPTURE=null, CALC={lot:NaN,stop:NaN};
+let PLAN_WEEK=planWeek(), CUR_PLAN=null, THIS_WEEK_PLAN=null, EDIT_ID=null, CAPTURE=null, CALC={lot:NaN,stop:NaN};
 let PAY_EDIT=null, ACC_EDIT=null;
 const day={balance:"",days:"",stop:"",spread:""};
 const accName=id=>{const a=ACCOUNTS.find(x=>x.id===id);return a?a.name:"—"};
@@ -87,7 +89,7 @@ $$(".cx-nav button").forEach(b=>b.addEventListener("click",()=>showTab(b.dataset
 function showTab(t){
   $$(".cx-nav button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
   ["jour","plan","journal","stats","comptes"].forEach(x=>{$("#tab-"+x).hidden=x!==t});
-  if(t==="stats")renderStats();
+  if(t==="stats"){renderStats();mcNote()}
   if(t==="comptes"){renderAccounts();loadConnections()}
   const top=ROOT.getBoundingClientRect().top+window.scrollY;
   if(window.scrollY>top)window.scrollTo(0,Math.max(0,top-100));
@@ -252,7 +254,7 @@ function renderPlanMini(){
   const p=THIS_WEEK_PLAN, box=$("#planmini");box.replaceChildren();
   box.append(el("h3",{text:"Plan de la semaine"}));
   if(!p){box.append(el("p",{class:"hint",text:"Aucun plan pour cette semaine. Préparez-le le week-end dans l’onglet Plan."}));
-    const b=el("button",{type:"button",class:"btn ghost sm",text:"Préparer le plan"});b.addEventListener("click",()=>{PLAN_WEEK=mondayOf(new Date());loadPlan();showTab("plan")});box.append(b);return}
+    const b=el("button",{type:"button",class:"btn ghost sm",text:"Préparer le plan"});b.addEventListener("click",()=>{PLAN_WEEK=planWeek();loadPlan();showTab("plan")});box.append(b);return}
   const bl={h:"Haussier",b:"Baissier",n:"Neutre / range"}[p.bias]||"Non défini";
   box.append(el("div",null,"Biais : ",el("span",{class:"bias "+(p.bias||"n"),text:bl})));
   const lv=(p.levels||[]).filter(x=>x.price);
@@ -294,7 +296,7 @@ $("#add-cal").addEventListener("click",()=>$("#p-cal").append(rowCal()));
 $("#add-sc").addEventListener("click",()=>$("#p-sc").append(rowSc()));
 $("#wk-prev").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()-7);loadPlan()});
 $("#wk-next").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()+7);loadPlan()});
-$("#wk-today").addEventListener("click",()=>{PLAN_WEEK=mondayOf(new Date());loadPlan()});
+$("#wk-today").addEventListener("click",()=>{PLAN_WEEK=planWeek();loadPlan()});
 async function loadPlan(){
   $("#wk-label").textContent=weekLabel(PLAN_WEEK);
   const wid=weekId(PLAN_WEEK);
@@ -316,7 +318,7 @@ $("#btn-plan").addEventListener("click",async()=>{
     levels:readRows("#p-levels").filter(x=>x.price),cal:readRows("#p-cal").filter(x=>x.event||x.time),sc:readRows("#p-sc").filter(x=>x.text.trim()),review:$("#p-review").value};
   const wid=weekId(PLAN_WEEK);
   const btn=$("#btn-plan");btn.disabled=true;
-  try{const saved=await api("plans/"+wid,{method:"PUT",body:v});toast("Plan enregistré");if(wid===weekId(mondayOf(new Date()))){THIS_WEEK_PLAN=saved;renderPlanMini()}}
+  try{const saved=await api("plans/"+wid,{method:"PUT",body:v});toast("Plan enregistré");if(wid===weekId(planWeek())){THIS_WEEK_PLAN=saved;renderPlanMini()}}
   catch(e){toast("Enregistrement impossible : "+errMsg(e))}
   btn.disabled=false;
 });
@@ -428,7 +430,7 @@ function bars(id,groups){
   }));
 }
 function hourBucket(t){const h=parseInt((t.time||"").slice(0,2),10);if(!Number.isFinite(h))return "?";if(h<9)return "asie";if(h<14)return "londres";if(h<18)return "ny";return "soir"}
-$("#sf-account").addEventListener("change",renderStats);
+$("#sf-account").addEventListener("change",()=>{renderStats();mcNote()});
 function renderStats(){
   const acc=$("#sf-account").value, T=TRADES.filter(t=>!acc||String(t.accountId)===acc);
   const a=agg(T);
@@ -455,6 +457,80 @@ function renderStats(){
   bars("#by-rules",[{label:"Règles respectées",list:T.filter(t=>t.rules)},{label:"Hors règles",list:T.filter(t=>!t.rules)}]);
   bars("#by-emotion",[...Object.keys(EMO_L).map(k=>({label:EMO_L[k],list:T.filter(t=>t.emotion===k)})),{label:"Non renseignée",list:T.filter(t=>!t.emotion)}]);
 }
+
+/* ---------- simulateur Monte-Carlo ---------- */
+const MC_RUNS=2000, MC_HORIZON=60;
+function mcSample(){
+  const acc=$("#sf-account").value, rs=TRADES.filter(t=>!acc||String(t.accountId)===acc).map(t=>num(t.r)).filter(Number.isFinite);
+  return rs;
+}
+function mcNote(){
+  const rs=mcSample(), src=$("#mc-src");
+  if(rs.length<10&&src.value==="trades")src.value="hyp";
+  src.querySelector("option[value=trades]").textContent="Mes trades ("+rs.length+")";
+  src.querySelector("option[value=trades]").disabled=rs.length<10;
+  const hyp=src.value==="hyp";
+  $("#mc-wr").disabled=!hyp;$("#mc-avg").disabled=!hyp;
+  let n;
+  if(hyp)n=rs.length<10?"Le journal compte "+rs.length+" trade"+(rs.length>1?"s":"")+" : il en faut au moins 10 pour simuler à partir de vos vrais résultats. En attendant, hypothèse : chaque trade perd 1R ou gagne le gain moyen indiqué.":"Hypothèse : chaque trade perd 1R ou gagne le gain moyen indiqué.";
+  else{const g=agg(rs.map(r=>({r})));n="Tirage au hasard parmi vos "+rs.length+" trades (réussite "+fmt(g.wr*100,0)+" %, R moyen "+(g.avg>=0?"+":"−")+fmt(Math.abs(g.avg),2)+")."+(rs.length<30?" Moins de 30 trades : résultat encore peu fiable.":"")}
+  $("#mc-note").textContent=n;
+}
+$("#mc-src").addEventListener("change",mcNote);
+// Un challenge (une phase) simulé jour par jour avec les règles du compte.
+function mcPhase(o,pct,risk,draw){
+  const size=o.size, target=size*pct/100, floor=size*(1-o.max/100), dailyLim=size*o.daily/100;
+  let bal=size, days=0;
+  for(let d=1;d<=MC_HORIZON;d++){
+    const remaining=target-(bal-size);
+    if(remaining<=0){if(days>=o.mindays)return {ok:true,days};days++;continue} // micro-trades jusqu’au jour minimum
+    const dayTarget=remaining/Math.max(1,o.mindays-days);
+    let pnl=0,losses=0;
+    for(let t=0;t<o.tpd;t++){
+      let rk=bal-size<=-o.redat?o.riskred:risk;const margin=bal-floor;if(rk>margin-5)rk=Math.max(0,margin-5);
+      if(rk<=0)return {ok:false,days};
+      const r=draw(),p=r*rk;bal+=p;pnl+=p;
+      if(bal<=floor||-pnl>=dailyLim)return {ok:false,days:days+1};
+      if(r<0&&++losses>=o.maxloss)break;
+      if(pnl>=dayTarget)break;
+    }
+    days++;
+  }
+  return {ok:null,days};
+}
+function median(a){if(!a.length)return NaN;const s=a.slice().sort((x,y)=>x-y);return s[Math.floor(s.length/2)]}
+$("#mc-run").addEventListener("click",()=>{
+  if(!ACTIVE)return;
+  const hyp=$("#mc-src").value==="hyp", rs=mcSample();
+  const wr=num($("#mc-wr").value)/100, avg=num($("#mc-avg").value), tpd=Math.max(1,Math.round(num($("#mc-tpd").value)||1));
+  if(hyp&&!(wr>0&&wr<1&&avg>0)){toast("Indiquez une réussite entre 1 et 99 % et un gain moyen positif.");return}
+  const draw=hyp?()=>Math.random()<wr?avg:-1:()=>rs[Math.floor(Math.random()*rs.length)];
+  const o=Object.assign({},S,{tpd:Math.min(tpd,S.maxtrades)});
+  const funded=S.phase==="f", risks=[...new Set([25,35,50,75,100,S.risk])].sort((a,b)=>a-b);
+  const rows=risks.map(risk=>{
+    let p1=0,both=0,lost=0;const d1=[];
+    for(let i=0;i<MC_RUNS;i++){
+      const a=mcPhase(o,funded?S.tf:(S.phase==="2"?S.t2:S.t1),risk,draw);
+      if(a.ok){p1++;d1.push(a.days);
+        if(S.phase==="1"&&mcPhase(o,S.t2,risk,draw).ok)both++;
+      }else if(a.ok===false)lost++;
+    }
+    return {risk,p1:p1/MC_RUNS,both:both/MC_RUNS,lost:lost/MC_RUNS,days:median(d1)};
+  });
+  const pc=v=>fmt(v*100,0)+" %";
+  const cur=rows.find(r=>r.risk===S.risk);
+  const phaseL=funded?"le cycle financé":S.phase==="2"?"la phase 2":"la phase 1";
+  const sum=el("div",{class:"mc-sum"});
+  sum.append("Avec votre risque actuel (",el("b",{text:money(S.risk)}),") : ",el("b",{text:pc(cur.p1)})," de réussir "+phaseL+", "+pc(cur.lost)+" de perdre le compte pendant "+phaseL+(S.phase==="1"?", "+pc(cur.both)+" de réussir les deux phases":"")+"."+(Number.isFinite(cur.days)?" Réussite en "+cur.days+" jours de trading en général.":""));
+  const head=el("tr",null,el("th",{text:"Risque par trade"}),el("th",{text:"Réussite "+(funded?"du cycle":S.phase==="2"?"phase 2":"phase 1")}));
+  if(S.phase==="1")head.append(el("th",{text:"Deux phases"}));
+  head.append(el("th",{text:funded?"Compte perdu":S.phase==="2"?"Perdu en phase 2":"Perdu en phase 1"}),el("th",{text:"Jours (médiane)"}));
+  const body=rows.map(r=>{const tr=el("tr",{class:r.risk===S.risk?"cur":""},el("td",{text:money(r.risk)+(r.risk===S.risk?" (actuel)":"")}),el("td",{class:"ok",text:pc(r.p1)}));
+    if(S.phase==="1")tr.append(el("td",{class:"ok",text:pc(r.both)}));
+    tr.append(el("td",{class:"ko",text:pc(r.lost)}),el("td",{text:Number.isFinite(r.days)?String(r.days):"—"}));return tr});
+  $("#mc-out").replaceChildren(sum,el("div",{class:"scroll-x"},el("table",{class:"mc-table"},el("thead",null,head),el("tbody",null,...body))),
+    el("p",{class:"hint",style:"margin-top:10px",text:MC_RUNS+" challenges simulés par niveau de risque, sur "+MC_HORIZON+" jours de trading au plus (au-delà : non conclu). Réussite + perte + non conclus = 100 % pour l’étape en cours ; « Deux phases » enchaîne la phase 2 après une phase 1 réussie. Résultat indicatif : il suppose que vos trades futurs ressemblent à ceux utilisés."}));
+});
 
 /* ---------- comptes et retraits ---------- */
 function renderAccounts(){
@@ -652,7 +728,7 @@ async function start(){
     ACCOUNTS=b.accounts||[];TRADES=b.trades||[];PAYOUTS=b.payouts||[];SNAPS=b.snaps||{};
   }catch(e){toast("Chargement impossible : "+errMsg(e));setStatus("err","Hors ligne")}
   setActive();fillAccountSelects();resetTradeForm();resetPayoutForm();
-  try{THIS_WEEK_PLAN=await api("plans/"+weekId(mondayOf(new Date())))}catch(e){THIS_WEEK_PLAN=null}
+  try{THIS_WEEK_PLAN=await api("plans/"+weekId(planWeek()))}catch(e){THIS_WEEK_PLAN=null}
   renderPlanMini();loadPlan();renderTrades();calc();
   if("serviceWorker" in navigator&&CFG.sw&&window.isSecureContext){navigator.serviceWorker.register(CFG.sw,{scope:CFG.scope||"/"}).catch(()=>{})}
 }

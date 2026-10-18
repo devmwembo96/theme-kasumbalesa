@@ -281,7 +281,9 @@ class CX_Telegram {
 		if ( '/jour' === $cmd ) {
 			self::send( self::day_summary() );
 		} elseif ( '/plan' === $cmd ) {
-			self::send( self::plan_summary( self::monday() ) );
+			// Le week-end, le plan utile est celui de la semaine qui commence.
+			$now = new DateTimeImmutable( 'now', CX_Repo::tz() );
+			self::send( self::plan_summary( (int) $now->format( 'N' ) >= 6 ? $now->modify( 'next monday' )->format( 'Y-m-d' ) : self::monday( $now ) ) );
 		} else {
 			self::send( self::help() );
 		}

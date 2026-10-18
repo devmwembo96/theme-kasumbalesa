@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.0.3
+Stable tag: 2.1.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -59,6 +59,24 @@ stockées pour MT5 et TradingView), 60 à 120 requêtes par minute et par IP, bl
 après 10 jetons invalides, refus journalisés (Comptes › Connexions).
 
 Ménage automatique : instantanés de plus de 30 jours, signaux de plus de 90 jours.
+
+== Version 3 ==
+
+Simulateur de challenge (onglet Stats)
+* Monte-Carlo dans le navigateur : 2 000 challenges par niveau de risque (25, 35, 50, 75,
+  100 $ et le risque actuel), 60 jours de trading au plus, avec les règles du compte actif
+  (objectif, perte journalière et maximale, jours minimum, trades et pertes max par jour,
+  risque réduit, risque plafonné à la marge − 5 $, arrêt à l’objectif du jour).
+* Résultats tirés au hasard parmi les trades du journal (10 au minimum, fiable à partir
+  de 30), ou hypothèse : taux de réussite et gain moyen en R, perte de 1R.
+* Affiche la réussite de l’étape, la perte du compte pendant l’étape, la réussite des deux
+  phases et le nombre de jours médian.
+
+Plan : le samedi et le dimanche, « Cette semaine », le résumé de l’onglet Jour et la
+commande Telegram /plan portent sur la semaine qui commence.
+
+À venir : calendrier économique automatique, rapport hebdomadaire, plan rédigé par une
+tâche planifiée Claude (après l’EA MT5, pour des niveaux aux prix du courtier).
 
 == Désinstallation ==
 
