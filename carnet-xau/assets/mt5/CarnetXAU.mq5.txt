@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2                                        |
+//| CarnetXAU.mq5 — version 2.5                                      |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1, H4, H1).     |
@@ -50,7 +50,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.00"
+#property version   "2.50"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 input string InpUrl         = "https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
@@ -1078,7 +1078,7 @@ void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, do
    g_tracks[k].mfe     = 0;
    g_tracks[k].mae     = 0;
    g_tracks[k].expires = TimeCurrent() + InpLimitMin * 60;
-   g_tracks[k].opened  = (kind == "LIMIT") ? 0 : TimeCurrent();
+   g_tracks[k].opened  = (kind == "LIMIT") ? (datetime)0 : TimeCurrent();
    SaveTracks();
 
    ObjectCreate(0, id + "_A", buy ? OBJ_ARROW_BUY : OBJ_ARROW_SELL, 0, t, entry);
