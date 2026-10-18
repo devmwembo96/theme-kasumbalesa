@@ -405,7 +405,15 @@ class CX_Rest {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public static function mt5_key_revoke( WP_REST_Request $req ) {
-		return CX_Repo::set_mt5_key( (int) $req['id'], null ) ? self::out( array( 'revoked' => true ) ) : self::not_found();
+		global $wpdb;
+		$id = (int) $req['id'];
+		if ( ! CX_Repo::account( $id ) || ! CX_Repo::set_mt5_key( $id, null ) ) {
+			return self::not_found();
+		}
+		// Les soldes reçus par cette liaison ne valent plus pour le compte (ex. EA posé sur un autre compte MT5).
+		// Les trades importés restent dans le journal.
+		$wpdb->delete( CX_Install::table( 'snapshots' ), array( 'account_id' => $id ) );
+		return self::out( array( 'revoked' => true ) );
 	}
 
 	/**

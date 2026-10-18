@@ -880,8 +880,8 @@ async function mt5Key(a){
   catch(e){toast("Impossible : "+errMsg(e))}
 }
 async function mt5Revoke(a){
-  if(!confirm("Couper la liaison MT5 de « "+a.name+" » ?"))return;
-  try{await api("accounts/"+a.id+"/mt5-key",{method:"DELETE"});a.mt5=false;renderAccounts();toast("Liaison MT5 coupée")}catch(e){toast("Impossible : "+errMsg(e))}
+  if(!confirm("Couper la liaison MT5 de « "+a.name+" » ? La clé cesse de fonctionner et les soldes reçus de MT5 pour ce compte sont effacés (les trades restent dans le journal)."))return;
+  try{await api("accounts/"+a.id+"/mt5-key",{method:"DELETE"});a.mt5=false;delete SNAPS[a.id];renderAccounts();refreshAll();toast("Liaison MT5 coupée")}catch(e){toast("Impossible : "+errMsg(e))}
 }
 let CONN=null;
 async function loadConnections(){

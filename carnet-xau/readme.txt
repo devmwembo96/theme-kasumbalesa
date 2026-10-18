@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.8.0
+Stable tag: 2.8.1
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -35,6 +35,8 @@ MT5
   aucun ordre. Envoie POST /wp-json/carnet-xau/v1/mt5 avec l’en-tête X-CX-Key :
   positions fermées (sorties partielles additionnées, stop = SL de l’ordre d’entrée,
   heures en UTC) et, chaque minute, solde, équité et perte du jour.
+* « Couper la liaison MT5 » invalide la clé et efface les soldes reçus pour ce compte (les
+  trades importés restent). Pour un compte de démo, créer un compte à part dans le carnet.
 * Les trades importés arrivent « MT5 · à compléter » (setup, niveau, règles…) et ne sont
   jamais importés deux fois (ticket). Le solde du matin est déduit du dernier instantané.
 * MT5 : Outils › Options › Expert Advisors › autoriser WebRequest pour l’adresse du site.
