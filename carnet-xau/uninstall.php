@@ -22,6 +22,7 @@ if ( $cx_page ) {
 
 delete_option( 'cx_page_id' );
 delete_option( 'cx_db_version' );
+delete_option( 'cx_version' );
 delete_option( 'cx_settings' );
 delete_option( 'cx_refusals' );
 delete_option( 'cx_once' );

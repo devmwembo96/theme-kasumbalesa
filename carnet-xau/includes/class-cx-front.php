@@ -23,6 +23,7 @@ class CX_Front {
 		add_shortcode( 'carnet_xau', array( __CLASS__, 'shortcode' ) );
 		add_action( 'init', array( __CLASS__, 'serve_pwa' ), 1 );
 		add_action( 'template_redirect', array( __CLASS__, 'guard' ) );
+		add_action( 'init', array( __CLASS__, 'maybe_purge' ), 30 );
 		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue' ) );
 		add_action( 'wp_head', array( __CLASS__, 'head' ), 2 );
 		add_filter( 'wp_robots', array( __CLASS__, 'robots' ) );
@@ -72,6 +73,14 @@ class CX_Front {
 		if ( ! self::is_app_page() ) {
 			return;
 		}
+		// Jamais de copie en cache : constante lue par WP Super Cache, W3TC, LiteSpeed… et appel
+		// propre à WP Fastest Cache (installé sur le site), qui ignore la constante.
+		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+			define( 'DONOTCACHEPAGE', true );
+		}
+		if ( function_exists( 'wpfc_exclude_current_page' ) ) {
+			wpfc_exclude_current_page();
+		}
 		if ( ! self::can_use() ) {
 			global $wp_query;
 			$wp_query->set_404();
@@ -80,6 +89,39 @@ class CX_Front {
 			return;
 		}
 		nocache_headers();
+	}
+
+	/**
+	 * Après chaque mise à jour du plugin : vide la copie en cache de la page du carnet.
+	 */
+	public static function maybe_purge() {
+		if ( get_option( 'cx_version' ) === CX_VERSION ) {
+			return;
+		}
+		update_option( 'cx_version', CX_VERSION, false );
+		self::purge_cache();
+	}
+
+	/**
+	 * Vide le cache de la page du carnet dans les extensions de cache courantes.
+	 */
+	public static function purge_cache() {
+		$id = self::page_id();
+		if ( ! $id ) {
+			return;
+		}
+		clean_post_cache( $id );
+		do_action( 'wpfc_clear_post_cache_by_id', false, $id ); // WP Fastest Cache.
+		do_action( 'litespeed_purge_post', $id ); // LiteSpeed Cache.
+		if ( function_exists( 'wp_cache_post_change' ) ) {
+			wp_cache_post_change( $id ); // WP Super Cache.
+		}
+		if ( function_exists( 'w3tc_flush_post' ) ) {
+			w3tc_flush_post( $id ); // W3 Total Cache.
+		}
+		if ( function_exists( 'rocket_clean_post' ) ) {
+			rocket_clean_post( $id ); // WP Rocket.
+		}
 	}
 
 	/**
