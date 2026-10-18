@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.6.0
+Stable tag: 2.7.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -128,7 +128,16 @@ Calendrier économique automatique (version 2.6)
   « pas de trade » de 15 min avant à 30 min après une annonce à fort impact ; prochaine
   annonce si la journée est vide ; reste de la semaine. GET /calendar.
 
-À venir : alertes Telegram et EA branchés sur ce calendrier, rapport hebdomadaire, tâche planifiée Claude
+Calendrier branché sur Telegram, l’EA et Claude (version 2.7)
+* Telegram : alerte 15 min avant chaque annonce du calendrier (fort et moyen impact) et
+  de celles du plan de Claude absentes du calendrier ; annonces publiées à la même minute
+  groupées en un message, prévision et précédent ; /jour liste les annonces du jour.
+* EA : les annonces à fort impact du calendrier s’ajoutent à celles du plan (lignes N de
+  GET /mt5/plan) ; pas de signal de 15 min avant à 30 min après. Aucune mise à jour de l’EA.
+* Claude : GET /calendar?week={lundi} donne les annonces de la semaine pour rédiger le plan
+  (docs/PLAN-CLAUDE.md).
+
+À venir : rapport hebdomadaire, tâche planifiée Claude
 qui rédige le plan (après l’EA MT5, pour des niveaux aux prix du courtier).
 
 == Désinstallation ==

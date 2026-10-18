@@ -187,23 +187,116 @@ class CX_Calendar {
 	}
 
 	/**
-	 * GET /calendar : aujourd'hui et les 7 jours suivants.
+	 * Annonces de la semaine écrites par Claude dans son plan, à l'heure exacte (Unix).
 	 *
+	 * @param string $week Lundi (Y-m-d).
+	 * @return array Liste de {t, impact, name, fp}.
+	 */
+	public static function plan_events( $week ) {
+		$p = CX_Repo::plan( $week );
+		if ( ! $p ) {
+			return array();
+		}
+		$c      = is_array( $p['content'] ) ? $p['content'] : array();
+		$monday = new DateTimeImmutable( $week . ' 00:00', CX_Repo::tz() );
+		$out    = array();
+		foreach ( (array) ( $c['calendar'] ?? $p['cal'] ?? array() ) as $e ) {
+			$i = array_search( $e['day'] ?? '', CX_Plan::DAYS, true );
+			if ( false === $i || empty( $e['time'] ) ) {
+				continue;
+			}
+			$out[] = array(
+				't'      => $monday->modify( '+' . $i . ' days ' . $e['time'] )->getTimestamp(),
+				'impact' => 'medium' === ( $e['impact'] ?? '' ) ? 'medium' : 'high',
+				'name'   => (string) ( $e['event'] ?? '' ),
+				'fp'     => '',
+			);
+		}
+		return $out;
+	}
+
+	/**
+	 * Annonces entre deux instants : calendrier automatique, complété par celles du plan de
+	 * Claude qui n'y sont pas (aucune annonce du calendrier à 10 minutes près).
+	 *
+	 * @param int  $from      Début (Unix).
+	 * @param int  $to        Fin (Unix).
+	 * @param bool $high_only Calendrier automatique : fort impact seulement (le plan de Claude
+	 *                        compte toujours en entier).
+	 * @return array Liste triée de {t, time, impact, name, fp}.
+	 */
+	public static function merged( $from, $to, $high_only = false ) {
+		$out = array();
+		foreach ( self::between( $from, $to ) as $e ) {
+			if ( $high_only && 'high' !== $e['impact'] ) {
+				continue;
+			}
+			$out[] = array(
+				't'      => $e['t'],
+				'impact' => $e['impact'],
+				'name'   => $e['fr'] ? $e['fr'] : $e['title'],
+				'fp'     => implode( ' · ', array_filter( array( $e['forecast'] ? 'prévu ' . $e['forecast'] : '', $e['previous'] ? 'précédent ' . $e['previous'] : '' ) ) ),
+			);
+		}
+		$tz    = CX_Repo::tz();
+		$weeks = array_unique( array( CX_Telegram::monday( ( new DateTimeImmutable( '@' . $from ) )->setTimezone( $tz ) ), CX_Telegram::monday( ( new DateTimeImmutable( '@' . max( $from, $to - 1 ) ) )->setTimezone( $tz ) ) ) );
+		$auto  = $out;
+		foreach ( $weeks as $week ) {
+			foreach ( self::plan_events( $week ) as $e ) {
+				if ( $e['t'] < $from || $e['t'] >= $to ) {
+					continue;
+				}
+				foreach ( $auto as $a ) {
+					if ( abs( $a['t'] - $e['t'] ) <= 10 * MINUTE_IN_SECONDS ) {
+						continue 2;
+					}
+				}
+				$out[] = $e;
+			}
+		}
+		usort( $out, fn( $a, $b ) => $a['t'] <=> $b['t'] );
+		foreach ( $out as &$e ) {
+			$e['time'] = ( new DateTimeImmutable( '@' . $e['t'] ) )->setTimezone( $tz )->format( 'H:i' );
+		}
+		unset( $e );
+		return $out;
+	}
+
+	/**
+	 * Annonces d'une journée (heure de Lubumbashi).
+	 *
+	 * @param DateTimeImmutable $day Jour.
+	 * @return array
+	 */
+	public static function day( DateTimeImmutable $day ) {
+		$d0 = $day->setTimezone( CX_Repo::tz() )->setTime( 0, 0 );
+		return self::merged( $d0->getTimestamp(), $d0->modify( '+1 day' )->getTimestamp() );
+	}
+
+	/**
+	 * GET /calendar : aujourd'hui et les 7 jours suivants, ou ?week=lundi pour une semaine
+	 * entière (rédaction du plan par Claude).
+	 *
+	 * @param WP_REST_Request $req Requête.
 	 * @return WP_REST_Response
 	 */
-	public static function rest() {
+	public static function rest( WP_REST_Request $req ) {
 		if ( ! self::data()['tried'] ) {
 			self::refresh( true );
 		}
 		$d     = self::data();
 		$today = new DateTimeImmutable( 'today', CX_Repo::tz() );
+		$week  = CX_Repo::date( $req->get_param( 'week' ) );
+		$from  = $week ? new DateTimeImmutable( CX_Telegram::monday( new DateTimeImmutable( $week, CX_Repo::tz() ) ), CX_Repo::tz() ) : $today;
+		$days  = $week ? 7 : 8;
 		return new WP_REST_Response(
 			array(
 				'fetched' => $d['fetched'],
 				'error'   => $d['error'],
 				'now'     => time(),
 				'today'   => $today->format( 'Y-m-d' ),
-				'events'  => self::between( $today->getTimestamp(), $today->modify( '+8 days' )->getTimestamp() ),
+				'from'    => $from->format( 'Y-m-d' ),
+				'events'  => self::between( $from->getTimestamp(), $from->modify( '+' . $days . ' days' )->getTimestamp() ),
 			),
 			200
 		);

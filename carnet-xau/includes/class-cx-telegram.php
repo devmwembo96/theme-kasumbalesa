@@ -364,6 +364,8 @@ class CX_Telegram {
 		if ( $snap ) {
 			$lines[] = sprintf( 'MT5 (%s) : solde %s, équité %s', substr( $snap['at'], 11, 5 ), self::usd( $snap['balance'] ), self::usd( $snap['equity'] ) );
 		}
+		$news    = CX_Calendar::day( new DateTimeImmutable( 'now', CX_Repo::tz() ) );
+		$lines[] = $news ? 'Annonces USD : ' . implode( ' · ', array_map( fn( $e ) => $e['time'] . ' ' . esc_html( $e['name'] ) . ( 'high' === $e['impact'] ? ' 🔴' : ' 🟠' ), $news ) ) : 'Aucune annonce USD importante aujourd’hui.';
 		return implode( "\n", $lines );
 	}
 
@@ -628,28 +630,32 @@ class CX_Telegram {
 	}
 
 	/**
-	 * Annonces du plan qui tombent dans les 15 prochaines minutes.
+	 * Annonces qui tombent dans les 15 prochaines minutes : calendrier automatique (USD, fort
+	 * et moyen impact) et annonces du plan de Claude absentes du calendrier.
 	 *
-	 * @param DateTimeImmutable|null $now Instant (par défaut maintenant, fuseau du site).
+	 * @param DateTimeImmutable|null $now Instant (par défaut maintenant).
 	 */
 	public static function news( $now = null ) {
-		$tz   = CX_Repo::tz();
-		$now  = $now ?? new DateTimeImmutable( 'now', $tz );
-		$days = array( 1 => 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche' );
-		$p    = CX_Repo::plan( self::monday( $now ) );
-		if ( ! $p ) {
-			return;
+		$tz  = CX_Repo::tz();
+		$now = $now ?? new DateTimeImmutable( 'now', $tz );
+		$due = array();
+		foreach ( CX_Calendar::day( $now ) as $e ) {
+			$delta = $e['t'] - $now->getTimestamp();
+			if ( $delta > 0 && $delta <= 15 * MINUTE_IN_SECONDS && CX_Guard::once( 'news|' . $e['t'] . '|' . $e['name'] ) ) {
+				$due[ $e['t'] ][] = $e;
+			}
 		}
-		$today = $days[ (int) $now->format( 'N' ) ];
-		foreach ( $p['cal'] as $e ) {
-			if ( $e['day'] !== $today || '' === $e['time'] ) {
-				continue;
+		// Un message par heure d'annonce (plusieurs chiffres publiés à la même minute).
+		foreach ( $due as $t => $group ) {
+			$high  = (bool) array_filter( $group, fn( $e ) => 'high' === $e['impact'] );
+			$from  = ( new DateTimeImmutable( '@' . ( $t - 15 * MINUTE_IN_SECONDS ) ) )->setTimezone( $tz )->format( 'H:i' );
+			$to    = ( new DateTimeImmutable( '@' . ( $t + 30 * MINUTE_IN_SECONDS ) ) )->setTimezone( $tz )->format( 'H:i' );
+			$lines = array( sprintf( '📅 <b>Annonce à %s</b> (dans %d min)', $group[0]['time'], max( 1, (int) round( ( $t - $now->getTimestamp() ) / 60 ) ) ) );
+			foreach ( $group as $e ) {
+				$lines[] = ( 'high' === $e['impact'] ? '🔴 ' : '🟠 ' ) . '<b>' . esc_html( $e['name'] ? $e['name'] : 'Annonce' ) . '</b>' . ( $e['fp'] ? ' — ' . esc_html( $e['fp'] ) : '' );
 			}
-			$at    = new DateTimeImmutable( $now->format( 'Y-m-d' ) . ' ' . $e['time'], $tz );
-			$delta = $at->getTimestamp() - $now->getTimestamp();
-			if ( $delta > 0 && $delta <= 15 * MINUTE_IN_SECONDS && CX_Guard::once( 'news|' . $now->format( 'Y-m-d' ) . '|' . $e['time'] . '|' . $e['event'] ) ) {
-				self::send( sprintf( "📅 <b>%s à %s</b> (dans %d min)\nPas de trade 15 min avant, 30 min après.", esc_html( $e['event'] ? $e['event'] : 'Annonce' ), $e['time'], max( 1, (int) round( $delta / 60 ) ) ) );
-			}
+			$lines[] = $high ? 'Fort impact : pas de trade de ' . $from . ' à ' . $to . '.' : 'Impact moyen : prudence de ' . $from . ' à ' . $to . '.';
+			self::send( implode( "\n", $lines ) );
 		}
 	}
 

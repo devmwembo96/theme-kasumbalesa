@@ -16,6 +16,23 @@ Corps    JSON ci-dessous
 - **Relecture quotidienne** (lundi à vendredi, 17 h heure de New York, clôture de la bougie journalière) : envoyer `update` (voir plus bas). Si le plan est maintenu, n'envoyer que `update`. S'il est mis à jour, envoyer aussi les clés modifiées (`prediction`, `zones`, `levels`, `scenarios`, `days`…) : la version du dimanche est conservée et reste consultable. Le résumé part sur Telegram **le lendemain à 7 h** (Lubumbashi).
 - **Verdict** : à la relecture du vendredi (ou avec le plan suivant), envoyer `review` sur le lundi de la semaine jugée. Il part sur Telegram le lendemain matin à 7 h.
 
+## Sources à lire avant d'écrire
+
+```
+GET https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/calendar?week={lundi}
+GET https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/candles
+```
+
+- `calendar?week=` : annonces USD à fort et moyen impact de la semaine (ForexFactory, relu
+  toutes les 6 h) : `t` (Unix), `date` et `time` (heure de Lubumbashi), `impact`, `title`,
+  `fr` (nom français), `forecast`, `previous`. Reprendre ces annonces dans `calendar` (heures
+  de Lubumbashi) avec leur incidence probable sur l'or dans `fund_notes`. Le carnet, Telegram
+  et l'EA lisent déjà ce calendrier : `calendar` sert à ajouter ce qui n'y figure pas
+  (discours, annonce surprise) et à commenter. Une annonce de `calendar` sans équivalent à
+  10 minutes près dans le calendrier automatique bloque les signaux de l'EA et déclenche
+  l'alerte Telegram 15 minutes avant.
+- `candles` : bougies D1, H4, H1 du courtier (prix FundedNext), envoyées par l'EA.
+
 ## Règles de la relecture quotidienne
 
 Par défaut, le plan est **maintenu**. Mise à jour (`mis_a_jour`) seulement sur un déclencheur précis, cité dans `reason` :

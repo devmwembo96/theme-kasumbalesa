@@ -269,7 +269,7 @@ defined( 'ABSPATH' ) || exit;
 				<p id="tg-state"></p>
 				<div class="row" id="tg-alerts">
 					<label class="check"><input type="checkbox" data-a="daily"><span>Limite journalière</span></label>
-					<label class="check"><input type="checkbox" data-a="news"><span>Annonce dans 15 min</span></label>
+					<label class="check"><input type="checkbox" data-a="news"><span>Annonce économique dans 15 min (calendrier USD et plan)</span></label>
 					<label class="check"><input type="checkbox" data-a="weekend"><span>Rappel du plan le week-end</span></label>
 					<label class="check"><input type="checkbox" data-a="signals"><span>Signaux et invalidation (EA MT5)</span></label>
 				</div>

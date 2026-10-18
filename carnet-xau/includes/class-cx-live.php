@@ -165,15 +165,11 @@ class CX_Live {
 				$out[] = 'L|' . self::n( $l['price'] ) . '|' . self::t( $l['type'] );
 			}
 		}
-		// Annonces : heure exacte (UTC) calculée ici, l'EA n'a pas à lire de date.
+		// Annonces : heure exacte (UTC) calculée ici, l'EA n'a pas à lire de date. Celles du plan
+		// de Claude et les annonces USD à fort impact du calendrier automatique.
 		$monday = new DateTimeImmutable( $week . ' 00:00', CX_Repo::tz() );
-		foreach ( (array) ( $c['calendar'] ?? $p['cal'] ?? array() ) as $e ) {
-			$i = array_search( $e['day'] ?? '', CX_Plan::DAYS, true );
-			if ( false === $i || empty( $e['time'] ) ) {
-				continue;
-			}
-			$at    = $monday->modify( '+' . $i . ' days ' . $e['time'] );
-			$out[] = 'N|' . $at->getTimestamp() . '|' . ( $e['impact'] ?? 'high' ) . '|' . self::t( $e['event'] ?? '' );
+		foreach ( CX_Calendar::merged( $monday->getTimestamp(), $monday->modify( '+7 days' )->getTimestamp(), true ) as $e ) {
+			$out[] = 'N|' . $e['t'] . '|' . $e['impact'] . '|' . self::t( $e['name'] );
 		}
 		$pa    = $acc['params'];
 		$out[] = 'R|' . self::n( $pa['risk'] ) . '|' . self::n( $pa['riskred'] ) . '|' . self::n( $pa['redat'] ) . '|' . self::n( $pa['contract'] ) . '|' . (int) $pa['maxtrades'] . '|' . (int) $pa['maxloss'] . '|' . self::n( $pa['spreadmax'] ) . '|1.5|4|' . self::n( $acc['size'] * $pa['daily'] / 100 ) . '|' . self::n( $acc['size'] ) . '|' . self::n( $acc['size'] * ( 1 - $pa['max'] / 100 ) );
