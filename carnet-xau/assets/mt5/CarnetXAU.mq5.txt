@@ -618,11 +618,12 @@ void Sync()
      }
   }
 
-//--- Bougies du courtier (D1, H4, H1), heures en UTC, pour l'analyse de Claude.
+//--- Bougies du courtier (D1, H4, H1), heures en UTC, pour l'analyse de Claude. La dernière est
+//    incluse : bougie en cours en semaine, bougie complète du vendredi le week-end.
 void AddCandles(string &body, ENUM_TIMEFRAMES tf, string name, int count, long offset)
   {
    MqlRates r[];
-   int n = CopyRates(_Symbol, tf, 1, count, r);
+   int n = CopyRates(_Symbol, tf, 0, count, r);
    for(int i = 0; i < n; i++)
       body += name + "|" + IntegerToString((long)r[i].time - offset) + "|" + Num(r[i].open, 2) + "|" + Num(r[i].high, 2)
               + "|" + Num(r[i].low, 2) + "|" + Num(r[i].close, 2) + "\n";
