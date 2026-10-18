@@ -146,8 +146,14 @@ class CX_Front {
 			return;
 		}
 		wp_enqueue_style( 'cx-fonts', 'https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Instrument+Sans:wght@400;500;600;700&display=swap', array(), null ); // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion
-		wp_enqueue_style( 'cx-app', CX_URL . 'assets/css/app.css', array(), CX_VERSION );
-		wp_enqueue_script( 'cx-app', CX_URL . 'assets/js/app.js', array(), CX_VERSION, array( 'in_footer' => true ) );
+		// CSS et JS insérés dans la page (jamais en cache) : le cache du serveur LWS sert d'anciennes
+		// copies compressées des fichiers statiques, même quand le paramètre ?ver change.
+		wp_register_style( 'cx-app', false, array(), CX_VERSION );
+		wp_enqueue_style( 'cx-app' );
+		wp_add_inline_style( 'cx-app', (string) file_get_contents( CX_DIR . 'assets/css/app.css' ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		wp_register_script( 'cx-app', false, array(), CX_VERSION, array( 'in_footer' => true ) );
+		wp_enqueue_script( 'cx-app' );
+		wp_add_inline_script( 'cx-app', (string) file_get_contents( CX_DIR . 'assets/js/app.js' ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 
 		$page = get_permalink( get_queried_object_id() );
 		wp_add_inline_script(
@@ -160,7 +166,13 @@ class CX_Front {
 					'sw'      => add_query_arg( 'cx_pwa', 'sw', home_url( '/' ) ),
 					'scope'   => wp_parse_url( $page, PHP_URL_PATH ),
 					'version' => CX_VERSION,
-					'ea'      => CX_URL . 'assets/mt5/CarnetXAU.mq5.txt',
+					'ea'      => add_query_arg(
+						array(
+							'cx_pwa' => 'ea',
+							'v'      => CX_VERSION,
+						),
+						home_url( '/' )
+					),
 				)
 			) . ';',
 			'before'
@@ -263,7 +275,7 @@ class CX_Front {
 	 */
 	public static function serve_pwa() {
 		$what = isset( $_GET['cx_pwa'] ) ? sanitize_key( wp_unslash( $_GET['cx_pwa'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
-		if ( ! in_array( $what, array( 'manifest', 'sw' ), true ) ) {
+		if ( ! in_array( $what, array( 'manifest', 'sw', 'ea' ), true ) ) {
 			return;
 		}
 		if ( ! self::can_use() ) {
@@ -274,6 +286,15 @@ class CX_Front {
 		$page = get_permalink( self::page_id() );
 		if ( ! $page ) {
 			status_header( 404 );
+			exit;
+		}
+
+		// EA MetaTrader 5, servi par PHP pour échapper au cache des fichiers statiques.
+		if ( 'ea' === $what ) {
+			nocache_headers();
+			header( 'Content-Type: text/plain; charset=utf-8' );
+			header( 'Content-Disposition: attachment; filename="CarnetXAU.mq5"' );
+			readfile( CX_DIR . 'assets/mt5/CarnetXAU.mq5.txt' ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 			exit;
 		}
 
@@ -324,8 +345,6 @@ class CX_Front {
 				wp_json_encode( CX_VERSION ),
 				wp_json_encode(
 					array(
-						CX_URL . 'assets/css/app.css?ver=' . CX_VERSION,
-						CX_URL . 'assets/js/app.js?ver=' . CX_VERSION,
 						CX_URL . 'assets/icons/icon-192.png',
 					),
 					JSON_UNESCAPED_SLASHES

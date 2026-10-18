@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.0.2
+Stable tag: 2.0.3
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -23,12 +23,15 @@ journal des alertes TradingView, alertes Telegram.
 * Pour la réserver plus tard, une ligne suffit (mu-plugin ou functions.php) :
   add_filter( 'cx_can_use', fn() => current_user_can( 'manage_carnet_xau' ) );
 * Captures : pièces jointes privées au nom de fichier aléatoire.
+* Pas de cache : la page appelle wpfc_exclude_current_page() (WP Fastest Cache) et définit
+  DONOTCACHEPAGE ; son CSS et son JS sont insérés dans la page, car le cache du serveur LWS
+  sert d’anciennes copies des fichiers statiques. Chaque mise à jour vide la copie en cache.
 
 == Version 2 : connexions (onglet Comptes › Connexions) ==
 
 MT5
 * Bouton « Clé MT5 » sur la carte du compte : une clé secrète par compte (affichée une fois).
-* EA : assets/mt5/CarnetXAU.mq5.txt (lien dans l’onglet Comptes). Lecture seule, n’ouvre
+* EA : assets/mt5/CarnetXAU.mq5.txt, téléchargeable depuis l’onglet Comptes (/?cx_pwa=ea). Lecture seule, n’ouvre
   aucun ordre. Envoie POST /wp-json/carnet-xau/v1/mt5 avec l’en-tête X-CX-Key :
   positions fermées (sorties partielles additionnées, stop = SL de l’ordre d’entrée,
   heures en UTC) et, chaque minute, solde, équité et perte du jour.
