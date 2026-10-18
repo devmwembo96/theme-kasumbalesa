@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.6.1                                    |
+//| CarnetXAU.mq5 — version 2.6.2                                    |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1, H4, H1).     |
@@ -55,7 +55,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.61"
+#property version   "2.62"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 input string InpUrl         = "https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
@@ -273,9 +273,9 @@ void CloseTrack(int i, double r, string when, datetime t)
   {
    g_tracks[i].status = 2;
    string st  = (r > 0.05) ? "gagne" : (r < -0.05 ? "perdu" : "be");
-   string res = (r >= 0 ? "+" : "−") + Fr(MathAbs(r), 1) + "R";
+   string res = (r >= 0 ? "+" : "-") + Fr(MathAbs(r), 1) + "R";
    g_status = "Signal Claude " + g_tracks[i].label + " clôturé : " + res + when + ".";
-   ObjectSetString(0, g_tracks[i].id + "_T", OBJPROP_TEXT, g_tracks[i].label + " — résultat " + res);
+   ObjectSetString(0, g_tracks[i].id + "_T", OBJPROP_TEXT, g_tracks[i].label + " : résultat " + res);
    TrackEvent(i, st, ",\"result_r\":" + Num(r, 2) + ",\"reached_2r\":" + (g_tracks[i].hit2r ? "true" : "false")
               + ",\"mfe\":" + Num(g_tracks[i].mfe, 2) + ",\"mae\":" + Num(g_tracks[i].mae, 2), t);
    ChartRedraw();
@@ -802,7 +802,8 @@ void DrawPlan()
    ObjectsDeleteAll(0, PFX_PLAN);
    datetime t1 = iTime(_Symbol, PERIOD_D1, 5);
    datetime t2 = TimeCurrent() + 5 * 86400;
-   datetime tl = TimeCurrent() + 2 * PeriodSeconds(PERIOD_CURRENT) * 10;
+   datetime tz = TimeCurrent() + 3 * PeriodSeconds(PERIOD_CURRENT);    // colonne des zones, juste à droite du prix
+   datetime tl = TimeCurrent() + 40 * PeriodSeconds(PERIOD_CURRENT);   // colonne des niveaux, plus à droite
 
    for(int i = 0; i < ArraySize(g_zones); i++)
      {
@@ -814,7 +815,7 @@ void DrawPlan()
       string stars = "";
       for(int s = 0; s < z.strength; s++)
          stars += "*";
-      Text(PFX_PLAN + "ZT" + IntegerToString(i), tl, z.hi, z.type + " " + z.tf + " " + stars + (broken ? " (cassée)" : ""),
+      Text(PFX_PLAN + "ZT" + IntegerToString(i), tz, z.hi, " " + z.type + " " + z.tf + " " + stars + " " + Fr(z.lo, 1) + "-" + Fr(z.hi, 1) + (broken ? " (cassée)" : ""),
            broken ? clrGray : (z.buy ? C'31,122,90' : C'178,58,46'), 8);
      }
    for(int i = 0; i < ArraySize(g_levels); i++)
@@ -853,6 +854,21 @@ void Label(string name, int y, string txt, color clr)
 
 void DrawPanel()
   {
+   string bg = PFX_UI + "BG";
+   if(ObjectFind(0, bg) < 0)
+     {
+      ObjectCreate(0, bg, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, bg, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, bg, OBJPROP_XDISTANCE, 4);
+      ObjectSetInteger(0, bg, OBJPROP_YDISTANCE, 16);
+      ObjectSetInteger(0, bg, OBJPROP_XSIZE, 460);
+      ObjectSetInteger(0, bg, OBJPROP_YSIZE, 120);
+      ObjectSetInteger(0, bg, OBJPROP_BGCOLOR, (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND));
+      ObjectSetInteger(0, bg, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+      ObjectSetInteger(0, bg, OBJPROP_COLOR, clrSilver);
+      ObjectSetInteger(0, bg, OBJPROP_BACK, false);
+      ObjBase(bg);
+     }
    string bias = "neutre";
    if(g_bull > g_bear)
       bias = "haussier";
@@ -896,13 +912,13 @@ string NearestZones()
       if(g_zones[i].hi < px && (dn < 0 || g_zones[i].hi > g_zones[dn].hi))
          dn = i;
       if(g_zones[i].lo <= px && g_zones[i].hi >= px)
-         return "Prix DANS la zone " + (g_zones[i].buy ? "d'achat " : "de vente ") + Fr(g_zones[i].lo, 1) + "–" + Fr(g_zones[i].hi, 1);
+         return "Prix DANS la zone " + (g_zones[i].buy ? "d'achat " : "de vente ") + Fr(g_zones[i].lo, 1) + "-" + Fr(g_zones[i].hi, 1);
      }
    string s = "Zones :";
    if(up >= 0)
-      s += " ↑ " + (g_zones[up].buy ? "achat " : "vente ") + Fr(g_zones[up].lo, 1) + " (+" + Fr(g_zones[up].lo - px, 1) + ")";
+      s += " haut " + (g_zones[up].buy ? "achat " : "vente ") + Fr(g_zones[up].lo, 1) + " (+" + Fr(g_zones[up].lo - px, 1) + ")";
    if(dn >= 0)
-      s += " ↓ " + (g_zones[dn].buy ? "achat " : "vente ") + Fr(g_zones[dn].hi, 1) + " (−" + Fr(px - g_zones[dn].hi, 1) + ")";
+      s += " · bas " + (g_zones[dn].buy ? "achat " : "vente ") + Fr(g_zones[dn].hi, 1) + " (-" + Fr(px - g_zones[dn].hi, 1) + ")";
    return s;
   }
 
@@ -1119,7 +1135,7 @@ void CheckSignals()
         }
       string why   = "";
       if(stop < g_stopMin || stop > g_stopMax)
-         why = "stop " + Fr(stop, 2) + " $ hors de " + Fr(g_stopMin, 2) + "–" + Fr(g_stopMax, 2) + " $";
+         why = "stop " + Fr(stop, 2) + " $ hors de " + Fr(g_stopMin, 2) + "-" + Fr(g_stopMax, 2) + " $";
       else if(spread > stop * g_spreadMax / 100.0)
          why = "spread " + Fr(spread, 2) + " $ trop large";
       else if(NewsBlocked(why))
