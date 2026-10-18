@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.5                                      |
+//| CarnetXAU.mq5 — version 2.6                                      |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1, H4, H1).     |
@@ -18,6 +18,11 @@
 //| (50 % à 2R puis stop au prix d'entrée) jusqu'à sa clôture ; le   |
 //| résultat en R part au carnet : taux de réussite propre aux       |
 //| signaux, séparé de vos trades.                                   |
+//|                                                                  |
+//| PC éteint : au redémarrage, l'EA relit les bougies manquées      |
+//| (7 jours au plus) pour clôturer les signaux en cours et mettre   |
+//| à jour zones et invalidation, et renvoie 30 jours de trades.     |
+//| Aucun signal n'est émis pour la période où MT5 était fermé.      |
 //|                                                                  |
 //| Installation :                                                   |
 //| 1. Renommer ce fichier en CarnetXAU.mq5, le placer dans          |
@@ -50,7 +55,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.50"
+#property version   "2.60"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 input string InpUrl         = "https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
@@ -123,7 +128,11 @@ CxTrack  g_tracks[];
 
 //--- État
 bool     g_dirty = true;
-datetime g_lastFull = 0, g_lastCandles = 0, g_lastM1 = 0, g_lastM15 = 0, g_lastSignal = 0;
+bool     g_firstSync = true;   // premier envoi après le démarrage : 30 jours d'historique
+datetime g_lastFull = 0, g_lastCandles = 0, g_lastM1 = 0, g_lastSignal = 0;
+datetime g_doneM1 = 0, g_doneM15 = 0;   // dernières bougies traitées (rattrapage après un arrêt du PC)
+string   GV_M1 = "", GV_M15 = "";         // noms des variables globales du terminal (par compte et symbole)
+#define CATCHUP_DAYS 7
 string   g_status = "";
 int      g_signalCount = 0;
 
@@ -141,6 +150,13 @@ int OnInit()
      }
    EventSetTimer((int)MathMax(15, InpSnapshotSec));
    LoadTracks();
+   string gv = "CarnetXAU_" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "_" + _Symbol;
+   GV_M1  = gv + "_M1";
+   GV_M15 = gv + "_M15";
+   if(GlobalVariableCheck(GV_M1))
+      g_doneM1 = (datetime)GlobalVariableGet(GV_M1);
+   if(GlobalVariableCheck(GV_M15))
+      g_doneM15 = (datetime)GlobalVariableGet(GV_M15);
    Sync();
    FetchPlan();
    SendCandles();
@@ -176,13 +192,8 @@ void OnTick()
    if(m1 == g_lastM1)
       return;
    g_lastM1 = m1;               // nouvelle bougie M1 : la précédente vient de clôturer
-   datetime m15 = iTime(_Symbol, PERIOD_M15, 0);
-   if(m15 != g_lastM15)
-     {
-      g_lastM15 = m15;
-      Monitor();                // invalidation et zones sur clôture M15
-     }
-   ProcessTracks();
+   Monitor();                   // invalidation et zones sur clôture M15 (et rattrapage après un arrêt)
+   ProcessTracks();             // signaux en cours, bougie par bougie depuis la dernière traitée
    if(InpSignals && g_planOk && !PendingLimit())
       CheckSignals();
   }
@@ -247,31 +258,59 @@ void LoadTracks()
    FileClose(h);
   }
 
-void TrackEvent(int i, string status, string extra)
+//--- t : heure du serveur de l'événement (clôture de la bougie), envoyée en UTC.
+void TrackEvent(int i, string status, string extra, datetime t)
   {
    SendEvent("{\"type\":\"signal_update\",\"ref\":" + JsonText(g_tracks[i].ref) + ",\"status\":\"" + status + "\"" + extra
-             + ",\"time\":" + IntegerToString((long)TimeGMT()) + "}");
+             + ",\"time\":" + IntegerToString((long)t - ServerOffset()) + "}");
   }
 
 //--- Clôture d'un trade virtuel : résultat en R envoyé au carnet.
-void CloseTrack(int i, double r)
+void CloseTrack(int i, double r, string when, datetime t)
   {
    g_tracks[i].status = 2;
    string st  = (r > 0.05) ? "gagne" : (r < -0.05 ? "perdu" : "be");
    string res = (r >= 0 ? "+" : "−") + Fr(MathAbs(r), 1) + "R";
-   g_status = "Signal Claude " + g_tracks[i].label + " clôturé : " + res + ".";
+   g_status = "Signal Claude " + g_tracks[i].label + " clôturé : " + res + when + ".";
    ObjectSetString(0, g_tracks[i].id + "_T", OBJPROP_TEXT, g_tracks[i].label + " — résultat " + res);
    TrackEvent(i, st, ",\"result_r\":" + Num(r, 2) + ",\"reached_2r\":" + (g_tracks[i].hit2r ? "true" : "false")
-              + ",\"mfe\":" + Num(g_tracks[i].mfe, 2) + ",\"mae\":" + Num(g_tracks[i].mae, 2));
+              + ",\"mfe\":" + Num(g_tracks[i].mfe, 2) + ",\"mae\":" + Num(g_tracks[i].mae, 2), t);
    ChartRedraw();
    DrawPanel();
   }
 
-//--- À chaque bougie M1 clôturée : limite déclenchée ou annulée, stop, 2R, objectif, retour au prix d'entrée.
+//--- Bougies M1 clôturées depuis la dernière traitée (toutes, si le PC a été éteint), dans l'ordre.
 void ProcessTracks()
   {
-   double hi = iHigh(_Symbol, PERIOD_M1, 1), lo = iLow(_Symbol, PERIOD_M1, 1), cl = iClose(_Symbol, PERIOD_M1, 1);
-   bool changed = false;
+   datetime last = iTime(_Symbol, PERIOD_M1, 1);
+   if(last == 0)
+      return;
+   bool open = false;
+   for(int i = 0; i < ArraySize(g_tracks); i++)
+      if(g_tracks[i].status != 2)
+         open = true;
+   if(open && g_doneM1 > 0 && last > g_doneM1)
+     {
+      datetime from = (datetime)MathMax((double)(g_doneM1 + 60), (double)(last - CATCHUP_DAYS * 86400));
+      MqlRates r[];
+      int n = CopyRates(_Symbol, PERIOD_M1, from, last, r);   // r[0] = la plus ancienne
+      for(int j = 0; j < n; j++)
+         if(r[j].time > g_doneM1)
+            ProcessBar(r[j].high, r[j].low, r[j].close, r[j].time + 60, last - r[j].time > 120);
+     }
+   if(last != g_doneM1)
+     {
+      g_doneM1 = last;
+      GlobalVariableSet(GV_M1, (double)g_doneM1);
+     }
+  }
+
+//--- Une bougie M1 clôturée (à l'heure t) : limite déclenchée ou annulée, stop, 2R, objectif,
+//    retour au prix d'entrée, clôture au bout de 24 h. late = bougie rattrapée après un arrêt.
+void ProcessBar(double hi, double lo, double cl, datetime t, bool late)
+  {
+   bool   changed = false;
+   string when = late ? " (pendant l'arrêt de MT5, à " + TimeToString(t, TIME_DATE | TIME_MINUTES) + ")" : "";
    for(int i = 0; i < ArraySize(g_tracks); i++)
      {
       if(g_tracks[i].status == 2)
@@ -280,15 +319,7 @@ void ProcessTracks()
       double e   = g_tracks[i].entry, st = g_tracks[i].stop;
       if(g_tracks[i].status == 0)
         {
-         if(buy ? lo <= e : hi >= e)
-           {
-            g_tracks[i].status = 1;
-            g_tracks[i].opened = TimeCurrent();
-            changed = true;
-            Notify("Carnet XAU : " + g_tracks[i].label + " atteint à " + Fr(e, 2) + " — conditions réunies, à vous de décider.");
-            TrackEvent(i, "ouvert", "");
-           }
-         else if(TimeCurrent() > g_tracks[i].expires)
+         if(t - 60 >= g_tracks[i].expires)
            {
             g_tracks[i].status = 2;
             changed = true;
@@ -296,10 +327,20 @@ void ProcessTracks()
             for(int n = 0; n < ArraySize(names); n++)
                ObjectSetInteger(0, g_tracks[i].id + names[n], OBJPROP_COLOR, C'225,225,225');
             ObjectSetString(0, g_tracks[i].id + "_T", OBJPROP_TEXT, g_tracks[i].label + " annulé (prix non atteint en " + IntegerToString(InpLimitMin) + " min)");
-            Notify("Carnet XAU : " + g_tracks[i].label + " " + Fr(e, 2) + " annulé, prix non atteint en " + IntegerToString(InpLimitMin) + " min.");
-            TrackEvent(i, "annule", "");
+            if(!late)
+               Notify("Carnet XAU : " + g_tracks[i].label + " " + Fr(e, 2) + " annulé, prix non atteint en " + IntegerToString(InpLimitMin) + " min.");
+            TrackEvent(i, "annule", "", t);
             g_status = g_tracks[i].label + " annulé (délai écoulé).";
             ChartRedraw();
+           }
+         else if(buy ? lo <= e : hi >= e)
+           {
+            g_tracks[i].status = 1;
+            g_tracks[i].opened = t - 60;
+            changed = true;
+            if(!late)
+               Notify("Carnet XAU : " + g_tracks[i].label + " atteint à " + Fr(e, 2) + " — conditions réunies, à vous de décider.");
+            TrackEvent(i, "ouvert", "", t);
            }
          continue;
         }
@@ -313,26 +354,26 @@ void ProcessTracks()
       if(!g_tracks[i].hit2r)
         {
          if(down <= -1.0)
-            CloseTrack(i, -1.0);                           // stop touché (prudence : vérifié en premier)
+            CloseTrack(i, -1.0, when, t);                     // stop touché (prudence : vérifié en premier)
          else if(up >= 2.0)
            {
             g_tracks[i].hit2r = true;                      // 50 % sortis à 2R, stop au prix d'entrée
             if(up >= rrTp)
-               CloseTrack(i, 1.0 + 0.5 * rrTp);
+               CloseTrack(i, 1.0 + 0.5 * rrTp, when, t);
            }
         }
       else
         {
          if(up >= rrTp)
-            CloseTrack(i, 1.0 + 0.5 * rrTp);               // objectif atteint
+            CloseTrack(i, 1.0 + 0.5 * rrTp, when, t);         // objectif atteint
          else if(down <= 0)
-            CloseTrack(i, 1.0);                            // retour au prix d'entrée : +1R acquis à 2R
+            CloseTrack(i, 1.0, when, t);                      // retour au prix d'entrée : +1R acquis à 2R
         }
       // Au-delà de 24 h : clôture virtuelle au dernier cours.
-      if(g_tracks[i].status == 1 && TimeCurrent() - g_tracks[i].opened > TRACK_MAX_HOURS * 3600)
+      if(g_tracks[i].status == 1 && t - g_tracks[i].opened > TRACK_MAX_HOURS * 3600)
         {
          double now = buy ? (cl - e) / st : (e - cl) / st;
-         CloseTrack(i, g_tracks[i].hit2r ? 1.0 + 0.5 * now : now);
+         CloseTrack(i, g_tracks[i].hit2r ? 1.0 + 0.5 * now : now, when, t);
         }
      }
    if(changed)
@@ -484,7 +525,8 @@ string TradesJson()
   {
    long     offset = ServerOffset();
    datetime now    = TimeCurrent();
-   if(!HistorySelect(now - InpDaysBack * 86400, now + 60))
+   int      days   = g_firstSync ? (int)MathMax(30, InpDaysBack) : InpDaysBack;
+   if(!HistorySelect(now - days * 86400, now + 60))
       return "";
    long positions[];
    int  total = HistoryDealsTotal();
@@ -570,8 +612,9 @@ void Sync()
    string resp;
    if(Http("POST", InpUrl, json, "application/json", resp) == 200 && full)
      {
-      g_dirty    = false;
-      g_lastFull = TimeCurrent();
+      g_dirty     = false;
+      g_firstSync = false;
+      g_lastFull  = TimeCurrent();
      }
   }
 
@@ -829,15 +872,39 @@ void SendEvent(string json)
 
 int Dominant() { return (g_bull > g_bear) ? 1 : (g_bear > g_bull ? -1 : 0); }
 
-//--- Surveillance sur clôture M15 : invalidation et zones.
+//--- Surveillance sur clôture M15 : invalidation et zones. Après un arrêt du PC, toutes les
+//    bougies M15 manquées (7 jours au plus) sont relues dans l'ordre.
 void Monitor()
   {
-   if(!g_planOk)
+   datetime last = iTime(_Symbol, PERIOD_M15, 1);
+   if(last == 0 || last == g_doneM15)
       return;
-   double c  = iClose(_Symbol, PERIOD_M15, 1);
-   double hi = iHigh(_Symbol, PERIOD_M15, 1);
-   double lo = iLow(_Symbol, PERIOD_M15, 1);
-   long   now = (long)TimeGMT();
+   if(g_planOk)
+     {
+      datetime from = g_doneM15 > 0 ? g_doneM15 + 900 : last;
+      from = (datetime)MathMax((double)from, (double)(last - CATCHUP_DAYS * 86400));
+      if(g_week != "")
+         from = (datetime)MathMax((double)from, (double)StringToTime(g_week));   // jamais avant le lundi du plan
+      MqlRates r[];
+      int n = from <= last ? CopyRates(_Symbol, PERIOD_M15, from, last, r) : 0;   // r[0] = la plus ancienne
+      bool changed = false;
+      for(int j = 0; j < n; j++)
+         if(r[j].time > g_doneM15 || g_doneM15 == 0)
+            changed = MonitorBar(r[j].high, r[j].low, r[j].close, r[j].time + 900, last - r[j].time > 1800) || changed;
+      if(changed && InpDrawPlan)
+         DrawPlan();
+      if(changed)
+         DrawPanel();
+     }
+   g_doneM15 = last;
+   GlobalVariableSet(GV_M15, (double)g_doneM15);
+  }
+
+//--- Une bougie M15 clôturée (à l'heure t, serveur) ; late = rattrapée après un arrêt.
+bool MonitorBar(double hi, double lo, double c, datetime t, bool late)
+  {
+   long   when = (long)t - ServerOffset();          // heure UTC de la clôture
+   string note = late ? " (pendant l'arrêt de MT5, " + TimeToString(t, TIME_DATE | TIME_MINUTES) + ")" : "";
    bool   changed = false;
    int    d = Dominant();
 
@@ -845,8 +912,8 @@ void Monitor()
      {
       g_invalidated = true;
       changed = true;
-      Notify("Carnet XAU : invalidation " + Fr(g_inval, 2) + " touchée (clôture M15 " + Fr(c, 2) + ").");
-      SendEvent("{\"type\":\"invalidation\",\"price\":" + Num(c, 2) + ",\"time\":" + IntegerToString(now) + "}");
+      Notify("Carnet XAU : invalidation " + Fr(g_inval, 2) + " touchée (clôture M15 " + Fr(c, 2) + ")" + note + ".");
+      SendEvent("{\"type\":\"invalidation\",\"price\":" + Num(c, 2) + ",\"time\":" + IntegerToString(when) + "}");
      }
    for(int i = 0; i < ArraySize(g_zones); i++)
      {
@@ -857,18 +924,15 @@ void Monitor()
         {
          g_zones[i].state = "cassee";
          changed = true;
-         SendEvent("{\"type\":\"zone\",\"key\":" + JsonText(g_zones[i].key) + ",\"state\":\"cassee\",\"price\":" + Num(c, 2) + ",\"time\":" + IntegerToString(now) + "}");
+         SendEvent("{\"type\":\"zone\",\"key\":" + JsonText(g_zones[i].key) + ",\"state\":\"cassee\",\"price\":" + Num(c, 2) + ",\"time\":" + IntegerToString(when) + "}");
         }
       else if(g_zones[i].state == "vierge" && lo <= g_zones[i].hi && hi >= g_zones[i].lo)
         {
          g_zones[i].state = "testee";
-         SendEvent("{\"type\":\"zone\",\"key\":" + JsonText(g_zones[i].key) + ",\"state\":\"testee\",\"price\":" + Num(c, 2) + ",\"time\":" + IntegerToString(now) + "}");
+         SendEvent("{\"type\":\"zone\",\"key\":" + JsonText(g_zones[i].key) + ",\"state\":\"testee\",\"price\":" + Num(c, 2) + ",\"time\":" + IntegerToString(when) + "}");
         }
      }
-   if(changed && InpDrawPlan)
-      DrawPlan();
-   if(changed)
-      DrawPanel();
+   return changed;
   }
 
 void Notify(string msg)

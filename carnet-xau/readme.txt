@@ -105,6 +105,10 @@ EA MT5 version 2 : plan dynamique et signaux d’exécution (signal seulement)
   stop revient à 4 $ (30 min). Filtres : 2R de place, annonces, spread, limites du jour.
   Flèche, position longue / courte dessinée, lot calculé ; alertes MT5, mobile, Telegram.
   Aucun ordre n’est passé par l’EA.
+* PC éteint (version 2.6 de l’EA) : au redémarrage, l’EA relit les bougies manquées (7 jours
+  au plus, jamais avant le lundi du plan) pour clôturer les signaux Claude en cours à l’heure
+  réelle du stop ou de l’objectif et mettre à jour zones et invalidation ; le premier envoi
+  reprend 30 jours de trades. Aucun signal n’est émis pour la période où MT5 était fermé.
 * L’EA envoie aussi les bougies du courtier (D1, H4, H1) chaque heure : GET /candles, pour
   que Claude analyse aux prix exacts de FundedNext.
 
