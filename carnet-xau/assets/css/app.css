@@ -153,6 +153,32 @@
 .cx-app .sig .t2{font-size:12.5px;color:var(--muted)}
 .cx-app .sig pre{margin:4px 0 0;font-size:11.5px;white-space:pre-wrap;word-break:break-all;color:var(--muted)}
 
+/* Plan rédigé par Claude */
+.cx-app .byline{margin:-4px 0 10px}
+.cx-app .probbar{display:flex;border-radius:999px;overflow:hidden;border:1px solid var(--line);font-size:12.5px;font-weight:600;min-height:28px}
+.cx-app .probbar .seg{display:flex;align-items:center;justify-content:center;padding:4px 6px;white-space:nowrap;overflow:hidden;min-width:0}
+.cx-app .probbar .seg.h{background:var(--win-soft);color:var(--win)} .cx-app .probbar .seg.b{background:var(--loss-soft);color:var(--loss)} .cx-app .probbar .seg.n{background:var(--sunk);color:var(--muted)}
+.cx-app .lead{font-size:15.5px;margin:12px 0}
+.cx-app .scn{background:var(--sunk);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
+.cx-app .scn.main{background:var(--gold-soft);border-color:transparent}
+.cx-app .scn p{margin:4px 0 0}
+.cx-app .scn .k,.cx-app .day .k{font-size:12.5px;color:var(--muted)}
+.cx-app .ptable{width:100%;border-collapse:collapse;font-size:14px}
+.cx-app .ptable th{text-align:left;font-size:12.5px;color:var(--muted);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
+.cx-app .ptable td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top;font-variant-numeric:tabular-nums}
+.cx-app svg.lvmap{width:100%;height:auto;display:block;font-family:var(--sans)}
+.cx-app .days{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+@media (max-width:900px){.cx-app .days{grid-template-columns:1fr}}
+.cx-app .day{background:var(--sunk);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:14px}
+.cx-app .day.today{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold)}
+.cx-app .day p{margin:6px 0 0}
+.cx-app .eff{font-weight:700;font-size:15px;margin:2px 0}
+.cx-app .eff.up{color:var(--win)} .cx-app .eff.down{color:var(--loss)} .cx-app .eff.neutral{color:var(--muted)}
+.cx-app .imp.high{color:var(--loss);font-weight:700} .cx-app .imp.medium{color:var(--warn);font-weight:600}
+.cx-app .pre{white-space:pre-line}
+.cx-app .rules{margin:0;padding-left:20px} .cx-app .rules li{margin:4px 0}
+.cx-app .planmini .lv.buy{border-color:var(--win);color:var(--win)} .cx-app .planmini .lv.sell{border-color:var(--loss);color:var(--loss)}
+
 /* Simulateur Monte-Carlo */
 .cx-app .scroll-x{overflow-x:auto}
 .cx-app .mc-sum{margin:14px 0 10px;padding:10px 12px;border-radius:var(--radius);background:var(--sunk);font-size:14.5px}

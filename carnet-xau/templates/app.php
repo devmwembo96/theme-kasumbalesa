@@ -91,47 +91,7 @@ defined( 'ABSPATH' ) || exit;
 		<span class="spacer"></span>
 		<button type="button" class="btn ghost sm" id="wk-today">Cette semaine</button>
 	</div>
-
-	<div class="panel">
-		<h3>Biais et structure</h3>
-		<div class="grid g3">
-			<label class="f">Biais de la semaine<select id="p-bias"><option value="">—</option><option value="h">Haussier</option><option value="b">Baissier</option><option value="n">Neutre / range</option></select></label>
-			<label class="f">Plus haut semaine passée<input id="p-wh" type="number" step="0.01" inputmode="decimal"></label>
-			<label class="f">Plus bas semaine passée<input id="p-wl" type="number" step="0.01" inputmode="decimal"></label>
-		</div>
-		<label class="f" style="margin-top:10px">Structure hebdomadaire, journalière et H4<textarea id="p-struct" placeholder="Derniers BoS et ChoCh, zones premium et discount, OB et FVG non comblés…"></textarea></label>
-	</div>
-
-	<div class="panel">
-		<h3>Niveaux clés</h3>
-		<p class="hint">Trois à cinq niveaux au maximum, là où plusieurs éléments se rejoignent.</p>
-		<div id="p-levels"></div>
-		<button type="button" class="btn ghost sm" id="add-level">Ajouter un niveau</button>
-	</div>
-
-	<div class="panel">
-		<h3>Fondamentaux</h3>
-		<div class="grid g4" id="p-fund"></div>
-		<label class="f" style="margin-top:10px">Notes<textarea id="p-fundnotes" placeholder="Ce qui pousse l’or cette semaine…"></textarea></label>
-	</div>
-
-	<div class="panel">
-		<h3>Annonces de la semaine (zones de non-trade)</h3>
-		<div id="p-cal"></div>
-		<button type="button" class="btn ghost sm" id="add-cal">Ajouter une annonce</button>
-	</div>
-
-	<div class="panel">
-		<h3>Scénarios « Si… alors… »</h3>
-		<div id="p-sc"></div>
-		<button type="button" class="btn ghost sm" id="add-sc">Ajouter un scénario</button>
-	</div>
-
-	<div class="panel">
-		<h3>Bilan de fin de semaine</h3>
-		<textarea id="p-review" aria-label="Bilan de fin de semaine" placeholder="Le biais était-il juste ? Quels niveaux ont réagi ?"></textarea>
-	</div>
-	<div class="row"><button type="button" class="btn gold" id="btn-plan">Enregistrer le plan</button></div>
+	<div id="plan-view"></div>
 </section>
 
 <!-- ============ JOURNAL ============ -->
@@ -285,6 +245,12 @@ defined( 'ABSPATH' ) || exit;
 			<p class="hint" id="tv-state"></p>
 			<div class="row"><button type="button" class="btn ghost sm" id="tv-rotate">Générer l’adresse du webhook</button><button type="button" class="btn ghost sm danger" id="tv-revoke" hidden>Couper</button></div>
 			<div class="secret" id="tv-box" hidden></div>
+		</div>
+		<div class="conn">
+			<h4>Plan de la semaine (Claude)</h4>
+			<p class="hint" id="plan-state"></p>
+			<div class="row"><button type="button" class="btn ghost sm" id="plan-rotate">Générer le jeton du plan</button><button type="button" class="btn ghost sm danger" id="plan-revoke" hidden>Couper</button></div>
+			<div class="secret" id="plan-box" hidden></div>
 		</div>
 		<div class="conn">
 			<h4>Telegram</h4>

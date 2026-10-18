@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Carnet XAU
  * Description: Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan hebdomadaire, journal, statistiques, comptes et retraits ; réception MT5 et TradingView, alertes Telegram. Page hors du site : absente des menus, de la recherche et des plans du site, jamais indexée.
- * Version: 2.1.0
+ * Version: 2.2.0
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Text Domain: carnet-xau
@@ -12,8 +12,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'CX_VERSION', '2.1.0' );
-define( 'CX_DB_VERSION', '3' );
+define( 'CX_VERSION', '2.2.0' );
+define( 'CX_DB_VERSION', '4' );
 define( 'CX_FILE', __FILE__ );
 define( 'CX_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CX_URL', plugin_dir_url( __FILE__ ) );
@@ -27,6 +27,7 @@ require CX_DIR . 'includes/class-cx-front.php';
 require CX_DIR . 'includes/class-cx-guard.php';
 require CX_DIR . 'includes/class-cx-ingest.php';
 require CX_DIR . 'includes/class-cx-telegram.php';
+require CX_DIR . 'includes/class-cx-plan.php';
 
 register_activation_hook( __FILE__, array( 'CX_Install', 'activate' ) );
 register_deactivation_hook( __FILE__, array( 'CX_Install', 'deactivate' ) );
@@ -37,3 +38,4 @@ CX_Rest::init();
 CX_Front::init();
 CX_Ingest::init();
 CX_Telegram::init();
+CX_Plan::init();

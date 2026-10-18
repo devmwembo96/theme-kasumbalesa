@@ -572,8 +572,12 @@ class CX_Repo {
 			'levels'    => self::list_out( $r->niveaux ),
 			'cal'       => self::list_out( $r->annonces ),
 			'sc'        => self::list_out( $r->scenarios ),
-			'review'    => $r->bilan,
-			'updatedAt' => $r->updated_at,
+			'review'      => $r->bilan,
+			'updatedAt'   => $r->updated_at,
+			// Plan élargi rédigé par Claude (null pour un plan d'origine).
+			'content'     => isset( $r->contenu ) && $r->contenu ? json_decode( $r->contenu, true ) : null,
+			'author'      => $r->auteur ?? '',
+			'publishedAt' => $r->publie_le ?? null,
 		);
 	}
 

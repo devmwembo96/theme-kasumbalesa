@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.1.0
+Stable tag: 2.2.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -72,11 +72,19 @@ Simulateur de challenge (onglet Stats)
 * Affiche la réussite de l’étape, la perte du compte pendant l’étape, la réussite des deux
   phases et le nombre de jours médian.
 
-Plan : le samedi et le dimanche, « Cette semaine », le résumé de l’onglet Jour et la
-commande Telegram /plan portent sur la semaine qui commence.
+Plan de semaine élargi, rédigé exclusivement par Claude (onglet Plan en lecture seule)
+* Prévision (probabilités haussier / baissier / range, scénario principal et alternatif,
+  invalidation, range attendu), repères de prix et ATR, structure W/D/H4/H1, zones (bornes,
+  réaction, force, état), niveaux de liquidité, carte des niveaux, fondamentaux, annonces,
+  plan jour par jour, scénarios détaillés, règles de la semaine, bilan noté sur 10.
+* Publication : PUT /wp-json/carnet-xau/v1/claude/plans/{lundi}, en-tête X-CX-Key = jeton
+  du plan (Comptes › Connexions). Format : docs/PLAN-CLAUDE.md. Résumé envoyé sur Telegram.
+* L’ancienne route d’écriture du plan depuis l’interface est supprimée.
+* Le samedi et le dimanche, « Cette semaine », le résumé de l’onglet Jour et la commande
+  Telegram /plan portent sur la semaine qui commence.
 
-À venir : calendrier économique automatique, rapport hebdomadaire, plan rédigé par une
-tâche planifiée Claude (après l’EA MT5, pour des niveaux aux prix du courtier).
+À venir : calendrier économique automatique, rapport hebdomadaire, tâche planifiée Claude
+qui rédige le plan (après l’EA MT5, pour des niveaux aux prix du courtier).
 
 == Désinstallation ==
 
@@ -96,6 +104,7 @@ includes/class-cx-front.php    Shortcode [carnet_xau], page tenue hors du site, 
 includes/class-cx-guard.php    Réglages des connexions, jetons, limite de débit, journal des refus
 includes/class-cx-ingest.php   Points d’entrée MT5 et TradingView
 includes/class-cx-telegram.php Bot Telegram, alertes, WP-Cron
+includes/class-cx-plan.php     Plan élargi rédigé par Claude : format, publication protégée
 assets/mt5/CarnetXAU.mq5.txt   EA MetaTrader 5
 templates/app.php              Balisage des onglets
 assets/                        CSS, JS, service worker, icônes

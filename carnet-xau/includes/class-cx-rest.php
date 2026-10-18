@@ -86,7 +86,6 @@ class CX_Rest {
 		self::route( '/trades/(?P<id>\d+)', 'DELETE', 'delete_trade' );
 
 		self::route( '/plans/(?P<week>\d{4}-\d{2}-\d{2})', 'GET', 'get_plan' );
-		self::route( '/plans/(?P<week>\d{4}-\d{2}-\d{2})', 'PUT', 'save_plan' );
 
 		self::route( '/payouts', 'GET', 'list_payouts' );
 		self::route( '/payouts', 'POST', 'create_payout' );
@@ -100,6 +99,8 @@ class CX_Rest {
 		self::route( '/connections', 'GET', 'connections' );
 		self::route( '/connections/tradingview', 'POST', 'tv_rotate' );
 		self::route( '/connections/tradingview', 'DELETE', 'tv_revoke' );
+		self::route( '/connections/plan', 'POST', 'plan_rotate' );
+		self::route( '/connections/plan', 'DELETE', 'plan_revoke' );
 		self::route( '/connections/telegram', 'POST', 'tg_connect' );
 		self::route( '/connections/telegram', 'PUT', 'tg_alerts' );
 		self::route( '/connections/telegram', 'DELETE', 'tg_disconnect' );
@@ -260,14 +261,6 @@ class CX_Rest {
 		return is_wp_error( $w ) ? $w : self::out( CX_Repo::plan( $w ) );
 	}
 
-	/**
-	 * @param WP_REST_Request $req Requête.
-	 * @return WP_REST_Response|WP_Error
-	 */
-	public static function save_plan( WP_REST_Request $req ) {
-		$w = self::week( $req );
-		return is_wp_error( $w ) ? $w : self::out( CX_Repo::save_plan( $w, (array) $req->get_json_params() ) );
-	}
 
 	/* Retraits ---------------------------------------------------------- */
 
@@ -407,6 +400,10 @@ class CX_Rest {
 					'url'    => rest_url( self::NS . '/tradingview' ),
 				),
 				'telegram'    => CX_Telegram::status(),
+				'plan'        => array(
+					'active' => ! empty( CX_Guard::settings()['plan'] ),
+					'url'    => rest_url( self::NS . '/claude/plans/' ),
+				),
 				'refusals'    => array_slice( CX_Guard::refusals(), 0, 20 ),
 				'cron'        => wp_next_scheduled( CX_Telegram::CRON ) ? wp_date( 'H:i', wp_next_scheduled( CX_Telegram::CRON ), CX_Repo::tz() ) : null,
 			)
@@ -427,6 +424,28 @@ class CX_Rest {
 				'url'   => add_query_arg( 'token', $token, rest_url( self::NS . '/tradingview' ) ),
 			)
 		);
+	}
+
+	/**
+	 * Nouveau jeton de publication du plan (tâche Claude), renvoyé une seule fois.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public static function plan_rotate() {
+		$token = CX_Guard::secret( 40 );
+		CX_Guard::set( 'plan', CX_Guard::hash( $token ) );
+		return self::out(
+			array(
+				'token' => $token,
+				'url'   => rest_url( self::NS . '/claude/plans/' ),
+			)
+		);
+	}
+
+	/** @return WP_REST_Response */
+	public static function plan_revoke() {
+		CX_Guard::set( 'plan', null );
+		return self::out( array( 'revoked' => true ) );
 	}
 
 	/** @return WP_REST_Response */

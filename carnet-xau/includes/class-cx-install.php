@@ -160,6 +160,9 @@ CREATE TABLE $plans (
   annonces longtext NOT NULL,
   scenarios longtext NOT NULL,
   bilan text NOT NULL,
+  contenu longtext DEFAULT NULL,
+  auteur varchar(20) NOT NULL DEFAULT '',
+  publie_le datetime DEFAULT NULL,
   updated_at datetime NOT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY account_semaine (account_id,semaine)

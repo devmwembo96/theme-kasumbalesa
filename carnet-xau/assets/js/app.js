@@ -249,51 +249,119 @@ $("#btn-log").addEventListener("click",()=>{
   showTab("journal");$("#tf-r").focus();
 });
 
-/* ---------- plan miniature ---------- */
+/* ---------- plan de la semaine (rédigé par Claude, en lecture seule) ---------- */
+const TREND_L={h:"Haussière",b:"Baissière",r:"Range"}, BIAS_L={h:"Haussier",b:"Baissier",n:"Neutre / range"};
+const EFFECT_L={up:"Soutient l’or",down:"Pèse sur l’or",neutral:"Neutre"}, PD_L={premium:"Premium",discount:"Discount",equilibre:"Équilibre"};
+const FUND_L={dxy:"Dollar (DXY)",rates:"Taux réels US",fed:"Attentes Fed",geo:"Géopolitique"};
+const px=v=>v==null||v===""?"—":fmt(num(v),2);
+const todayFr=()=>new Date().toLocaleDateString("fr-FR",{weekday:"long"}).toLowerCase();
+function probBar(p){
+  const bar=el("div",{class:"probbar",role:"img","aria-label":"Haussier "+p.bull+" %, baissier "+p.bear+" %, range "+p.range+" %"});
+  [["bull","h","Haussier"],["range","n","Range"],["bear","b","Baissier"]].forEach(([k,c,l])=>{if(p[k]>0)bar.append(el("div",{class:"seg "+c,style:"flex:"+p[k],text:l+" "+p[k]+" %"}))});
+  return bar;
+}
+function card(title,...kids){return el("div",{class:"panel"},el("h3",{text:title}),...kids)}
+function kv(k,v,s){return el("div",{class:"kpi"},el("div",{class:"v",text:v}),el("div",{class:"k",text:k}),s?el("div",{class:"k",text:s}):null)}
+function table(heads,rows){
+  return el("div",{class:"scroll-x"},el("table",{class:"ptable"},el("thead",null,el("tr",null,...heads.map(h=>el("th",{text:h})))),el("tbody",null,...rows.map(r=>el("tr",null,...r.map(c=>c instanceof Node?el("td",null,c):el("td",{text:c==null?"":String(c)})))))));
+}
+// Carte verticale : zones, niveaux, prix, range attendu et invalidation.
+function levelMap(c){
+  const p=c.prediction||{}, refs=c.refs||{}, zones=c.zones||[], levels=c.levels||[];
+  const vals=[...zones.flatMap(z=>[z.low,z.high]),...levels.map(l=>l.price),refs.price,p.range_high,p.range_low,p.invalidation].map(num).filter(Number.isFinite);
+  if(vals.length<2)return null;
+  let mn=Math.min(...vals),mx=Math.max(...vals);const pad=(mx-mn)*0.06||5;mn-=pad;mx+=pad;
+  const W=640,H=Math.max(360,Math.min(640,120+28*(zones.length+levels.length))),T=10,B=10,Y=v=>T+(mx-v)*(H-T-B)/(mx-mn);
+  const ns="http://www.w3.org/2000/svg",s=document.createElementNS(ns,"svg");s.setAttribute("viewBox","0 0 "+W+" "+H);s.setAttribute("class","lvmap");s.setAttribute("role","img");s.setAttribute("aria-label","Carte des zones et niveaux de la semaine");
+  const add=(tag,a,txt)=>{const n=document.createElementNS(ns,tag);for(const k in a)n.setAttribute(k,a[k]);if(txt!=null)n.textContent=txt;s.append(n);return n};
+  if(Number.isFinite(num(p.range_low))&&Number.isFinite(num(p.range_high)))add("rect",{x:W-34,y:Y(num(p.range_high)),width:10,height:Math.max(2,Y(num(p.range_low))-Y(num(p.range_high))),rx:3,fill:"var(--gold-soft)",stroke:"var(--gold)"});
+  zones.forEach(z=>{const lo=num(z.low),hi=num(z.high);if(!Number.isFinite(lo)||!Number.isFinite(hi))return;const buy=z.side!=="vente";
+    add("rect",{x:150,y:Y(hi),width:W-200,height:Math.max(3,Y(lo)-Y(hi)),rx:4,fill:buy?"var(--win-soft)":"var(--loss-soft)",stroke:buy?"var(--win)":"var(--loss)","stroke-opacity":z.state==="testee"?".4":"1"});
+    add("text",{x:160,y:(Y(hi)+Y(lo))/2+4,"font-size":"12",fill:buy?"var(--win)":"var(--loss)"},(z.type||"Zone")+" "+(z.tf||"")+" "+"★".repeat(z.strength||0));
+  });
+  const labels=[];
+  levels.forEach(l=>{const v=num(l.price);if(!Number.isFinite(v))return;add("line",{x1:110,x2:W-46,y1:Y(v),y2:Y(v),stroke:"var(--muted)","stroke-dasharray":"4 4"});labels.push({y:Y(v),t:px(v)+"  "+(l.type||""),c:"var(--ink)"})});
+  if(Number.isFinite(num(p.invalidation))){const v=num(p.invalidation);add("line",{x1:110,x2:W-46,y1:Y(v),y2:Y(v),stroke:"var(--loss)","stroke-width":"1.5","stroke-dasharray":"8 4"});labels.push({y:Y(v),t:px(v)+"  invalidation",c:"var(--loss)"})}
+  if(Number.isFinite(num(refs.price))){const v=num(refs.price);add("line",{x1:110,x2:W-46,y1:Y(v),y2:Y(v),stroke:"var(--gold)","stroke-width":"2.5"});labels.push({y:Y(v),t:px(v)+"  prix",c:"var(--gold-ink)",b:1})}
+  labels.sort((a,b)=>a.y-b.y);let last=-99;labels.forEach(l=>{let y=Math.max(l.y,last+14);last=y;add("text",{x:4,y:y+4,"font-size":"11.5",fill:l.c,"font-weight":l.b?"700":"400"},l.t)});
+  return s;
+}
+function renderPlanView(p){
+  const box=$("#plan-view");
+  if(!p){box.replaceChildren(el("div",{class:"empty",text:"Le plan de cette semaine n’a pas encore été publié par Claude."}));return}
+  const c=p.content;
+  if(!c){ // plan d'origine (avant le plan élargi)
+    const lv=(p.levels||[]).filter(x=>x.price);
+    box.replaceChildren(card("Plan (ancien format)",el("div",null,"Biais : ",el("span",{class:"bias "+(p.bias||"n"),text:BIAS_L[p.bias]||"Non défini"})),
+      p.struct?el("p",{class:"pre",text:p.struct}):null,lv.length?table(["Prix","Type","Note"],lv.map(l=>[px(l.price),l.type,l.note])):null,
+      (p.sc||[]).length?el("ul",null,...p.sc.map(s=>el("li",{text:s.text}))):null,p.review?el("p",{class:"pre",text:"Bilan : "+p.review}):null));return}
+  const pr=c.prediction||{}, refs=c.refs||{}, out=[];
+  out.push(el("p",{class:"hint byline",text:"Rédigé par Claude"+(p.publishedAt?" le "+new Date(p.publishedAt.replace(" ","T")).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+" à "+p.publishedAt.slice(11,16):"")+"."}));
+  // 1. Prévision
+  const pv=card("Prévision de la semaine",probBar(pr));
+  if(pr.summary)pv.append(el("p",{class:"lead",text:pr.summary}));
+  const g=el("div",{class:"grid g2"});
+  if(pr.main)g.append(el("div",{class:"scn main"},el("div",{class:"k",text:"Scénario principal"}),el("p",{text:pr.main})));
+  if(pr.alt)g.append(el("div",{class:"scn"},el("div",{class:"k",text:"Scénario alternatif"}),el("p",{text:pr.alt})));
+  if(g.childNodes.length)pv.append(g);
+  const kp=el("div",{class:"kpis",style:"margin:12px 0 0"});
+  if(pr.range_low!=null||pr.range_high!=null)kp.append(kv("Range attendu",px(pr.range_low)+" – "+px(pr.range_high)));
+  if(pr.invalidation!=null)kp.append(kv("Invalidation",px(pr.invalidation)));
+  if(kp.childNodes.length)pv.append(kp);
+  out.push(pv);
+  // 2. Repères
+  const rk=[["Prix de référence",refs.price],["Ouverture hebdo",refs.week_open],["Haut semaine passée",refs.prev_week_high],["Bas semaine passée",refs.prev_week_low],["Haut mois passé",refs.prev_month_high],["Bas mois passé",refs.prev_month_low],["ATR journalier",refs.atr_d],["ATR hebdo",refs.atr_w]].filter(x=>x[1]!=null);
+  if(rk.length)out.push(card("Repères de prix",el("div",{class:"kpis"},...rk.map(([k,v])=>kv(k,(k.startsWith("ATR")?"":"")+px(v)+(k.startsWith("ATR")?" $":""))))));
+  // 6. Carte
+  const map=levelMap(c);if(map)out.push(card("Carte des niveaux",map,el("p",{class:"hint",style:"margin-top:8px",text:"Vert : zone d’achat · rouge : zone de vente · trait doré : prix · tirets rouges : invalidation · barre dorée à droite : range attendu."})));
+  // 3. Structure
+  if((c.structure||[]).length)out.push(card("Structure par unité de temps",table(["UT","Tendance","Dernier BoS / ChoCh","Zone","Note"],c.structure.map(s=>[s.tf,el("span",{class:"bias "+({h:"h",b:"b",r:"n"}[s.trend]||"n"),text:TREND_L[s.trend]||"—"}),s.last,PD_L[s.pd]||"",s.note]))));
+  // 4. Zones
+  if((c.zones||[]).length)out.push(card("Zones",table(["Zone","Type","UT","Réaction","Force","État","Note"],c.zones.slice().sort((a,b)=>num(b.high)-num(a.high)).map(z=>[px(z.low)+" – "+px(z.high),z.type,z.tf,el("span",{class:"bias "+(z.side==="vente"?"b":"h"),text:z.side==="vente"?"Vente":"Achat"}),"★".repeat(z.strength||0),z.state==="testee"?"Testée":"Vierge",z.note]))));
+  // 5. Niveaux de liquidité
+  if((c.levels||[]).length)out.push(card("Niveaux de liquidité",table(["Prix","Type","Note"],c.levels.slice().sort((a,b)=>num(b.price)-num(a.price)).map(l=>[px(l.price),l.type,l.note]))));
+  // 7. Fondamentaux
+  if((c.fundamentals||[]).length||c.fund_notes){const f=card("Fondamentaux");
+    if((c.fundamentals||[]).length)f.append(el("div",{class:"kpis"},...c.fundamentals.map(x=>el("div",{class:"kpi"},el("div",{class:"k",text:x.label||FUND_L[x.key]||x.key}),el("div",{class:"eff "+(x.effect||""),text:EFFECT_L[x.effect]||"—"}),x.value?el("div",{class:"k",text:x.value}):null,x.note?el("div",{class:"k",text:x.note}):null))));
+    if(c.fund_notes)f.append(el("p",{class:"pre",style:"margin-top:10px",text:c.fund_notes}));out.push(f)}
+  // 8. Annonces
+  if((c.calendar||[]).length)out.push(card("Annonces (zones de non-trade : 15 min avant, 30 min après)",table(["Jour","Heure","Annonce","Impact","Prévision","Précédent"],c.calendar.map(e=>[e.day,e.time,e.event,el("span",{class:"imp "+(e.impact||""),text:{high:"Fort",medium:"Moyen",low:"Faible"}[e.impact]||"—"}),e.forecast,e.previous]))));
+  // 9. Jour par jour
+  if((c.days||[]).length){const t=todayFr();out.push(card("Plan jour par jour",el("div",{class:"days"},...c.days.map(d=>el("div",{class:"day"+(d.day===t?" today":"")},
+    el("div",{class:"row"},el("b",{text:d.day.charAt(0).toUpperCase()+d.day.slice(1)}),el("span",{class:"bias "+(d.bias||"n"),text:BIAS_L[d.bias]||""}),d.day===t?el("span",{class:"tag",text:"aujourd’hui"}):null),
+    d.session?el("div",{class:"k",text:"Session : "+d.session}):null,d.focus?el("p",{text:d.focus}):null)))))}
+  // 10. Scénarios
+  if((c.scenarios||[]).length)out.push(card("Scénarios",el("div",{class:"trades"},...c.scenarios.map(s=>el("div",{class:"scn"},
+    el("div",{class:"row"},el("b",{text:"Si "}),el("span",{text:s.if}),el("span",{class:"spacer"}),s.prob!=null?el("span",{class:"tag",text:s.prob+" %"}):null),
+    el("div",null,el("b",{text:"Alors "}),el("span",{text:s.then})),
+    el("div",{class:"k",text:[s.setup?"Setup "+s.setup:"",s.side?(s.side==="vente"?"Vente":"Achat"):"",s.entry?"entrée "+s.entry:"",s.sl!=null?"stop "+px(s.sl):"",s.tp!=null?"objectif "+px(s.tp):""].filter(Boolean).join(" · ")}),
+    s.invalidation?el("div",{class:"k",text:"Invalidation : "+s.invalidation}):null)))));
+  // 11. Règles
+  if((c.rules||[]).length)out.push(card("Règles de la semaine",el("ul",{class:"rules"},...c.rules.map(r=>el("li",{text:r})))));
+  // 12. Bilan
+  if(c.review&&(c.review.text||c.review.score!=null))out.push(card("Bilan de fin de semaine",c.review.score!=null?el("div",{class:"kpis"},kv("Note du plan",fmt(c.review.score,1).replace(",0","")+" / 10")):null,c.review.text?el("p",{class:"pre",text:c.review.text}):null));
+  if(c.sources)out.push(el("p",{class:"hint",text:"Sources : "+c.sources}));
+  box.replaceChildren(...out);
+}
+/* ---------- plan miniature (onglet Jour) ---------- */
 function renderPlanMini(){
   const p=THIS_WEEK_PLAN, box=$("#planmini");box.replaceChildren();
   box.append(el("h3",{text:"Plan de la semaine"}));
-  if(!p){box.append(el("p",{class:"hint",text:"Aucun plan pour cette semaine. Préparez-le le week-end dans l’onglet Plan."}));
-    const b=el("button",{type:"button",class:"btn ghost sm",text:"Préparer le plan"});b.addEventListener("click",()=>{PLAN_WEEK=planWeek();loadPlan();showTab("plan")});box.append(b);return}
-  const bl={h:"Haussier",b:"Baissier",n:"Neutre / range"}[p.bias]||"Non défini";
-  box.append(el("div",null,"Biais : ",el("span",{class:"bias "+(p.bias||"n"),text:bl})));
-  const lv=(p.levels||[]).filter(x=>x.price);
-  if(lv.length){const w=el("div",{style:"margin-top:6px"});lv.slice().sort((a,b)=>num(b.price)-num(a.price)).forEach(x=>w.append(el("span",{class:"lv",text:fmt(num(x.price),2)+" · "+(x.type||"niveau")})));box.append(w)}
-  const today=new Date().toLocaleDateString("fr-FR",{weekday:"long"}).toLowerCase();
-  const news=(p.cal||[]).filter(x=>(x.day||"").toLowerCase()===today);
+  if(!p){box.append(el("p",{class:"hint",text:"Le plan de cette semaine n’a pas encore été publié par Claude."}));return}
+  const c=p.content, t=todayFr();
+  if(c&&c.prediction){box.append(probBar(c.prediction));if(c.prediction.summary)box.append(el("p",{style:"margin:8px 0 0",text:c.prediction.summary}))}
+  else box.append(el("div",null,"Biais : ",el("span",{class:"bias "+(p.bias||"n"),text:BIAS_L[p.bias]||"Non défini"})));
+  const day=c&&(c.days||[]).find(d=>d.day===t);
+  if(day&&day.focus)box.append(el("p",{style:"margin:8px 0 0"},el("b",{text:"Aujourd’hui : "}),document.createTextNode(day.focus)));
+  const zs=c?(c.zones||[]).slice().sort((a,b)=>num(b.high)-num(a.high)):[];
+  const lv=(c?c.levels:p.levels||[]).filter(x=>x.price);
+  if(zs.length||lv.length){const w=el("div",{style:"margin-top:6px"});
+    zs.forEach(z=>w.append(el("span",{class:"lv "+(z.side==="vente"?"sell":"buy"),text:px(z.low)+"–"+px(z.high)+" · "+(z.type||"zone")})));
+    lv.slice().sort((a,b)=>num(b.price)-num(a.price)).forEach(x=>w.append(el("span",{class:"lv",text:px(x.price)+" · "+(x.type||"niveau")})));box.append(w)}
+  const news=(p.cal||[]).filter(x=>(x.day||"").toLowerCase()===t);
   if(news.length)box.append(el("div",{class:"alert warn",style:"margin-top:10px",text:"Aujourd’hui : "+news.map(n=>(n.time||"")+" "+(n.event||"")).join(" · ")+". Pas de trade 15 min avant, 30 min après."}));
+  const b=el("button",{type:"button",class:"btn ghost sm",style:"margin-top:10px",text:"Voir le plan complet"});b.addEventListener("click",()=>{PLAN_WEEK=planWeek();loadPlan();showTab("plan")});box.append(b);
 }
-
-/* ---------- plan hebdomadaire ---------- */
-const FUND=[["dxy","Dollar (DXY)"],["rates","Taux réels US"],["fed","Attentes Fed"],["geo","Géopolitique"]];
-const FUND_OPT=[["","—"],["up","Soutient l’or"],["down","Pèse sur l’or"],["neutral","Neutre"]];
-function buildFund(){
-  $("#p-fund").replaceChildren(...FUND.map(([k,l])=>{const s=el("select",{id:"cx-pf-"+k});FUND_OPT.forEach(([v,t])=>s.append(el("option",{value:v,text:t})));return el("label",{class:"f"},l,s)}));
-}
-function xBtn(r){const x=el("button",{type:"button",class:"x","aria-label":"Supprimer",text:"×"});x.addEventListener("click",()=>r.remove());return x}
-function rowLevel(v={}){
-  const r=el("div",{class:"listrow lv-row"});
-  const p=el("input",{type:"number",step:"0.01",inputmode:"decimal",placeholder:"Prix"});p.value=v.price||"";p.dataset.k="price";
-  const t=el("select");["EQH","EQL","2 Top Liq","2 Bottom Liq","PDH","PDL","OB H4","FVG H4","Plus haut hebdo","Plus bas hebdo","Autre"].forEach(o=>t.append(el("option",{value:o,text:o})));t.value=v.type||"EQH";t.dataset.k="type";
-  const n=el("input",{type:"text",placeholder:"Ce que j’attends à ce niveau"});n.value=v.note||"";n.dataset.k="note";
-  r.append(el("label",{class:"f"},"Prix",p),el("label",{class:"f"},"Type",t),el("label",{class:"f"},"Note",n),xBtn(r));return r;
-}
-function rowCal(v={}){
-  const r=el("div",{class:"listrow cal-row"});
-  const d=el("select");["lundi","mardi","mercredi","jeudi","vendredi"].forEach(o=>d.append(el("option",{value:o,text:o})));d.value=v.day||"lundi";d.dataset.k="day";
-  const t=el("input",{type:"time"});t.value=v.time||"";t.dataset.k="time";
-  const e=el("input",{type:"text",placeholder:"CPI, NFP, FOMC…"});e.value=v.event||"";e.dataset.k="event";
-  r.append(el("label",{class:"f"},"Jour",d),el("label",{class:"f"},"Heure",t),el("label",{class:"f"},"Annonce",e),xBtn(r));return r;
-}
-function rowSc(v={}){
-  const r=el("div",{class:"listrow sc-row"});
-  const t=el("textarea",{placeholder:"Si le prix balaie l’EQL à … puis donne un gros triangle d’achat, alors setup 1 en achat.","aria-label":"Scénario"});t.value=v.text||"";t.dataset.k="text";t.style.minHeight="56px";
-  r.append(t,xBtn(r));return r;
-}
-function readRows(sel){return $$(sel+" .listrow").map(r=>{const o={};r.querySelectorAll("[data-k]").forEach(i=>o[i.dataset.k]=i.value);return o})}
-$("#add-level").addEventListener("click",()=>$("#p-levels").append(rowLevel()));
-$("#add-cal").addEventListener("click",()=>$("#p-cal").append(rowCal()));
-$("#add-sc").addEventListener("click",()=>$("#p-sc").append(rowSc()));
 $("#wk-prev").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()-7);loadPlan()});
 $("#wk-next").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()+7);loadPlan()});
 $("#wk-today").addEventListener("click",()=>{PLAN_WEEK=planWeek();loadPlan()});
@@ -302,26 +370,8 @@ async function loadPlan(){
   const wid=weekId(PLAN_WEEK);
   let p=null;try{p=await api("plans/"+wid)}catch(e){toast("Lecture du plan impossible : "+errMsg(e))}
   if(wid!==weekId(PLAN_WEEK))return; // semaine changée entre-temps
-  CUR_PLAN=p||{};
-  $("#p-bias").value=CUR_PLAN.bias||"";$("#p-wh").value=CUR_PLAN.wh||"";$("#p-wl").value=CUR_PLAN.wl||"";
-  $("#p-struct").value=CUR_PLAN.struct||"";$("#p-fundnotes").value=CUR_PLAN.fundnotes||"";$("#p-review").value=CUR_PLAN.review||"";
-  FUND.forEach(([k])=>{$("#cx-pf-"+k).value=(CUR_PLAN.fund||{})[k]||""});
-  const lv=CUR_PLAN.levels&&CUR_PLAN.levels.length?CUR_PLAN.levels:[{}];
-  $("#p-levels").replaceChildren(...lv.map(rowLevel));
-  $("#p-cal").replaceChildren(...(CUR_PLAN.cal||[]).map(rowCal));
-  const sc=CUR_PLAN.sc&&CUR_PLAN.sc.length?CUR_PLAN.sc:[{}];
-  $("#p-sc").replaceChildren(...sc.map(rowSc));
+  CUR_PLAN=p;renderPlanView(p);
 }
-$("#btn-plan").addEventListener("click",async()=>{
-  const fund={};FUND.forEach(([k])=>fund[k]=$("#cx-pf-"+k).value);
-  const v={bias:$("#p-bias").value,wh:$("#p-wh").value,wl:$("#p-wl").value,struct:$("#p-struct").value,fund,fundnotes:$("#p-fundnotes").value,
-    levels:readRows("#p-levels").filter(x=>x.price),cal:readRows("#p-cal").filter(x=>x.event||x.time),sc:readRows("#p-sc").filter(x=>x.text.trim()),review:$("#p-review").value};
-  const wid=weekId(PLAN_WEEK);
-  const btn=$("#btn-plan");btn.disabled=true;
-  try{const saved=await api("plans/"+wid,{method:"PUT",body:v});toast("Plan enregistré");if(wid===weekId(planWeek())){THIS_WEEK_PLAN=saved;renderPlanMini()}}
-  catch(e){toast("Enregistrement impossible : "+errMsg(e))}
-  btn.disabled=false;
-});
 
 /* ---------- journal ---------- */
 function setCapture(c){
@@ -672,6 +722,8 @@ async function loadConnections(){
   $("#mt5-url").textContent=CONN.mt5Url;
   $("#tv-state").textContent=CONN.tradingview.active?"Webhook actif. Générer une nouvelle adresse coupe l’ancienne.":"Aucun webhook actif.";
   $("#tv-revoke").hidden=!CONN.tradingview.active;
+  $("#plan-state").textContent=CONN.plan.active?"Jeton actif : la tâche planifiée Claude peut publier le plan. Générer un nouveau jeton coupe l’ancien.":"Aucun jeton : personne ne peut publier le plan.";
+  $("#plan-revoke").hidden=!CONN.plan.active;
   const tg=CONN.telegram;
   $("#tg-setup").hidden=tg.connected;$("#tg-on").hidden=!tg.connected;
   if(tg.connected){
@@ -694,6 +746,14 @@ $("#tv-rotate").addEventListener("click",async()=>{
     loadConnections()}
   catch(e){toast("Impossible : "+errMsg(e))}
 });
+$("#plan-rotate").addEventListener("click",async()=>{
+  if(CONN&&CONN.plan.active&&!confirm("Générer un nouveau jeton ? La tâche Claude devra recevoir le nouveau."))return;
+  try{const r=await api("connections/plan",{method:"POST"});
+    secretBox("#plan-box",[el("div",null,el("b",{text:"Jeton du plan"}),document.createTextNode(" (affiché une seule fois, à donner à la tâche planifiée Claude) :")),el("code",{text:r.token}),el("div",null,"Adresse : ",el("code",{text:r.url+"AAAA-MM-JJ"}),document.createTextNode(" (lundi de la semaine), en-tête X-CX-Key."))]);
+    loadConnections()}
+  catch(e){toast("Impossible : "+errMsg(e))}
+});
+$("#plan-revoke").addEventListener("click",async()=>{if(!confirm("Couper le jeton du plan ? Claude ne pourra plus publier."))return;try{await api("connections/plan",{method:"DELETE"});$("#plan-box").hidden=true;loadConnections();toast("Jeton coupé")}catch(e){toast("Impossible : "+errMsg(e))}});
 $("#tv-revoke").addEventListener("click",async()=>{if(!confirm("Couper le webhook TradingView ?"))return;try{await api("connections/tradingview",{method:"DELETE"});$("#tv-box").hidden=true;loadConnections();toast("Webhook coupé")}catch(e){toast("Impossible : "+errMsg(e))}});
 $("#tg-connect").addEventListener("click",async()=>{
   const token=$("#tg-token").value.trim();if(!token){toast("Collez le jeton du bot.");return}
@@ -722,7 +782,7 @@ function refreshAll(){
 
 /* ---------- démarrage ---------- */
 async function start(){
-  buildChecklist();buildFund();
+  buildChecklist();
   try{
     const b=await api("bootstrap");
     ACCOUNTS=b.accounts||[];TRADES=b.trades||[];PAYOUTS=b.payouts||[];SNAPS=b.snaps||{};

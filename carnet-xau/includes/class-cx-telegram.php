@@ -377,6 +377,9 @@ class CX_Telegram {
 		if ( ! $p ) {
 			return 'Pas encore de plan pour la semaine du ' . wp_date( 'j F', strtotime( $week ), CX_Repo::tz() ) . '.';
 		}
+		if ( is_array( $p['content'] ) && ! empty( $p['content']['prediction'] ) ) {
+			return self::rich_summary( $week, $p['content'] );
+		}
 		$bias  = array(
 			'h' => 'haussier',
 			'b' => 'baissier',
@@ -396,6 +399,57 @@ class CX_Telegram {
 		}
 		return implode( "\n", $lines );
 	}
+
+	/**
+	 * Résumé du plan élargi rédigé par Claude.
+	 *
+	 * @param string $week Lundi.
+	 * @param array  $c    Contenu du plan.
+	 * @return string
+	 */
+	private static function rich_summary( $week, $c ) {
+		$e     = fn( $s ) => esc_html( (string) $s );
+		$p     = $c['prediction'];
+		$num   = fn( $v ) => null === $v ? '?' : number_format( (float) $v, 2, ',', ' ' );
+		$lines = array(
+			'🧭 <b>Plan de la semaine du ' . wp_date( 'j F', strtotime( $week ), CX_Repo::tz() ) . '</b> (Claude)',
+			sprintf( 'Haussier %d %% · Baissier %d %% · Range %d %%', $p['bull'], $p['bear'], $p['range'] ),
+		);
+		if ( $p['summary'] ) {
+			$lines[] = $e( $p['summary'] );
+		}
+		if ( null !== $p['range_low'] && null !== $p['range_high'] ) {
+			$lines[] = 'Range attendu : ' . $num( $p['range_low'] ) . ' – ' . $num( $p['range_high'] ) . ( null !== $p['invalidation'] ? ' · invalidation ' . $num( $p['invalidation'] ) : '' );
+		}
+		$zones = (array) ( $c['zones'] ?? array() );
+		usort( $zones, fn( $x, $y ) => (float) $y['high'] <=> (float) $x['high'] );
+		if ( $zones ) {
+			$lines[] = '';
+			$lines[] = '<b>Zones</b>';
+			foreach ( $zones as $z ) {
+				$lines[] = ( 'vente' === $z['side'] ? '🔴 ' : '🟢 ' ) . $num( $z['low'] ) . ' – ' . $num( $z['high'] ) . ' ' . $e( $z['type'] . ' ' . $z['tf'] ) . str_repeat( '★', (int) $z['strength'] );
+			}
+		}
+		$today = self::DAYS_FR[ (int) ( new DateTimeImmutable( 'now', CX_Repo::tz() ) )->format( 'N' ) ] ?? '';
+		foreach ( (array) ( $c['days'] ?? array() ) as $d ) {
+			if ( $d['day'] === $today && $d['focus'] ) {
+				$lines[] = '';
+				$lines[] = '<b>Aujourd’hui</b> : ' . $e( $d['focus'] );
+			}
+		}
+		$news = array_filter( (array) ( $c['calendar'] ?? array() ), fn( $x ) => 'high' === $x['impact'] );
+		if ( $news ) {
+			$lines[] = '';
+			foreach ( $news as $x ) {
+				$lines[] = '📅 ' . $e( $x['day'] . ' ' . $x['time'] . ' ' . $x['event'] );
+			}
+		}
+		$lines[] = '';
+		$lines[] = 'Plan complet : ' . get_permalink( CX_Front::page_id() );
+		return implode( "\n", $lines );
+	}
+
+	const DAYS_FR = array( 1 => 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche' );
 
 	/* ------------------------------------------------------------------
 	 * Alertes
@@ -506,7 +560,7 @@ class CX_Telegram {
 			return;
 		}
 		if ( CX_Guard::once( 'weekend|' . $next . '|' . $dow ) ) {
-			self::send( sprintf( "📝 Le plan de la semaine du %s n’est pas encore prêt.\nBiais, niveaux clés, annonces, scénarios : %s", wp_date( 'j F', strtotime( $next ), CX_Repo::tz() ), get_permalink( CX_Front::page_id() ) ) );
+			self::send( sprintf( "📝 Le plan de la semaine du %s n’est pas encore publié par Claude.\nCarnet : %s", wp_date( 'j F', strtotime( $next ), CX_Repo::tz() ), get_permalink( CX_Front::page_id() ) ) );
 		}
 	}
 
