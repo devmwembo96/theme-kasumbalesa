@@ -52,7 +52,7 @@ class CX_Export {
 		foreach ( CX_Repo::accounts() as $a ) {
 			$names[ $a['id'] ] = $a['name'];
 		}
-		self::headers( 'text/csv', 'carnet-xau-trades-' . current_time( 'Y-m-d' ) . '.csv' );
+		self::headers( 'text/csv', 'carnet-xau-trades-' . CX_Repo::clock( 'Y-m-d' ) . '.csv' );
 		$out = fopen( 'php://output', 'w' );
 		fwrite( $out, "\xEF\xBB\xBF" );
 		fputcsv( $out, array( 'Compte', 'Date', 'Heure', 'Sens', 'Setup', 'Niveau', 'Stop ($)', 'Lot', 'Risque ($)', 'Résultat (R)', 'Résultat ($)', 'Sur niveau clé', 'Avec le biais', 'Règles respectées', 'Émotion', 'Capture', 'Lien', 'Notes' ), ';' );
@@ -87,12 +87,12 @@ class CX_Export {
 	 * Sauvegarde complète : comptes, trades, plans, retraits.
 	 */
 	public static function json() {
-		self::headers( 'application/json', 'carnet-xau-sauvegarde-' . current_time( 'Y-m-d' ) . '.json' );
+		self::headers( 'application/json', 'carnet-xau-sauvegarde-' . CX_Repo::clock( 'Y-m-d' ) . '.json' );
 		echo wp_json_encode(
 			array(
 				'plugin'     => 'carnet-xau',
 				'version'    => CX_VERSION,
-				'exportedAt' => current_time( 'c' ),
+				'exportedAt' => CX_Repo::clock( 'c' ),
 				'accounts'   => CX_Repo::accounts(),
 				'trades'     => CX_Repo::trades(),
 				'plans'      => CX_Repo::plans(),

@@ -124,7 +124,7 @@ class CX_Ingest {
 	 */
 	private static function site_time( $ts ) {
 		$ts = CX_Repo::num( $ts, 946684800, 4102444800 ); // 2000 à 2100.
-		return null === $ts ? null : ( new DateTimeImmutable( '@' . (int) $ts ) )->setTimezone( wp_timezone() );
+		return null === $ts ? null : ( new DateTimeImmutable( '@' . (int) $ts ) )->setTimezone( CX_Repo::tz() );
 	}
 
 	/**
@@ -188,7 +188,7 @@ class CX_Ingest {
 				'source'            => 'mt5',
 				'ticket_mt5'        => $ticket,
 				'a_completer'       => 1,
-				'created_at'        => current_time( 'mysql' ),
+				'created_at'        => CX_Repo::clock(),
 			)
 		);
 		return $ok ? 'inserted' : 'duplicates';
@@ -210,7 +210,7 @@ class CX_Ingest {
 			return false;
 		}
 		$last = $wpdb->get_var( $wpdb->prepare( "SELECT horodatage FROM $table WHERE account_id = %d ORDER BY horodatage DESC LIMIT 1", $acc['id'] ) ); // phpcs:ignore WordPress.DB.PreparedSQL
-		$now  = current_time( 'mysql' );
+		$now  = CX_Repo::clock();
 		if ( $last && strtotime( $now ) - strtotime( $last ) < 30 ) {
 			return false;
 		}
@@ -271,7 +271,7 @@ class CX_Ingest {
 			return null;
 		}
 		try {
-			return ( new DateTimeImmutable( trim( $v ), new DateTimeZone( 'UTC' ) ) )->setTimezone( wp_timezone() )->format( 'Y-m-d H:i:s' );
+			return ( new DateTimeImmutable( trim( $v ), new DateTimeZone( 'UTC' ) ) )->setTimezone( CX_Repo::tz() )->format( 'Y-m-d H:i:s' );
 		} catch ( Exception $e ) {
 			return null;
 		}
@@ -309,7 +309,7 @@ class CX_Ingest {
 		$wpdb->insert(
 			CX_Install::table( 'signals' ),
 			array(
-				'recu_le'      => current_time( 'mysql' ),
+				'recu_le'      => CX_Repo::clock(),
 				'symbole'      => CX_Repo::text( $data['symbol'] ?? $data['ticker'] ?? '', 30 ),
 				'unite'        => CX_Repo::text( $data['tf'] ?? $data['interval'] ?? $data['timeframe'] ?? '', 10 ),
 				'type_signal'  => CX_Repo::text( $type, 60 ),

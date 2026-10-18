@@ -308,7 +308,7 @@ class CX_Telegram {
 	 * @return string AAAA-MM-JJ.
 	 */
 	public static function monday( $d = null ) {
-		$d = $d ?? new DateTimeImmutable( 'now', wp_timezone() );
+		$d = $d ?? new DateTimeImmutable( 'now', CX_Repo::tz() );
 		return $d->modify( '-' . ( (int) $d->format( 'N' ) - 1 ) . ' days' )->format( 'Y-m-d' );
 	}
 
@@ -346,13 +346,13 @@ class CX_Telegram {
 		if ( ! $a ) {
 			return 'Aucun compte.';
 		}
-		$today = current_time( 'Y-m-d' );
+		$today = CX_Repo::clock( 'Y-m-d' );
 		$tt    = array_filter( CX_Repo::trades( $a['id'] ), fn( $t ) => $t['date'] === $today );
 		$pnl   = array_sum( array_map( fn( $t ) => (float) $t['pnl'], $tt ) );
 		$loss  = count( array_filter( $tt, fn( $t ) => $t['r'] < 0 ) );
 		$lim   = $a['size'] * $a['params']['daily'] / 100;
 		$lines = array(
-			'<b>' . esc_html( $a['name'] ) . '</b> — ' . wp_date( 'l j F' ),
+			'<b>' . esc_html( $a['name'] ) . '</b> — ' . wp_date( 'l j F', null, CX_Repo::tz() ),
 			sprintf( 'Trades : %d/%d · pertes : %d/%d', count( $tt ), $a['params']['maxtrades'], $loss, $a['params']['maxloss'] ),
 			'Résultat : ' . self::usd( $pnl ),
 			'Limite journalière : ' . self::usd( $lim ),
@@ -373,14 +373,14 @@ class CX_Telegram {
 	public static function plan_summary( $week ) {
 		$p = CX_Repo::plan( $week );
 		if ( ! $p ) {
-			return 'Pas encore de plan pour la semaine du ' . wp_date( 'j F', strtotime( $week ) ) . '.';
+			return 'Pas encore de plan pour la semaine du ' . wp_date( 'j F', strtotime( $week ), CX_Repo::tz() ) . '.';
 		}
 		$bias  = array(
 			'h' => 'haussier',
 			'b' => 'baissier',
 			'n' => 'neutre / range',
 		)[ $p['bias'] ] ?? 'non défini';
-		$lines = array( '<b>Plan de la semaine du ' . wp_date( 'j F', strtotime( $week ) ) . '</b>', 'Biais : ' . $bias );
+		$lines = array( '<b>Plan de la semaine du ' . wp_date( 'j F', strtotime( $week ), CX_Repo::tz() ) . '</b>', 'Biais : ' . $bias );
 		$lv    = array_filter( $p['levels'], fn( $l ) => '' !== $l['price'] );
 		usort( $lv, fn( $x, $y ) => (float) $y['price'] <=> (float) $x['price'] );
 		foreach ( $lv as $l ) {
@@ -415,7 +415,7 @@ class CX_Telegram {
 		if ( $lim <= 0 ) {
 			return;
 		}
-		$day = current_time( 'Y-m-d' );
+		$day = CX_Repo::clock( 'Y-m-d' );
 		foreach ( array(
 			100 => '🛑 <b>Limite de perte journalière atteinte</b>',
 			80  => '⚠️ <b>Vous approchez de la limite de perte journalière</b>',
@@ -435,7 +435,7 @@ class CX_Telegram {
 	 * @param int $account_id Compte.
 	 */
 	public static function check_daily_from_trades( $account_id ) {
-		$today = current_time( 'Y-m-d' );
+		$today = CX_Repo::clock( 'Y-m-d' );
 		$pnl   = 0;
 		foreach ( CX_Repo::trades( $account_id ) as $t ) {
 			if ( $t['date'] === $today ) {
@@ -467,7 +467,7 @@ class CX_Telegram {
 	 * @param DateTimeImmutable|null $now Instant (par défaut maintenant, fuseau du site).
 	 */
 	public static function news( $now = null ) {
-		$tz   = wp_timezone();
+		$tz   = CX_Repo::tz();
 		$now  = $now ?? new DateTimeImmutable( 'now', $tz );
 		$days = array( 1 => 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche' );
 		$p    = CX_Repo::plan( self::monday( $now ) );
@@ -493,7 +493,7 @@ class CX_Telegram {
 	 * @param DateTimeImmutable|null $now Instant (par défaut maintenant, fuseau du site).
 	 */
 	public static function weekend( $now = null ) {
-		$now = $now ?? new DateTimeImmutable( 'now', wp_timezone() );
+		$now = $now ?? new DateTimeImmutable( 'now', CX_Repo::tz() );
 		$dow = (int) $now->format( 'N' );
 		$h   = (int) $now->format( 'G' );
 		if ( ! ( 6 === $dow && $h >= 10 ) && ! ( 7 === $dow && $h >= 18 ) ) {
@@ -504,7 +504,7 @@ class CX_Telegram {
 			return;
 		}
 		if ( CX_Guard::once( 'weekend|' . $next . '|' . $dow ) ) {
-			self::send( sprintf( "📝 Le plan de la semaine du %s n’est pas encore prêt.\nBiais, niveaux clés, annonces, scénarios : %s", wp_date( 'j F', strtotime( $next ) ), get_permalink( CX_Front::page_id() ) ) );
+			self::send( sprintf( "📝 Le plan de la semaine du %s n’est pas encore prêt.\nBiais, niveaux clés, annonces, scénarios : %s", wp_date( 'j F', strtotime( $next ), CX_Repo::tz() ), get_permalink( CX_Front::page_id() ) ) );
 		}
 	}
 
@@ -513,14 +513,14 @@ class CX_Telegram {
 	 */
 	public static function prune() {
 		global $wpdb;
-		$day = current_time( 'Y-m-d' );
+		$day = CX_Repo::clock( 'Y-m-d' );
 		if ( get_option( 'cx_last_prune' ) === $day ) {
 			return;
 		}
 		update_option( 'cx_last_prune', $day, false );
 		$snaps = CX_Install::table( 'snapshots' );
 		$sigs  = CX_Install::table( 'signals' );
-		$wpdb->query( $wpdb->prepare( "DELETE FROM $snaps WHERE horodatage < %s", gmdate( 'Y-m-d H:i:s', strtotime( current_time( 'mysql' ) ) - 30 * DAY_IN_SECONDS ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL
-		$wpdb->query( $wpdb->prepare( "DELETE FROM $sigs WHERE recu_le < %s", gmdate( 'Y-m-d H:i:s', strtotime( current_time( 'mysql' ) ) - 90 * DAY_IN_SECONDS ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+		$wpdb->query( $wpdb->prepare( "DELETE FROM $snaps WHERE horodatage < %s", gmdate( 'Y-m-d H:i:s', strtotime( CX_Repo::clock() ) - 30 * DAY_IN_SECONDS ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+		$wpdb->query( $wpdb->prepare( "DELETE FROM $sigs WHERE recu_le < %s", gmdate( 'Y-m-d H:i:s', strtotime( CX_Repo::clock() ) - 90 * DAY_IN_SECONDS ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL
 	}
 }

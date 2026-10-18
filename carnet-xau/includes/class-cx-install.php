@@ -268,8 +268,8 @@ CREATE TABLE $snaps (
 				'size'         => 6000,
 				'price'        => 0,
 				'status'       => 'phase1',
-				'purchaseDate' => current_time( 'Y-m-d' ),
-				'phaseStart'   => current_time( 'Y-m-d' ),
+				'purchaseDate' => CX_Repo::clock( 'Y-m-d' ),
+				'phaseStart'   => CX_Repo::clock( 'Y-m-d' ),
 				'params'       => self::DEFAULT_PARAMS,
 				'active'       => true,
 			)

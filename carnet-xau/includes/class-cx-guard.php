@@ -121,7 +121,7 @@ class CX_Guard {
 		set_transient( $k, (int) get_transient( $k ) + 1, 15 * MINUTE_IN_SECONDS );
 		$log   = (array) get_option( self::LOG, array() );
 		$log[] = array(
-			'time'   => current_time( 'mysql' ),
+			'time'   => CX_Repo::clock(),
 			'ip'     => self::ip(),
 			'entry'  => $bucket,
 			'reason' => $reason,

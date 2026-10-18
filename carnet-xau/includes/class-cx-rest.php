@@ -408,7 +408,7 @@ class CX_Rest {
 				),
 				'telegram'    => CX_Telegram::status(),
 				'refusals'    => array_slice( CX_Guard::refusals(), 0, 20 ),
-				'cron'        => wp_next_scheduled( CX_Telegram::CRON ) ? wp_date( 'H:i', wp_next_scheduled( CX_Telegram::CRON ) ) : null,
+				'cron'        => wp_next_scheduled( CX_Telegram::CRON ) ? wp_date( 'H:i', wp_next_scheduled( CX_Telegram::CRON ), CX_Repo::tz() ) : null,
 			)
 		);
 	}

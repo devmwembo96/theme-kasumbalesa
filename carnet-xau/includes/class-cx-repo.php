@@ -117,12 +117,32 @@ class CX_Repo {
 	}
 
 	/**
-	 * Date et heure courantes du site (MySQL).
+	 * Fuseau du carnet : toujours l'heure de Lubumbashi, quel que soit le réglage du site
+	 * (le site de la Ville est en UTC+1). Modifiable par le filtre « cx_timezone ».
+	 *
+	 * @return DateTimeZone
+	 */
+	public static function tz() {
+		return new DateTimeZone( (string) apply_filters( 'cx_timezone', 'Africa/Lubumbashi' ) );
+	}
+
+	/**
+	 * Date et heure courantes du carnet.
+	 *
+	 * @param string $format Format (par défaut MySQL).
+	 * @return string
+	 */
+	public static function clock( $format = 'Y-m-d H:i:s' ) {
+		return ( new DateTimeImmutable( 'now', self::tz() ) )->format( $format );
+	}
+
+	/**
+	 * Date et heure courantes du carnet (MySQL).
 	 *
 	 * @return string
 	 */
 	private static function now() {
-		return current_time( 'mysql' );
+		return self::clock();
 	}
 
 	/**
@@ -253,9 +273,9 @@ class CX_Repo {
 		if ( array_key_exists( 'phaseStart', $in ) ) {
 			$phase_start = self::date( $in['phaseStart'] );
 		} elseif ( $old && $old['status'] !== $status ) {
-			$phase_start = current_time( 'Y-m-d' );
+			$phase_start = CX_Repo::clock( 'Y-m-d' );
 		} else {
-			$phase_start = $old['phaseStart'] ?? current_time( 'Y-m-d' );
+			$phase_start = $old['phaseStart'] ?? CX_Repo::clock( 'Y-m-d' );
 		}
 
 		$row = array(
