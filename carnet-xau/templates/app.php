@@ -157,6 +157,7 @@ defined( 'ABSPATH' ) || exit;
 		<select id="sf-account" class="auto" aria-label="Compte analysé"></select>
 	</div>
 	<div class="kpis" id="kpis"></div>
+	<div class="panel"><h3>Fiabilité des prévisions de Claude</h3><div id="reliability"></div></div>
 	<div class="panel" id="mc-panel">
 		<h3>Simulateur de challenge (Monte-Carlo)</h3>
 		<p class="hint">Rejoue des milliers de challenges avec vos résultats et les règles du compte actif : objectif, perte journalière, perte maximale, jours minimum, trades et pertes maximum par jour, risque réduit.</p>

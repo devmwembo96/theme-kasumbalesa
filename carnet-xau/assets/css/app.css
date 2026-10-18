@@ -179,6 +179,20 @@
 .cx-app .rules{margin:0;padding-left:20px} .cx-app .rules li{margin:4px 0}
 .cx-app .planmini .lv.buy{border-color:var(--win);color:var(--win)} .cx-app .planmini .lv.sell{border-color:var(--loss);color:var(--loss)}
 
+/* Relectures, tracé, verdict */
+.cx-app .draws{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media (max-width:640px){.cx-app .draws{grid-template-columns:1fr}}
+.cx-app .draw{border:1px solid var(--line);border-left-width:4px;border-radius:var(--radius);padding:10px 12px;font-size:14px}
+.cx-app .draw.buy{border-left-color:var(--win)} .cx-app .draw.sell{border-left-color:var(--loss)} .cx-app .draw.lvl{border-left-color:var(--muted)}
+.cx-app .draw .num{font-family:var(--num);font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+.cx-app .draw .k{font-size:12.5px;color:var(--muted)} .cx-app .draw p{margin:6px 0 0}
+.cx-app .upd{border:1px solid var(--line);border-left-width:4px;border-radius:var(--radius);padding:10px 12px;font-size:14px}
+.cx-app .upd.keep{border-left-color:var(--win)} .cx-app .upd.chg{border-left-color:var(--warn)}
+.cx-app .upd p{margin:6px 0 0} .cx-app .upd .k{color:var(--muted);font-size:13px}
+.cx-app .kpi.verdict-bonne .v{color:var(--win)} .cx-app .kpi.verdict-partielle .v{color:var(--warn)} .cx-app .kpi.verdict-mauvaise .v{color:var(--loss)}
+.cx-app .scn.ok{background:var(--win-soft);border-color:transparent} .cx-app .scn.ko{background:var(--loss-soft);border-color:transparent}
+.cx-app h4.sub{font-size:14px;font-weight:700;margin:14px 0 4px;font-family:var(--sans);letter-spacing:normal;text-transform:none;color:var(--ink)}
+
 /* Simulateur Monte-Carlo */
 .cx-app .scroll-x{overflow-x:auto}
 .cx-app .mc-sum{margin:14px 0 10px;padding:10px 12px;border-radius:var(--radius);background:var(--sunk);font-size:14.5px}

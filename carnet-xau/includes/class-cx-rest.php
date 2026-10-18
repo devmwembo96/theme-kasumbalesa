@@ -85,6 +85,7 @@ class CX_Rest {
 		self::route( '/trades/(?P<id>\d+)', 'PUT,PATCH', 'update_trade' );
 		self::route( '/trades/(?P<id>\d+)', 'DELETE', 'delete_trade' );
 
+		self::route( '/plans', 'GET', 'list_plans' );
 		self::route( '/plans/(?P<week>\d{4}-\d{2}-\d{2})', 'GET', 'get_plan' );
 
 		self::route( '/payouts', 'GET', 'list_payouts' );
@@ -250,6 +251,27 @@ class CX_Rest {
 			return CX_Repo::invalid( 'La semaine doit commencer un lundi.' );
 		}
 		return $w;
+	}
+
+	/**
+	 * Bilans de tous les plans (fiabilité des prévisions de Claude).
+	 *
+	 * @return WP_REST_Response
+	 */
+	public static function list_plans() {
+		return self::out(
+			array_values(
+				array_map(
+					fn( $p ) => array(
+						'week'       => $p['week'],
+						'prediction' => $p['content']['prediction'] ?? null,
+						'review'     => $p['content']['review'] ?? null,
+						'updates'    => count( (array) ( $p['content']['updates'] ?? array() ) ),
+					),
+					array_filter( CX_Repo::plans(), fn( $p ) => is_array( $p['content'] ?? null ) )
+				)
+			)
+		);
 	}
 
 	/**

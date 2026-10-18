@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.2.0
+Stable tag: 2.3.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -80,6 +80,15 @@ Plan de semaine élargi, rédigé exclusivement par Claude (onglet Plan en lectu
 * Publication : PUT /wp-json/carnet-xau/v1/claude/plans/{lundi}, en-tête X-CX-Key = jeton
   du plan (Comptes › Connexions). Format : docs/PLAN-CLAUDE.md. Résumé envoyé sur Telegram.
 * L’ancienne route d’écriture du plan depuis l’interface est supprimée.
+* « Où tracer » : chaque zone et niveau peut porter sa bougie d’origine et sa consigne de
+  tracé ; section « À tracer sur le graphique » dans l’onglet Plan.
+* Relecture quotidienne (17 h New York, lundi–vendredi) : « maintenu » par défaut, « mis à
+  jour » seulement sur déclencheur (invalidation, événement majeur, zone consommée, range
+  dépassé). La version du dimanche reste consultable ; historique daté des relectures.
+* Verdict de fin de semaine : Bonne / Partielle / Mauvaise, critères mesurés (biais, range,
+  invalidation, zones atteintes et réaction, scénarios), ce qui a marché ou non, leçon.
+  Onglet Stats : fiabilité des prévisions de Claude au fil des semaines.
+* Telegram : résumé de la relecture et verdict le lendemain à partir de 7 h (Lubumbashi).
 * Le samedi et le dimanche, « Cette semaine », le résumé de l’onglet Jour et la commande
   Telegram /plan portent sur la semaine qui commence.
 

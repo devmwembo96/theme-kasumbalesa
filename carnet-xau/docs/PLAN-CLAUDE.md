@@ -11,8 +11,31 @@ Corps    JSON ci-dessous
 ```
 
 - `{lundi}` : date du lundi de la semaine, `AAAA-MM-JJ`.
-- Les clés envoyées remplacent celles du plan existant ; les autres sont conservées. Pour compléter le **bilan** d'une semaine passée, envoyer seulement `{"review": {...}}` sur le lundi de cette semaine-là.
-- Un envoi qui contient `prediction` publie le plan et envoie son résumé sur Telegram (ajouter `?silent=1` pour ne rien envoyer).
+- Les clés envoyées remplacent celles du plan existant ; les autres sont conservées.
+- **Publication du dimanche** : envoi complet avec `prediction`, sans `update`. L'historique des relectures repart de zéro et le résumé part aussitôt sur Telegram (`?silent=1` pour ne rien envoyer).
+- **Relecture quotidienne** (lundi à vendredi, 17 h heure de New York, clôture de la bougie journalière) : envoyer `update` (voir plus bas). Si le plan est maintenu, n'envoyer que `update`. S'il est mis à jour, envoyer aussi les clés modifiées (`prediction`, `zones`, `levels`, `scenarios`, `days`…) : la version du dimanche est conservée et reste consultable. Le résumé part sur Telegram **le lendemain à 7 h** (Lubumbashi).
+- **Verdict** : à la relecture du vendredi (ou avec le plan suivant), envoyer `review` sur le lundi de la semaine jugée. Il part sur Telegram le lendemain matin à 7 h.
+
+## Règles de la relecture quotidienne
+
+Par défaut, le plan est **maintenu**. Mise à jour (`mis_a_jour`) seulement sur un déclencheur précis, cité dans `reason` :
+1. clôture journalière au-delà de l'invalidation ;
+2. nouvel événement majeur (annonce surprise, Fed, géopolitique) ;
+3. zone consommée ou cassée ;
+4. range attendu dépassé.
+
+Jamais de changement de biais sans l'un de ces déclencheurs.
+
+## Règles du verdict
+
+Le verdict s'appuie d'abord sur des faits mesurés sur les prix de la semaine, puis sur l'explication :
+- `bias_ok` : la semaine a clôturé dans le sens du biais dominant ;
+- `range_held` : plus haut et plus bas de la semaine dans `range_low`–`range_high` ;
+- `invalidation_hit` : le prix a touché l'invalidation ;
+- `zones[]` : chaque zone atteinte ou non, et si elle a réagi (rebond d'au moins 0,5 × ATR journalier) ;
+- `scenarios[]` : déclenchés ou non, avec le résultat.
+
+`verdict` : `bonne` si le biais était juste et que la majorité des zones atteintes ont réagi ; `mauvaise` si le biais était faux et l'invalidation touchée ; `partielle` sinon.
 - Réponse : `{"ok": true, "week": "...", "url": "..."}`. Jeton faux : 401. Trop d'essais : 429.
 
 Prix en dollars, avec deux décimales au plus. Heures en heure de Lubumbashi (UTC+2), au format `HH:MM`. Jours en minuscules : `lundi` … `vendredi`. Textes en français, avec l'apostrophe ’ et les guillemets « ».
@@ -42,12 +65,14 @@ Prix en dollars, avec deux décimales au plus. Heures en heure de Lubumbashi (UT
     { "tf": "H1", "trend": "b", "last": "BoS baissier 4 172",                    "pd": "discount",  "note": "" }
   ],
   "zones": [
-    { "type": "OB", "tf": "H4", "low": 4140.0, "high": 4148.5, "side": "achat", "strength": 3, "state": "vierge", "note": "Sous l’EQL 4 135 balayé = setup 1" },
-    { "type": "FVG", "tf": "H1", "low": 4224.0, "high": 4231.0, "side": "vente", "strength": 2, "state": "vierge", "note": "" }
+    { "type": "OB", "tf": "H4", "low": 4140.0, "high": 4148.5, "side": "achat", "strength": 3, "state": "vierge", "note": "Sous l’EQL 4 135 balayé = setup 1",
+      "origin": "Dernière bougie baissière H4 du jeudi 16/10, 08:00", "draw": "Rectangle du bas de la mèche (4 140) au haut du corps (4 148,5), à partir de cette bougie, prolongé à droite." },
+    { "type": "FVG", "tf": "H1", "low": 4224.0, "high": 4231.0, "side": "vente", "strength": 2, "state": "vierge", "note": "",
+      "origin": "Déséquilibre H1 du mercredi 15/10, 14:00–16:00", "draw": "Rectangle entre le bas de la bougie de 14:00 et le haut de celle de 16:00." }
   ],
   "levels": [
-    { "price": 4212.4, "type": "Plus haut semaine passée", "note": "Liquidité au-dessus" },
-    { "price": 4135.0, "type": "EQL", "note": "Double bas H1" }
+    { "price": 4212.4, "type": "Plus haut semaine passée", "note": "Liquidité au-dessus", "origin": "Plus haut du jeudi 16/10", "draw": "Ligne horizontale sur le plus haut de la semaine passée." },
+    { "price": 4135.0, "type": "EQL", "note": "Double bas H1", "origin": "Bas H1 du 15/10 10:00 et du 16/10 13:00", "draw": "Ligne horizontale reliant les deux bas." }
   ],
   "fundamentals": [
     { "key": "dxy",   "label": "Dollar (DXY)",  "effect": "up",      "value": "101,8 (−0,6 %)", "note": "" },
@@ -68,7 +93,23 @@ Prix en dollars, avec deux décimales au plus. Heures en heure de Lubumbashi (UT
       "invalidation": "Clôture H4 sous 4 118" }
   ],
   "rules": [ "Pas de trade mercredi de 14:15 à 15:00 (CPI).", "Vendredi : demi-risque après 16 h." ],
-  "review": { "text": "Bilan de la semaine (rempli la semaine suivante).", "score": 7 },
+  "review": {
+    "verdict": "partielle", "score": 6,
+    "bias_ok": true, "range_held": false, "invalidation_hit": false,
+    "zones": [ { "label": "OB H4 4 140–4 148,5", "reached": true, "reacted": true }, { "label": "FVG H1 4 224–4 231", "reached": false, "reacted": null } ],
+    "scenarios": [ { "label": "Balayage EQL puis achat", "triggered": true, "result": "+3,1R jusqu’à 4 205" } ],
+    "worked": [ "Biais haussier et OB H4" ], "failed": [ "Range sous-estimé après le CPI" ],
+    "lesson": "Élargir le range attendu les semaines de CPI.",
+    "text": "Commentaire libre."
+  },
+  "update": {
+    "date": "2026-10-21", "status": "maintenu",
+    "reason": "Aucun déclencheur : clôture au-dessus de l’invalidation, OB H4 intact.",
+    "summary": "Balayage de l’EQL 4 135 à Londres puis rebond dans l’OB H4.",
+    "changes": [],
+    "trades": "2 trades, tous deux sur l’OB H4 et dans le sens du biais : règles respectées.",
+    "tomorrow": "Mercredi : CPI à 14:30, pas de trade de 14:15 à 15:00 ; viser le plus haut 4 212 si l’OB tient."
+  },
   "sources": "Bougies or (contrat à terme GC=F, écart avec le courtier ≈ +x $), DXY, US10Y, calendrier ForexFactory, actualité."
 }
 ```
@@ -89,6 +130,10 @@ Prix en dollars, avec deux décimales au plus. Heures en heure de Lubumbashi (UT
 | `days[].bias` | `h`, `b`, `n` |
 | `setup` | `1` (liquidité), `2` (continuation) |
 | `review.score` | 0 à 10 |
+| `review.verdict` | `bonne`, `partielle`, `mauvaise` |
+| `bias_ok`, `range_held`, `invalidation_hit`, `reached`, `reacted`, `triggered` | `true`, `false` ou `null` (inconnu) |
+| `update.status` | `maintenu`, `mis_a_jour` (avec `update.date` = jour relu, `AAAA-MM-JJ`) |
+| `origin`, `draw` (zones et niveaux) | où tracer : bougie d’origine et consigne de tracé |
 
 Limites : 6 lignes de structure, 12 zones, 15 niveaux, 8 fondamentaux, 25 annonces, 5 jours, 8 scénarios, 10 règles. Les valeurs hors format sont ignorées.
 

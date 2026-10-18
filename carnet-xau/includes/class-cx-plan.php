@@ -91,8 +91,14 @@ class CX_Plan {
 			'setup'  => array( '1', '2' ),
 			'tf'     => array( 'W', 'D', 'H4', 'H1', 'M15' ),
 			'day'    => self::DAYS,
+			'verdict' => array( 'bonne', 'partielle', 'mauvaise' ),
+			'status'  => array( 'maintenu', 'mis_a_jour' ),
 		);
 		switch ( $type ) {
+			case 'bool':
+				return null === $v || '' === $v ? null : filter_var( $v, FILTER_VALIDATE_BOOLEAN );
+			case 'date':
+				return (string) CX_Repo::date( is_scalar( $v ) ? (string) $v : '' );
 			case 'num':
 				return CX_Repo::num( $v, 0, 1e6 );
 			case 'pct':
@@ -165,15 +171,19 @@ class CX_Plan {
 					'strength' => 'int3',
 					'state'    => 'state',
 					'note'     => 'text',
+					'origin'   => 'text',
+					'draw'     => 'text',
 				),
 				12,
 			),
 			'levels'       => array(
 				'list',
 				array(
-					'price' => 'num',
-					'type'  => 'text',
-					'note'  => 'text',
+					'price'  => 'num',
+					'type'   => 'text',
+					'note'   => 'text',
+					'origin' => 'text',
+					'draw'   => 'text',
 				),
 				15,
 			),
@@ -228,10 +238,52 @@ class CX_Plan {
 			),
 			'rules'        => array( 'list', 'text', 10 ),
 			'review'       => array(
-				'text'  => 'long',
-				'score' => 'score',
+				'verdict'          => 'verdict',
+				'score'            => 'score',
+				'text'             => 'long',
+				'bias_ok'          => 'bool',
+				'range_held'       => 'bool',
+				'invalidation_hit' => 'bool',
+				'zones'            => array(
+					'list',
+					array(
+						'label'   => 'text',
+						'reached' => 'bool',
+						'reacted' => 'bool',
+					),
+					12,
+				),
+				'scenarios'        => array(
+					'list',
+					array(
+						'label'     => 'text',
+						'triggered' => 'bool',
+						'result'    => 'text',
+					),
+					8,
+				),
+				'worked'           => array( 'list', 'text', 8 ),
+				'failed'           => array( 'list', 'text', 8 ),
+				'lesson'           => 'long',
 			),
 			'sources'      => 'long',
+		);
+	}
+
+	/**
+	 * Format d'une relecture quotidienne (clé « update »).
+	 *
+	 * @return array
+	 */
+	public static function update_spec() {
+		return array(
+			'date'     => 'date',
+			'status'   => 'status',
+			'reason'   => 'long',
+			'summary'  => 'long',
+			'changes'  => array( 'list', 'text', 10 ),
+			'trades'   => 'long',
+			'tomorrow' => 'long',
 		);
 	}
 
@@ -265,8 +317,9 @@ class CX_Plan {
 		if ( is_wp_error( $plan ) ) {
 			return $plan;
 		}
-		// Nouveau plan (pas un simple bilan) : résumé sur Telegram.
-		if ( isset( $in['prediction'] ) && empty( $req->get_param( 'silent' ) ) ) {
+		// Nouveau plan (ni relecture ni simple bilan) : résumé sur Telegram tout de suite.
+		// Les relectures du soir partent le lendemain à 7 h (CX_Telegram::morning).
+		if ( isset( $in['prediction'] ) && ! isset( $in['update'] ) && empty( $req->get_param( 'silent' ) ) ) {
 			CX_Telegram::send( CX_Telegram::plan_summary( $week ) );
 		}
 		return new WP_REST_Response(
@@ -291,6 +344,23 @@ class CX_Plan {
 		$spec    = self::spec();
 		$old     = CX_Repo::plan( $week );
 		$content = is_array( $old['content'] ?? null ) ? $old['content'] : array();
+		$update  = isset( $in['update'] ) ? self::clean( $in['update'], self::update_spec() ) : null;
+		if ( isset( $in['update'] ) && ( '' === $update['date'] || '' === $update['status'] ) ) {
+			return CX_Repo::invalid( 'Relecture : « date » (AAAA-MM-JJ) et « status » (maintenu ou mis_a_jour) obligatoires.' );
+		}
+		if ( $update ) {
+			// Relecture : la version publiée le dimanche est gardée avant la première mise à jour.
+			if ( 'mis_a_jour' === $update['status'] && empty( $content['initial'] ) ) {
+				$content['initial'] = array_intersect_key( $content, array_flip( array( 'prediction', 'zones', 'levels', 'scenarios', 'days' ) ) );
+			}
+			$updates = array_values( array_filter( (array) ( $content['updates'] ?? array() ), fn( $u ) => $u['date'] !== $update['date'] ) );
+			$updates[] = $update;
+			usort( $updates, fn( $a, $b ) => strcmp( $a['date'], $b['date'] ) );
+			$content['updates'] = $updates;
+		} elseif ( isset( $in['prediction'] ) ) {
+			// Nouvelle publication complète : on repart d'un historique vide.
+			unset( $content['initial'], $content['updates'] );
+		}
 		foreach ( $spec as $k => $type ) {
 			if ( array_key_exists( $k, $in ) ) {
 				$content[ $k ] = self::clean( $in[ $k ], $type );
@@ -358,7 +428,8 @@ class CX_Plan {
 			array(
 				'contenu'   => wp_json_encode( $content, JSON_UNESCAPED_UNICODE ),
 				'auteur'    => 'claude',
-				'publie_le' => isset( $in['prediction'] ) || empty( $old['publishedAt'] ) ? CX_Repo::clock() : $old['publishedAt'],
+				// Date de publication : seulement pour une publication complète (pas une relecture ni un bilan seul).
+				'publie_le' => isset( $in['prediction'] ) && ! $update ? CX_Repo::clock() : ( $old['publishedAt'] ?? null ),
 			),
 			array(
 				'account_id' => 0,

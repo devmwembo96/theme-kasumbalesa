@@ -451,6 +451,114 @@ class CX_Telegram {
 
 	const DAYS_FR = array( 1 => 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche' );
 
+	/**
+	 * À partir de 7 h (Lubumbashi) : relectures du soir non encore envoyées, puis verdict de
+	 * la semaine. Chaque message ne part qu'une fois.
+	 *
+	 * @param DateTimeImmutable|null $now Instant (par défaut maintenant).
+	 */
+	public static function morning( $now = null ) {
+		$now = $now ?? new DateTimeImmutable( 'now', CX_Repo::tz() );
+		$h   = (int) $now->format( 'G' );
+		if ( $h < 7 || $h >= 12 ) {
+			return;
+		}
+		$today = $now->format( 'Y-m-d' );
+		$weeks = array( self::monday( $now ), self::monday( $now->modify( '-7 days' ) ) );
+		foreach ( $weeks as $week ) {
+			$p = CX_Repo::plan( $week );
+			$c = is_array( $p['content'] ?? null ) ? $p['content'] : array();
+			foreach ( (array) ( $c['updates'] ?? array() ) as $u ) {
+				// Relecture d'un jour passé, de moins de 4 jours.
+				if ( $u['date'] < $today && $u['date'] >= $now->modify( '-4 days' )->format( 'Y-m-d' ) && CX_Guard::once( 'upd|' . $u['date'] ) ) {
+					self::send( self::update_summary( $u, $c ) );
+				}
+			}
+			if ( ! empty( $c['review']['verdict'] ) && $week < self::monday( $now ) && CX_Guard::once( 'verdict|' . $week ) ) {
+				self::send( self::verdict_summary( $week, $c['review'] ) );
+			}
+		}
+	}
+
+	/**
+	 * Message d'une relecture quotidienne.
+	 *
+	 * @param array $u Relecture.
+	 * @param array $c Contenu du plan (zones à tracer).
+	 * @return string
+	 */
+	public static function update_summary( $u, $c ) {
+		$e     = fn( $s ) => esc_html( (string) $s );
+		$day   = wp_date( 'l j F', strtotime( $u['date'] . ' 12:00 UTC' ), CX_Repo::tz() );
+		$lines = array(
+			'🌅 <b>Relecture de ' . $e( $day ) . '</b>',
+			'mis_a_jour' === $u['status'] ? '🔄 <b>Plan mis à jour</b>' : '✅ <b>Plan maintenu</b>',
+		);
+		if ( $u['reason'] ) {
+			$lines[] = $e( $u['reason'] );
+		}
+		if ( $u['summary'] ) {
+			$lines[] = '';
+			$lines[] = $e( $u['summary'] );
+		}
+		foreach ( (array) $u['changes'] as $ch ) {
+			$lines[] = '• ' . $e( $ch );
+		}
+		if ( $u['trades'] ) {
+			$lines[] = '';
+			$lines[] = '<b>Vos trades</b> : ' . $e( $u['trades'] );
+		}
+		if ( $u['tomorrow'] ) {
+			$lines[] = '';
+			$lines[] = '<b>Aujourd’hui</b> : ' . $e( $u['tomorrow'] );
+		}
+		if ( 'mis_a_jour' === $u['status'] ) {
+			$draw = array_filter( (array) ( $c['zones'] ?? array() ), fn( $z ) => '' !== $z['draw'] );
+			if ( $draw ) {
+				$lines[] = '';
+				$lines[] = '<b>À tracer</b>';
+				foreach ( $draw as $z ) {
+					$lines[] = ( 'vente' === $z['side'] ? '🔴 ' : '🟢 ' ) . $e( $z['type'] . ' ' . $z['tf'] . ' : ' . $z['draw'] );
+				}
+			}
+		}
+		$lines[] = '';
+		$lines[] = 'Plan : ' . get_permalink( CX_Front::page_id() );
+		return implode( "\n", $lines );
+	}
+
+	/**
+	 * Message du verdict de la semaine.
+	 *
+	 * @param string $week Lundi.
+	 * @param array  $r    Bilan.
+	 * @return string
+	 */
+	public static function verdict_summary( $week, $r ) {
+		$e     = fn( $s ) => esc_html( (string) $s );
+		$icon  = array(
+			'bonne'     => '🟢 Bonne',
+			'partielle' => '🟡 Partielle',
+			'mauvaise'  => '🔴 Mauvaise',
+		)[ $r['verdict'] ] ?? '';
+		$yn    = fn( $v ) => null === $v ? '—' : ( $v ? 'oui' : 'non' );
+		$lines = array(
+			'📊 <b>Verdict de la semaine du ' . wp_date( 'j F', strtotime( $week ), CX_Repo::tz() ) . '</b> : ' . $icon . ( null !== $r['score'] ? ' (' . $r['score'] . '/10)' : '' ),
+			'Biais juste : ' . $yn( $r['bias_ok'] ) . ' · range respecté : ' . $yn( $r['range_held'] ) . ' · invalidation touchée : ' . $yn( $r['invalidation_hit'] ),
+		);
+		foreach ( (array) $r['worked'] as $w ) {
+			$lines[] = '✔️ ' . $e( $w );
+		}
+		foreach ( (array) $r['failed'] as $f ) {
+			$lines[] = '✖️ ' . $e( $f );
+		}
+		if ( $r['lesson'] ) {
+			$lines[] = '';
+			$lines[] = '<b>Leçon</b> : ' . $e( $r['lesson'] );
+		}
+		return implode( "\n", $lines );
+	}
+
 	/* ------------------------------------------------------------------
 	 * Alertes
 	 * ------------------------------------------------------------------ */
@@ -513,6 +621,7 @@ class CX_Telegram {
 			if ( ! empty( $c['alerts']['weekend'] ) ) {
 				self::weekend();
 			}
+			self::morning();
 		}
 		self::prune();
 	}
