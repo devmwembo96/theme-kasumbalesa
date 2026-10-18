@@ -60,6 +60,16 @@ class CX_Install {
 		if ( get_option( 'cx_db_version' ) !== CX_DB_VERSION ) {
 			self::create_tables();
 			self::add_caps();
+			// Version 2 : la page n'est plus privée, seulement tenue hors du site.
+			$page = (int) get_option( 'cx_page_id' );
+			if ( $page && 'private' === get_post_status( $page ) ) {
+				wp_update_post(
+					array(
+						'ID'          => $page,
+						'post_status' => 'publish',
+					)
+				);
+			}
 			update_option( 'cx_db_version', CX_DB_VERSION, false );
 		}
 	}
@@ -166,13 +176,11 @@ CREATE TABLE $payouts (
 			$admin->add_cap( CX_CAP );
 		}
 		if ( ! get_role( 'cx_trader' ) ) {
-			// read_private_pages : la page du carnet est privée.
 			add_role(
 				'cx_trader',
 				'Trader Carnet XAU',
 				array(
 					'read'               => true,
-					'read_private_pages' => true,
 					'upload_files'       => true,
 					CX_CAP               => true,
 				)
@@ -181,7 +189,7 @@ CREATE TABLE $payouts (
 	}
 
 	/**
-	 * Crée la page privée du carnet si elle n'existe plus. N'ajoute rien aux menus.
+	 * Crée la page du carnet si elle n'existe plus. N'ajoute rien aux menus.
 	 */
 	public static function ensure_page() {
 		$id = (int) get_option( 'cx_page_id' );
@@ -191,7 +199,7 @@ CREATE TABLE $payouts (
 		$id = wp_insert_post(
 			array(
 				'post_type'      => 'page',
-				'post_status'    => 'private',
+				'post_status'    => 'publish',
 				'post_title'     => 'Carnet XAU',
 				'post_name'      => 'carnet-xau',
 				'post_content'   => '<!-- wp:shortcode -->[carnet_xau]<!-- /wp:shortcode -->',

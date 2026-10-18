@@ -2,8 +2,8 @@
 /**
  * API REST /wp-json/carnet-xau/v1/ : réservée aux utilisateurs qui ont la capacité du carnet.
  *
- * L'interface envoie le nonce « wp_rest » dans l'en-tête X-WP-Nonce ; sans lui, WordPress
- * ignore le cookie de connexion et la permission est refusée.
+ * Accès décidé par CX_Front::can_use() (ouvert pendant la conception). L'interface envoie
+ * aussi le nonce « wp_rest » pour qu'un administrateur connecté reste reconnu.
  *
  * @package CarnetXAU
  */
@@ -23,6 +23,7 @@ class CX_Rest {
 	public static function init() {
 		add_action( 'rest_api_init', array( __CLASS__, 'routes' ) );
 		add_action( 'wp_ajax_cx_nonce', array( __CLASS__, 'refresh_nonce' ) );
+		add_action( 'wp_ajax_nopriv_cx_nonce', array( __CLASS__, 'refresh_nonce' ) );
 	}
 
 	/**
@@ -31,7 +32,7 @@ class CX_Rest {
 	 * @return bool|WP_Error
 	 */
 	public static function can() {
-		if ( current_user_can( CX_CAP ) ) {
+		if ( CX_Front::can_use() ) {
 			return true;
 		}
 		return new WP_Error( 'cx_forbidden', 'Accès réservé.', array( 'status' => is_user_logged_in() ? 403 : 401 ) );
@@ -41,7 +42,7 @@ class CX_Rest {
 	 * Nouveau nonce REST pour une interface restée ouverte longtemps (admin-ajax, cookie seul).
 	 */
 	public static function refresh_nonce() {
-		if ( ! current_user_can( CX_CAP ) ) {
+		if ( ! CX_Front::can_use() ) {
 			wp_send_json_error( null, 403 );
 		}
 		nocache_headers();

@@ -2,8 +2,9 @@
 /**
  * Interface : shortcode, protection de la page, scripts, manifest et service worker.
  *
- * La page du carnet est privée, hors menus, hors recherche, hors plans du site et en
- * noindex. Toute personne sans la capacité du carnet reçoit une 404.
+ * La page du carnet est publique mais tenue hors du site : jamais dans un menu, une liste
+ * de pages, la recherche, l'API des pages ou un plan du site, et toujours en noindex.
+ * Le filtre « cx_can_use » permet de réserver l'accès plus tard (ex. current_user_can).
  *
  * @package CarnetXAU
  */
@@ -25,7 +26,10 @@ class CX_Front {
 		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue' ) );
 		add_action( 'wp_head', array( __CLASS__, 'head' ), 2 );
 		add_filter( 'wp_robots', array( __CLASS__, 'robots' ) );
-		add_filter( 'private_title_format', array( __CLASS__, 'title_format' ), 10, 2 );
+		add_filter( 'wpseo_robots', array( __CLASS__, 'yoast_robots' ) );
+		add_filter( 'wpseo_exclude_from_sitemap_by_post_ids', array( __CLASS__, 'exclude' ) );
+		add_action( 'pre_get_posts', array( __CLASS__, 'search_exclude' ) );
+		add_filter( 'rest_page_query', array( __CLASS__, 'rest_exclude' ) );
 		add_filter( 'wp_list_pages_excludes', array( __CLASS__, 'exclude' ) );
 		add_filter( 'wp_sitemaps_posts_query_args', array( __CLASS__, 'sitemap_exclude' ) );
 	}
@@ -37,6 +41,15 @@ class CX_Front {
 	 */
 	public static function page_id() {
 		return (int) get_option( 'cx_page_id' );
+	}
+
+	/**
+	 * Accès au carnet. Ouvert pendant la conception ; à restreindre par le filtre « cx_can_use ».
+	 *
+	 * @return bool
+	 */
+	public static function can_use() {
+		return (bool) apply_filters( 'cx_can_use', true );
 	}
 
 	/**
@@ -53,13 +66,13 @@ class CX_Front {
 	}
 
 	/**
-	 * 404 pour toute personne non autorisée, et jamais de cache.
+	 * 404 si l'accès est restreint et refusé ; jamais de cache.
 	 */
 	public static function guard() {
 		if ( ! self::is_app_page() ) {
 			return;
 		}
-		if ( ! current_user_can( CX_CAP ) ) {
+		if ( ! self::can_use() ) {
 			global $wp_query;
 			$wp_query->set_404();
 			status_header( 404 );
@@ -75,7 +88,7 @@ class CX_Front {
 	 * @return string
 	 */
 	public static function shortcode() {
-		if ( ! current_user_can( CX_CAP ) ) {
+		if ( ! self::can_use() ) {
 			return '';
 		}
 		ob_start();
@@ -87,7 +100,7 @@ class CX_Front {
 	 * Feuilles de style et script, sur la page du carnet uniquement.
 	 */
 	public static function enqueue() {
-		if ( ! self::is_app_page() || ! current_user_can( CX_CAP ) ) {
+		if ( ! self::is_app_page() || ! self::can_use() ) {
 			return;
 		}
 		wp_enqueue_style( 'cx-fonts', 'https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Instrument+Sans:wght@400;500;600;700&display=swap', array(), null ); // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion
@@ -115,7 +128,7 @@ class CX_Front {
 	 * Manifest et métadonnées d'application installable.
 	 */
 	public static function head() {
-		if ( ! self::is_app_page() || ! current_user_can( CX_CAP ) ) {
+		if ( ! self::is_app_page() || ! self::can_use() ) {
 			return;
 		}
 		printf(
@@ -140,14 +153,38 @@ class CX_Front {
 	}
 
 	/**
-	 * Pas de préfixe « Privé : » devant le titre du carnet.
+	 * Noindex aussi quand Yoast gère les balises robots.
 	 *
-	 * @param string  $format Format.
-	 * @param WP_Post $post   Article.
+	 * @param string $robots Directives.
 	 * @return string
 	 */
-	public static function title_format( $format, $post = null ) {
-		return ( $post && (int) $post->ID === self::page_id() ) ? '%s' : $format;
+	public static function yoast_robots( $robots ) {
+		return self::is_app_page() ? 'noindex, nofollow' : $robots;
+	}
+
+	/**
+	 * Jamais dans les résultats de recherche du site.
+	 *
+	 * @param WP_Query $q Requête.
+	 */
+	public static function search_exclude( $q ) {
+		if ( $q->is_search() && ! is_admin() && self::page_id() ) {
+			$q->set( 'post__not_in', array_merge( (array) $q->get( 'post__not_in' ), array( self::page_id() ) ) );
+		}
+	}
+
+	/**
+	 * Jamais dans la liste publique /wp/v2/pages.
+	 *
+	 * @param array $args Requête.
+	 * @return array
+	 */
+	public static function rest_exclude( $args ) {
+		if ( self::page_id() && ! current_user_can( 'edit_pages' ) ) {
+			$args['post__not_in']   = isset( $args['post__not_in'] ) ? (array) $args['post__not_in'] : array();
+			$args['post__not_in'][] = self::page_id();
+		}
+		return $args;
 	}
 
 	/**
@@ -186,7 +223,7 @@ class CX_Front {
 		if ( ! in_array( $what, array( 'manifest', 'sw' ), true ) ) {
 			return;
 		}
-		if ( ! current_user_can( CX_CAP ) ) {
+		if ( ! self::can_use() ) {
 			status_header( 404 );
 			nocache_headers();
 			exit;
