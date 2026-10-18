@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.5.0
+Stable tag: 2.6.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -119,7 +119,16 @@ Signaux Claude : trades virtuels et taux de réussite (version 2.5)
   sens à 15 min près), détail par setup, type et sens, 30 derniers signaux.
   GET /claude-signals ; inclus dans la sauvegarde JSON.
 
-À venir : calendrier économique automatique, rapport hebdomadaire, tâche planifiée Claude
+Calendrier économique automatique (version 2.6)
+* Le flux public de ForexFactory (nfs.faireconomy.media) est lu toutes les 6 heures par
+  WP-Cron (1 heure après un échec) ; seules les annonces USD à fort et moyen impact sont
+  gardées (option cx_calendar). Les jours passés de la semaine restent 21 jours.
+* Onglet Jour › Annonces économiques USD : annonces du jour à l’heure de Lubumbashi, impact,
+  prévision et précédent, nom français des principales annonces, compte à rebours ; bandeau
+  « pas de trade » de 15 min avant à 30 min après une annonce à fort impact ; prochaine
+  annonce si la journée est vide ; reste de la semaine. GET /calendar.
+
+À venir : alertes Telegram et EA branchés sur ce calendrier, rapport hebdomadaire, tâche planifiée Claude
 qui rédige le plan (après l’EA MT5, pour des niveaux aux prix du courtier).
 
 == Désinstallation ==
@@ -142,6 +151,7 @@ includes/class-cx-ingest.php   Points d’entrée MT5 et TradingView
 includes/class-cx-telegram.php Bot Telegram, alertes, WP-Cron
 includes/class-cx-plan.php     Plan élargi rédigé par Claude : format, publication protégée
 includes/class-cx-live.php     Plan pour l’EA, événements et signaux, bougies du courtier
+includes/class-cx-calendar.php Calendrier économique (ForexFactory)
 assets/mt5/CarnetXAU.mq5.txt   EA MetaTrader 5
 templates/app.php              Balisage des onglets
 assets/                        CSS, JS, service worker, icônes

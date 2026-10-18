@@ -413,6 +413,50 @@ function renderPlanMini(){
   if(news.length)box.append(el("div",{class:"alert warn",style:"margin-top:10px",text:"Aujourd’hui : "+news.map(n=>(n.time||"")+" "+(n.event||"")).join(" · ")+". Pas de trade 15 min avant, 30 min après."}));
   const b=el("button",{type:"button",class:"btn ghost sm",style:"margin-top:10px",text:"Voir le plan complet"});b.addEventListener("click",()=>{PLAN_WEEK=planWeek();loadPlan();showTab("plan")});box.append(b);
 }
+/* ---------- calendrier économique (ForexFactory, USD fort et moyen impact) ---------- */
+let CAL=null,CAL_SKEW=0;
+const CAL_TZ="Africa/Lubumbashi";
+const calDay=d=>new Intl.DateTimeFormat("en-CA",{timeZone:CAL_TZ,year:"numeric",month:"2-digit",day:"2-digit"}).format(d);
+const calLong=t=>new Intl.DateTimeFormat("fr-FR",{timeZone:CAL_TZ,weekday:"long",day:"numeric",month:"short"}).format(new Date(t*1000));
+const calIn=s=>{const m=Math.round(s/60);if(m<60)return m+" min";const h=Math.floor(m/60),r=m%60;return h+" h"+(r?" "+String(r).padStart(2,"0"):"")};
+async function loadCalendar(){
+  try{CAL=await api("calendar");CAL_SKEW=CAL.now*1000-Date.now()}catch(e){if(!CAL)CAL={events:[],error:errMsg(e)}}
+  renderCalendar();
+}
+function calRow(e,now){
+  const past=now>e.t+30*60, row=el("div",{class:"news-row"+(past?" past":"")+(e.impact==="high"?" high":"")});
+  row.append(el("span",{class:"news-time",text:e.time}),el("span",{class:"news-imp "+e.impact,text:e.impact==="high"?"Fort":"Moyen"}));
+  const txt=el("span",{class:"news-txt"},el("b",{text:e.fr||e.title}));
+  if(e.fr)txt.append(el("span",{class:"news-en",text:e.title}));
+  const fp=[e.forecast&&"prévu "+e.forecast,e.previous&&"précédent "+e.previous].filter(Boolean).join(" · ");
+  if(fp)txt.append(el("span",{class:"news-fp",text:fp}));
+  if(!past&&e.t>now)txt.append(el("span",{class:"news-in",text:"dans "+calIn(e.t-now)}));
+  row.append(txt);return row;
+}
+function renderCalendar(){
+  const box=$("#news-today");if(!box||!CAL)return;box.replaceChildren();
+  const now=(Date.now()+CAL_SKEW)/1000, today=calDay(new Date(now*1000)), ev=CAL.events||[];
+  const day=ev.filter(e=>e.date===today), later=ev.filter(e=>e.date>today);
+  // Fenêtre sans trade : 15 min avant, 30 min après une annonce.
+  const hot=day.find(e=>now>=e.t-15*60&&now<=e.t+30*60);
+  if(hot){const end=new Date((hot.t+30*60)*1000).toLocaleTimeString("fr-FR",{timeZone:CAL_TZ,hour:"2-digit",minute:"2-digit"});
+    box.append(el("div",{class:"alert "+(hot.impact==="high"?"stop":"warn"),style:"margin-bottom:10px",text:(hot.impact==="high"?"Annonce à fort impact à ":"Annonce à impact moyen à ")+hot.time+" — "+(hot.fr||hot.title)+" : "+(hot.impact==="high"?"pas de trade jusqu’à ":"prudence jusqu’à ")+end+"."}))}
+  if(day.length){const l=el("div",{class:"news-list"});day.forEach(e=>l.append(calRow(e,now)));box.append(l)}
+  else{
+    box.append(el("p",{class:"news-none",text:"Aucune annonce USD importante aujourd’hui."}));
+    const n=later[0];
+    if(n)box.append(el("p",{class:"hint",style:"margin:4px 0 0",text:"Prochaine : "+calLong(n.t)+" à "+n.time+" — "+(n.fr||n.title)+" ("+(n.impact==="high"?"fort":"moyen")+" impact)."}));
+  }
+  if(later.length){
+    const d=el("details",{class:"news-week"},el("summary",{text:"Reste de la semaine ("+later.length+")"}));
+    let cur="";later.forEach(e=>{if(e.date!==cur){cur=e.date;d.append(el("div",{class:"news-day",text:calLong(e.t)}))}d.append(calRow(e,now))});
+    box.append(d);
+  }
+  const ago=CAL.fetched?calIn(Math.max(60,now-CAL.fetched)):"";
+  box.append(el("p",{class:"news-src",text:"Source : ForexFactory · heures de Lubumbashi"+(ago?" · mis à jour il y a "+ago:"")+(CAL.error?" · dernière lecture en échec, nouvel essai dans l’heure":"")+". Pas de trade 15 min avant ni 30 min après une annonce à fort impact."}));
+}
+setInterval(()=>{if(!document.hidden)renderCalendar()},60000);
+setInterval(()=>{if(!document.hidden)loadCalendar()},1800000);
 $("#wk-prev").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()-7);loadPlan()});
 $("#wk-next").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()+7);loadPlan()});
 $("#wk-today").addEventListener("click",()=>{PLAN_WEEK=planWeek();loadPlan()});
@@ -886,6 +930,7 @@ async function start(){
   setActive();fillAccountSelects();resetTradeForm();resetPayoutForm();
   try{THIS_WEEK_PLAN=await api("plans/"+weekId(planWeek()))}catch(e){THIS_WEEK_PLAN=null}
   renderPlanMini();loadPlan();renderTrades();calc();
+  loadCalendar();
   if("serviceWorker" in navigator&&CFG.sw&&window.isSecureContext){navigator.serviceWorker.register(CFG.sw,{scope:CFG.scope||"/"}).catch(()=>{})}
 }
 start();

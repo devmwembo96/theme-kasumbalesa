@@ -28,6 +28,7 @@ delete_option( 'cx_refusals' );
 delete_option( 'cx_once' );
 delete_option( 'cx_last_prune' );
 delete_option( 'cx_candles' );
+delete_option( 'cx_calendar' );
 wp_clear_scheduled_hook( 'cx_cron' );
 
 foreach ( wp_roles()->role_objects as $cx_role ) {

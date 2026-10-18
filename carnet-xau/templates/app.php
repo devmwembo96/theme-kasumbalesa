@@ -59,6 +59,11 @@ defined( 'ABSPATH' ) || exit;
 		<div class="panel planmini" id="planmini"></div>
 	</div>
 
+	<div class="panel news" id="news-panel">
+		<h3>Annonces économiques USD</h3>
+		<div id="news-today"><p class="hint">Chargement du calendrier…</p></div>
+	</div>
+
 	<details class="panel" id="settings">
 		<summary>Paramètres du compte</summary>
 		<div class="grid g3" style="margin-top:12px">
