@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.6.2                                    |
+//| CarnetXAU.mq5 — version 2.6.3                                    |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1, H4, H1).     |
@@ -55,7 +55,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.62"
+#property version   "2.63"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 input string InpUrl         = "https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
@@ -815,8 +815,9 @@ void DrawPlan()
       string stars = "";
       for(int s = 0; s < z.strength; s++)
          stars += "*";
-      Text(PFX_PLAN + "ZT" + IntegerToString(i), tz, z.hi, " " + z.type + " " + z.tf + " " + stars + " " + Fr(z.lo, 1) + "-" + Fr(z.hi, 1) + (broken ? " (cassée)" : ""),
+      Text(PFX_PLAN + "ZT" + IntegerToString(i), tz, (z.lo + z.hi) / 2, " " + z.type + " " + z.tf + " " + stars + " " + Fr(z.lo, 1) + "-" + Fr(z.hi, 1) + (broken ? " (cassée)" : ""),
            broken ? clrGray : (z.buy ? C'31,122,90' : C'178,58,46'), 8);
+      ObjectSetInteger(0, PFX_PLAN + "ZT" + IntegerToString(i), OBJPROP_ANCHOR, ANCHOR_LEFT);
      }
    for(int i = 0; i < ArraySize(g_levels); i++)
      {
@@ -849,7 +850,7 @@ void Label(string name, int y, string txt, color clr)
      }
    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetString(0, name, OBJPROP_TEXT, txt);
+   ObjectSetString(0, name, OBJPROP_TEXT, txt == "" ? " " : txt);
   }
 
 void DrawPanel()
