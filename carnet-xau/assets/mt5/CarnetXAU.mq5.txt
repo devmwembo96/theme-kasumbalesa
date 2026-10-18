@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.6                                      |
+//| CarnetXAU.mq5 — version 2.6.1                                    |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1, H4, H1).     |
@@ -55,7 +55,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.60"
+#property version   "2.61"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 input string InpUrl         = "https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
@@ -149,6 +149,8 @@ int OnInit()
       return(INIT_PARAMETERS_INCORRECT);
      }
    EventSetTimer((int)MathMax(15, InpSnapshotSec));
+   g_hash = "";                 // changement d'unité de temps : les variables restent, les objets non → tout redessiner
+   g_lastM1 = 0;
    LoadTracks();
    string gv = "CarnetXAU_" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "_" + _Symbol;
    GV_M1  = gv + "_M1";
@@ -194,6 +196,7 @@ void OnTick()
    g_lastM1 = m1;               // nouvelle bougie M1 : la précédente vient de clôturer
    Monitor();                   // invalidation et zones sur clôture M15 (et rattrapage après un arrêt)
    ProcessTracks();             // signaux en cours, bougie par bougie depuis la dernière traitée
+   DrawPanel();                 // zones les plus proches du prix
    if(InpSignals && g_planOk && !PendingLimit())
       CheckSignals();
   }
@@ -850,14 +853,57 @@ void Label(string name, int y, string txt, color clr)
 
 void DrawPanel()
   {
-   string bias = (g_bull > g_bear) ? "Haussier" : (g_bear > g_bull ? "Baissier" : "Neutre");
-   Label(PFX_UI + "1", 20, "Carnet XAU · plan de Claude " + (g_week == "" ? "—" : "semaine du " + g_week) + " · " + bias
-         + " " + IntegerToString(g_bull) + " / " + IntegerToString(g_bear) + " / " + IntegerToString(g_range) + " %", clrGoldenrod);
-   Label(PFX_UI + "2", 36, g_inval > 0 ? "Invalidation " + Fr(g_inval, 2) + (g_invalidated ? " : TOUCHÉE (signaux dans ce sens bloqués)" : " : intacte") : "Pas d'invalidation",
+   string bias = "neutre";
+   if(g_bull > g_bear)
+      bias = "haussier";
+   else if(g_bear > g_bull)
+      bias = "baissier";
+   Label(PFX_UI + "1", 20, "Carnet XAU · plan de Claude" + (g_week == "" ? "" : " · semaine du " + g_week), clrGoldenrod);
+   Label(PFX_UI + "2", 36, g_planOk ? "Biais " + bias + " · haussier " + IntegerToString(g_bull) + " % · baissier " + IntegerToString(g_bear)
+         + " % · range " + IntegerToString(g_range) + " %" : "Aucun plan publié pour la semaine", clrGoldenrod);
+   Label(PFX_UI + "3", 52, g_inval > 0 ? "Invalidation " + Fr(g_inval, 2) + (g_invalidated ? " : TOUCHÉE, signaux bloqués dans ce sens" : " : intacte") : "Pas d'invalidation",
          g_invalidated ? clrRed : clrDimGray);
-   Label(PFX_UI + "3", 52, "Signaux : " + (InpSignals ? IntegerToString(g_signalCount) + " aujourd'hui (signal seulement, aucun ordre passé)" : "désactivés"), clrDimGray);
-   Label(PFX_UI + "4", 68, g_status, clrDimGray);
+   Label(PFX_UI + "4", 68, NearestZones(), clrDimGray);
+   Label(PFX_UI + "5", 84, "Signaux : " + (InpSignals ? IntegerToString(g_signalCount) + " aujourd'hui · aucun ordre passé" : "désactivés"), clrDimGray);
+   // État : coupé en deux lignes si besoin.
+   string st = g_status, st2 = "";
+   if(StringLen(st) > 62)
+     {
+      int cut = 62;
+      while(cut > 30 && StringGetCharacter(st, cut) != ' ')
+         cut--;
+      st2 = StringSubstr(st, cut + 1, 62);
+      st  = StringSubstr(st, 0, cut);
+     }
+   Label(PFX_UI + "6", 100, st, clrDimGray);
+   Label(PFX_UI + "7", 116, st2, clrDimGray);
    ChartRedraw();
+  }
+
+//--- Zones de Claude les plus proches du prix, au-dessus et en dessous (utile quand elles sont hors de l'écran).
+string NearestZones()
+  {
+   if(!g_planOk)
+      return "";
+   double px = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   int up = -1, dn = -1;
+   for(int i = 0; i < ArraySize(g_zones); i++)
+     {
+      if(g_zones[i].state == "cassee")
+         continue;
+      if(g_zones[i].lo > px && (up < 0 || g_zones[i].lo < g_zones[up].lo))
+         up = i;
+      if(g_zones[i].hi < px && (dn < 0 || g_zones[i].hi > g_zones[dn].hi))
+         dn = i;
+      if(g_zones[i].lo <= px && g_zones[i].hi >= px)
+         return "Prix DANS la zone " + (g_zones[i].buy ? "d'achat " : "de vente ") + Fr(g_zones[i].lo, 1) + "–" + Fr(g_zones[i].hi, 1);
+     }
+   string s = "Zones :";
+   if(up >= 0)
+      s += " ↑ " + (g_zones[up].buy ? "achat " : "vente ") + Fr(g_zones[up].lo, 1) + " (+" + Fr(g_zones[up].lo - px, 1) + ")";
+   if(dn >= 0)
+      s += " ↓ " + (g_zones[dn].buy ? "achat " : "vente ") + Fr(g_zones[dn].hi, 1) + " (−" + Fr(px - g_zones[dn].hi, 1) + ")";
+   return s;
   }
 
 //+------------------------------------------------------------------+
@@ -1158,7 +1204,7 @@ void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, do
    ObjectSetInteger(0, id + "_2R", OBJPROP_COLOR, clrSeaGreen);
    ObjectSetInteger(0, id + "_2R", OBJPROP_RAY_RIGHT, false);
    ObjBase(id + "_2R");
-   Text(id + "_T", t, buy ? tp : sl, label + " · " + Fr(lot, 2) + " lot · SL " + Fr(sl, 2) + " · TP " + Fr(tp, 2) + " (" + Fr(rr, 1) + "R) · setup " + setup,
+   Text(id + "_T", t, buy ? tp : sl, label + " " + Fr(lot, 2) + " lot · SL " + Fr(sl, 2) + " · TP " + Fr(tp, 2) + " (" + Fr(rr, 1) + "R) S" + setup,
         buy ? C'31,122,90' : C'178,58,46', 9);
    ChartRedraw();
 
