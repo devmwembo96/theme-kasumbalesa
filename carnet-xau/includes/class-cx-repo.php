@@ -159,6 +159,7 @@ class CX_Repo {
 			'phaseStart'   => $r->phase_debut,
 			'params'       => array_merge( CX_Install::DEFAULT_PARAMS, is_array( $params ) ? $params : array() ),
 			'active'       => (bool) $r->actif,
+			'mt5'          => ! empty( $r->mt5_cle ),
 		);
 	}
 
@@ -307,6 +308,18 @@ class CX_Repo {
 	}
 
 	/**
+	 * Enregistre (ou retire) l'empreinte de la clé MT5 d'un compte.
+	 *
+	 * @param int         $id   Compte.
+	 * @param string|null $hash Empreinte SHA-256, ou null pour révoquer.
+	 * @return bool
+	 */
+	public static function set_mt5_key( $id, $hash ) {
+		global $wpdb;
+		return false !== $wpdb->update( CX_Install::table( 'accounts' ), array( 'mt5_cle' => $hash ), array( 'id' => $id ) );
+	}
+
+	/**
 	 * Supprime un compte avec ses trades et ses retraits.
 	 *
 	 * @param int $id Identifiant.
@@ -320,6 +333,7 @@ class CX_Repo {
 		}
 		$wpdb->delete( CX_Install::table( 'trades' ), array( 'account_id' => $id ) );
 		$wpdb->delete( CX_Install::table( 'payouts' ), array( 'account_id' => $id ) );
+		$wpdb->delete( CX_Install::table( 'snapshots' ), array( 'account_id' => $id ) );
 		$wpdb->delete( CX_Install::table( 'accounts' ), array( 'id' => $id ) );
 		if ( $acc['active'] ) {
 			$t     = CX_Install::table( 'accounts' );
@@ -381,6 +395,7 @@ class CX_Repo {
 			'link'       => $r->lien,
 			'notes'      => $r->notes,
 			'source'     => $r->source,
+			'toComplete' => (bool) $r->a_completer,
 			'createdAt'  => $r->created_at,
 		);
 	}
@@ -469,6 +484,8 @@ class CX_Repo {
 			'capture_id'        => $cap ? $cap : null,
 			'lien'              => mb_substr( $link, 0, 500 ),
 			'notes'             => self::textarea( $in['notes'] ?? '' ),
+			// Un trade importé de MT5 est « complété » dès qu'il est enregistré depuis le journal.
+			'a_completer'       => 0,
 		);
 
 		if ( $id ) {

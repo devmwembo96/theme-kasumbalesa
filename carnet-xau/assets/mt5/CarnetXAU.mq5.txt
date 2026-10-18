@@ -1,0 +1,282 @@
+//+------------------------------------------------------------------+
+//| CarnetXAU.mq5 — envoie au Carnet XAU les trades fermés et,        |
+//| à intervalle régulier, le solde, l'équité et la perte du jour.    |
+//|                                                                  |
+//| Installation :                                                   |
+//| 1. Renommer ce fichier en CarnetXAU.mq5 et le placer dans         |
+//|    Fichier › Ouvrir le dossier des données › MQL5 › Experts.      |
+//| 2. L'ouvrir dans MetaEditor et compiler (F7).                    |
+//| 3. MT5 : Outils › Options › Expert Advisors : cocher              |
+//|    « Autoriser WebRequest pour les URL listées » et ajouter       |
+//|    https://ville-de-kasumbalesa.cd                                |
+//| 4. Glisser l'EA sur un graphique (XAUUSD), onglet « Paramètres » :|
+//|    coller la clé MT5 du compte (onglet Comptes du carnet).        |
+//|    Cocher « Autoriser le trading algorithmique » n'est pas         |
+//|    nécessaire : l'EA ne passe aucun ordre.                        |
+//|                                                                  |
+//| L'EA ne fait que lire le compte : il n'ouvre, ne modifie et ne    |
+//| ferme aucune position. Le serveur ignore les trades déjà reçus,   |
+//| il peut donc renvoyer les derniers jours sans créer de doublon.   |
+//+------------------------------------------------------------------+
+#property copyright "Carnet XAU"
+#property version   "1.00"
+#property description "Envoie les trades fermés et le solde au Carnet XAU (lecture seule)."
+
+input string InpUrl         = "https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
+input string InpKey         = "";    // Clé MT5 du compte (onglet Comptes)
+input string InpSymbol      = "XAU"; // N'envoyer que les symboles qui contiennent… (vide = tous)
+input int    InpDaysBack    = 3;     // Jours d'historique renvoyés à chaque synchronisation
+input int    InpSnapshotSec = 60;    // Intervalle des instantanés, en secondes (15 minimum)
+
+bool     g_dirty    = true; // un trade a été fermé depuis le dernier envoi
+datetime g_lastFull = 0;    // dernier envoi de l'historique
+
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+   if(StringLen(InpKey) < 16)
+     {
+      Alert("Carnet XAU : collez la clé MT5 du compte dans les paramètres de l'EA.");
+      return(INIT_PARAMETERS_INCORRECT);
+     }
+   EventSetTimer((int)MathMax(15, InpSnapshotSec));
+   Sync();
+   return(INIT_SUCCEEDED);
+  }
+
+void OnDeinit(const int reason) { EventKillTimer(); }
+
+void OnTimer() { Sync(); }
+
+void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest &request, const MqlTradeResult &result)
+  {
+   if(trans.type == TRADE_TRANSACTION_DEAL_ADD)
+      g_dirty = true; // envoyé au prochain passage du minuteur
+  }
+
+//+------------------------------------------------------------------+
+//| Décalage entre l'heure du serveur du courtier et l'heure UTC.     |
+//+------------------------------------------------------------------+
+long ServerOffset()
+  {
+   long off = (long)(TimeTradeServer() - TimeGMT());
+   return (long)MathRound(off / 900.0) * 900; // arrondi au quart d'heure
+  }
+
+string Num(double v, int digits) { return DoubleToString(v, digits); }
+
+string JsonText(string s)
+  {
+   StringReplace(s, "\\", "\\\\");
+   StringReplace(s, "\"", "\\\"");
+   return "\"" + s + "\"";
+  }
+
+bool Contains(const long &list[], long v)
+  {
+   for(int i = 0; i < ArraySize(list); i++)
+      if(list[i] == v)
+         return true;
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+//| Une position entièrement fermée, en JSON (vide sinon).            |
+//| Sorties partielles additionnées ; stop = SL de l'ordre d'entrée.  |
+//+------------------------------------------------------------------+
+string PositionJson(long position, long offset)
+  {
+   if(!HistorySelectByPosition(position))
+      return "";
+   string   symbol = "";
+   long     side = -1;
+   double   inVol = 0, inValue = 0, outVol = 0, outValue = 0;
+   double   profit = 0, commission = 0, swap = 0, sl = 0, tp = 0;
+   datetime openTime = 0, closeTime = 0;
+
+   int total = HistoryDealsTotal();
+   for(int i = 0; i < total; i++)
+     {
+      ulong deal = HistoryDealGetTicket(i);
+      long  type = HistoryDealGetInteger(deal, DEAL_TYPE);
+      if(type != DEAL_TYPE_BUY && type != DEAL_TYPE_SELL)
+         continue;
+      long     entry = HistoryDealGetInteger(deal, DEAL_ENTRY);
+      double   vol   = HistoryDealGetDouble(deal, DEAL_VOLUME);
+      double   price = HistoryDealGetDouble(deal, DEAL_PRICE);
+      datetime t     = (datetime)HistoryDealGetInteger(deal, DEAL_TIME);
+      profit     += HistoryDealGetDouble(deal, DEAL_PROFIT);
+      commission += HistoryDealGetDouble(deal, DEAL_COMMISSION) + HistoryDealGetDouble(deal, DEAL_FEE);
+      swap       += HistoryDealGetDouble(deal, DEAL_SWAP);
+      if(entry == DEAL_ENTRY_IN)
+        {
+         if(openTime == 0 || t < openTime)
+           {
+            openTime = t;
+            symbol   = HistoryDealGetString(deal, DEAL_SYMBOL);
+            side     = type;
+            ulong order = (ulong)HistoryDealGetInteger(deal, DEAL_ORDER);
+            if(HistoryOrderSelect(order))
+              {
+               sl = HistoryOrderGetDouble(order, ORDER_SL);
+               tp = HistoryOrderGetDouble(order, ORDER_TP);
+              }
+           }
+         inVol   += vol;
+         inValue += vol * price;
+        }
+      else
+        {
+         outVol   += vol;
+         outValue += vol * price;
+         if(t > closeTime)
+            closeTime = t;
+        }
+     }
+   if(side < 0 || inVol <= 0 || outVol <= 0)
+      return "";
+   if(StringLen(InpSymbol) > 0 && StringFind(symbol, InpSymbol) < 0)
+      return "";
+
+   return "{\"ticket\":\"" + IntegerToString(position) + "\""
+          + ",\"symbol\":" + JsonText(symbol)
+          + ",\"side\":\"" + (side == DEAL_TYPE_BUY ? "buy" : "sell") + "\""
+          + ",\"lots\":" + Num(inVol, 2)
+          + ",\"open_price\":" + Num(inValue / inVol, 3)
+          + ",\"close_price\":" + Num(outValue / outVol, 3)
+          + ",\"sl\":" + Num(sl, 3)
+          + ",\"tp\":" + Num(tp, 3)
+          + ",\"profit\":" + Num(profit, 2)
+          + ",\"commission\":" + Num(commission, 2)
+          + ",\"swap\":" + Num(swap, 2)
+          + ",\"open_time\":" + IntegerToString((long)openTime - offset)
+          + ",\"close_time\":" + IntegerToString((long)closeTime - offset)
+          + "}";
+  }
+
+//+------------------------------------------------------------------+
+//| Positions fermées des derniers jours.                             |
+//+------------------------------------------------------------------+
+string TradesJson()
+  {
+   long     offset = ServerOffset();
+   datetime now    = TimeCurrent();
+   if(!HistorySelect(now - InpDaysBack * 86400, now + 60))
+      return "";
+
+   // 1. Relever les positions (HistorySelectByPosition change la sélection en cours).
+   long positions[];
+   int  total = HistoryDealsTotal();
+   for(int i = 0; i < total; i++)
+     {
+      ulong deal  = HistoryDealGetTicket(i);
+      long  entry = HistoryDealGetInteger(deal, DEAL_ENTRY);
+      if(entry != DEAL_ENTRY_OUT && entry != DEAL_ENTRY_OUT_BY && entry != DEAL_ENTRY_INOUT)
+         continue;
+      long pos = HistoryDealGetInteger(deal, DEAL_POSITION_ID);
+      if(!Contains(positions, pos))
+        {
+         int n = ArraySize(positions);
+         ArrayResize(positions, n + 1);
+         positions[n] = pos;
+        }
+     }
+
+   // 2. Décrire celles qui sont entièrement fermées.
+   string items = "";
+   for(int i = 0; i < ArraySize(positions); i++)
+     {
+      if(PositionSelectByTicket((ulong)positions[i]))
+         continue; // encore ouverte (sortie partielle)
+      string item = PositionJson(positions[i], offset);
+      if(item != "")
+         items += (items == "" ? "" : ",") + item;
+     }
+   return items;
+  }
+
+//+------------------------------------------------------------------+
+//| Solde, équité et perte du jour (depuis minuit, heure du serveur). |
+//+------------------------------------------------------------------+
+string SnapshotJson()
+  {
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double equity  = AccountInfoDouble(ACCOUNT_EQUITY);
+
+   MqlDateTime s;
+   TimeToStruct(TimeTradeServer(), s);
+   s.hour = 0;
+   s.min  = 0;
+   s.sec  = 0;
+   datetime dayStart = StructToTime(s);
+
+   // Solde de début de journée = solde actuel − tout ce qui a été réalisé depuis minuit.
+   double realised = 0;
+   if(HistorySelect(dayStart, TimeCurrent() + 60))
+     {
+      int total = HistoryDealsTotal();
+      for(int i = 0; i < total; i++)
+        {
+         ulong deal = HistoryDealGetTicket(i);
+         realised += HistoryDealGetDouble(deal, DEAL_PROFIT) + HistoryDealGetDouble(deal, DEAL_COMMISSION)
+                     + HistoryDealGetDouble(deal, DEAL_SWAP) + HistoryDealGetDouble(deal, DEAL_FEE);
+        }
+     }
+   double dayStartBalance = balance - realised;
+   double dailyLoss       = dayStartBalance - equity; // positif = perte
+
+   return "{\"balance\":" + Num(balance, 2) + ",\"equity\":" + Num(equity, 2) + ",\"daily_loss\":" + Num(dailyLoss, 2) + "}";
+  }
+
+//+------------------------------------------------------------------+
+//| Envoi au carnet.                                                  |
+//+------------------------------------------------------------------+
+bool Post(string json)
+  {
+   char data[], result[];
+   string resultHeaders;
+   int len = StringToCharArray(json, data, 0, WHOLE_ARRAY, CP_UTF8);
+   ArrayResize(data, (int)MathMax(0, len - 1)); // sans le zéro final
+   string headers = "Content-Type: application/json\r\nX-CX-Key: " + InpKey + "\r\n";
+
+   ResetLastError();
+   int code = WebRequest("POST", InpUrl, headers, 15000, data, result, resultHeaders);
+   if(code == -1)
+     {
+      int err = GetLastError();
+      if(err == 4014)
+         Print("Carnet XAU : ajoutez l'adresse du site dans Outils › Options › Expert Advisors › WebRequest.");
+      else
+         Print("Carnet XAU : erreur WebRequest ", err);
+      return false;
+     }
+   string body = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
+   if(code != 200)
+     {
+      Print("Carnet XAU : réponse ", code, " ", body);
+      return false;
+     }
+   if(StringFind(body, "\"inserted\":0") < 0 && StringFind(body, "\"inserted\"") >= 0)
+      Print("Carnet XAU : ", body);
+   return true;
+  }
+
+//+------------------------------------------------------------------+
+//| Instantané à chaque passage ; historique après une fermeture de   |
+//| trade, et toutes les 10 minutes par sécurité.                     |
+//+------------------------------------------------------------------+
+void Sync()
+  {
+   bool   full = g_dirty || TimeCurrent() - g_lastFull >= 600;
+   string json = "{\"login\":" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN));
+   if(full)
+      json += ",\"trades\":[" + TradesJson() + "]";
+   json += ",\"snapshot\":" + SnapshotJson() + "}";
+
+   if(Post(json) && full)
+     {
+      g_dirty    = false;
+      g_lastFull = TimeCurrent();
+     }
+  }
+//+------------------------------------------------------------------+

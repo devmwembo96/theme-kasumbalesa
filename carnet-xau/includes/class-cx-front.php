@@ -118,6 +118,7 @@ class CX_Front {
 					'sw'      => add_query_arg( 'cx_pwa', 'sw', home_url( '/' ) ),
 					'scope'   => wp_parse_url( $page, PHP_URL_PATH ),
 					'version' => CX_VERSION,
+					'ea'      => CX_URL . 'assets/mt5/CarnetXAU.mq5.txt',
 				)
 			) . ';',
 			'before'

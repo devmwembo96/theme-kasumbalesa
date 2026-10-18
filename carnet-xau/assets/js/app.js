@@ -76,7 +76,7 @@ const ls={
 /* ---------- état ---------- */
 const STATUS_L={phase1:"Phase 1",phase2:"Phase 2",finance:"Compte financé",echoue:"Échoué",retire:"Retiré"};
 const EMO_L={calme:"Calme",presse:"Pressé",revanche:"Revanche",fatigue:"Fatigue"};
-let ACCOUNTS=[], ACTIVE=null, S={}, TRADES=[], PAYOUTS=[];
+let ACCOUNTS=[], ACTIVE=null, S={}, TRADES=[], PAYOUTS=[], SNAPS={};
 let PLAN_WEEK=mondayOf(new Date()), CUR_PLAN=null, THIS_WEEK_PLAN=null, EDIT_ID=null, CAPTURE=null, CALC={lot:NaN,stop:NaN};
 let PAY_EDIT=null, ACC_EDIT=null;
 const day={balance:"",days:"",stop:"",spread:""};
@@ -88,7 +88,7 @@ function showTab(t){
   $$(".cx-nav button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
   ["jour","plan","journal","stats","comptes"].forEach(x=>{$("#tab-"+x).hidden=x!==t});
   if(t==="stats")renderStats();
-  if(t==="comptes")renderAccounts();
+  if(t==="comptes"){renderAccounts();loadConnections()}
   const top=ROOT.getBoundingClientRect().top+window.scrollY;
   if(window.scrollY>top)window.scrollTo(0,Math.max(0,top-100));
 }
@@ -143,13 +143,24 @@ function phaseTradesBeforeToday(){
   const from=ACTIVE.phaseStart||"0000-00-00", t=todayStr();
   return accTrades(ACTIVE.id).filter(x=>x.date>=from&&x.date<t);
 }
+function todaySnap(){const s=ACTIVE&&SNAPS[ACTIVE.id];return s&&s.at.slice(0,10)===todayStr()?s:null}
+function renderMt5Line(){
+  const box=$("#mt5-line"), s=ACTIVE&&SNAPS[ACTIVE.id];
+  if(!s){box.hidden=true;return}
+  const mins=Math.max(0,Math.round((Date.now()-new Date(s.at.replace(" ","T")).getTime())/60000));
+  const ago=mins<1?"à l’instant":mins<60?"il y a "+mins+" min":mins<1440?"il y a "+Math.round(mins/60)+" h":"le "+new Date(s.at.replace(" ","T")).toLocaleDateString("fr-FR");
+  box.replaceChildren(el("span",null,"MT5 "),el("span",null,"solde ",el("b",{text:money2(s.balance)})),el("span",null,"équité ",el("b",{text:money2(s.equity)})),
+    el("span",null,s.dailyLoss>0?"perte du jour ":"gain du jour ",el("b",{text:money2(Math.abs(s.dailyLoss))})),el("span",{class:mins>10?"old":"",text:ago}));
+  box.hidden=false;
+}
 function autoDays(){return new Set(phaseTradesBeforeToday().map(x=>x.date)).size}
 function autoBalance(){return Math.round((ACTIVE.size+phaseTradesBeforeToday().reduce((a,x)=>a+(num(x.pnl)||0),0))*100)/100}
 function loadDay(){
   const saved=ls.get("day:"+ACTIVE.id,null);
   const fresh=!(saved&&saved.date===todayStr());
   ["balance","days","stop","spread"].forEach(k=>{day[k]=fresh?"":(saved[k]||"")});
-  if(!day.balance)day.balance=String(autoBalance());
+  const sn=todaySnap();
+  if(!day.balance)day.balance=String(sn?Math.round((sn.equity+sn.dailyLoss)*100)/100:autoBalance());
   if(day.days==="")day.days=String(autoDays());
   ["balance","days","stop","spread"].forEach(k=>{$("#in-"+k).value=day[k]});
 }
@@ -167,6 +178,7 @@ function calc(){
   const daysLeft=phase==="f"?1:Math.max(1,S.mindays-daysDone);
   CALC={lot:NaN,stop:NaN};
   $("#t-phase").textContent=(STATUS_L[S.status]||"Phase 1")+" · "+ACTIVE.name;
+  renderMt5Line();
   $("#t-meta").textContent="Compte "+money(size)+" · objectif "+fmt(pct,1)+" % ("+money(target)+") · plancher "+money(floor);
   const alerts=[];
   if(S.status==="echoue"||S.status==="retire")alerts.push(["warn","Ce compte est « "+STATUS_L[S.status].toLowerCase()+" ». Choisissez un autre compte actif pour trader."]);
@@ -364,7 +376,7 @@ const tradeKey=t=>(t.date||"")+(t.time||"")+String(t.id).padStart(10,"0");
 function sortedTrades(list){return list.slice().sort((a,b)=>tradeKey(b).localeCompare(tradeKey(a)))}
 function renderTrades(){
   const f=$("#jf-setup").value, acc=$("#jf-account").value, box=$("#trades");
-  const list=sortedTrades(TRADES).filter(t=>(!f||t.setup===f)&&(!acc||String(t.accountId)===acc));
+  const list=sortedTrades(TRADES).filter(t=>(!f||(f==="todo"?t.toComplete:t.setup===f))&&(!acc||String(t.accountId)===acc));
   if(!list.length){box.replaceChildren(el("div",{class:"empty",text:TRADES.length?"Aucun trade pour ce filtre.":"Aucun trade pour l’instant. Votre premier trade noté apparaîtra ici."}));return}
   box.replaceChildren(...list.map(t=>{
     const r=num(t.r), cls=r>0?"w":r<0?"l":"e";
@@ -374,6 +386,7 @@ function renderTrades(){
       el("div",{class:"t2",text:d.toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"})+" "+(t.time||"")+(t.stop!=null?" · stop "+fmt(t.stop,2)+" $":"")+(t.lot!=null?" · "+fmt(t.lot,2)+" lot":"")+(t.pnl!=null?" · "+money2(t.pnl):"")}));
     const tags=el("div",{style:"margin-top:3px"});
     if(!acc)tags.append(el("span",{class:"tag",text:accName(t.accountId)}));
+    if(t.source==="mt5")tags.append(el("span",{class:"tag"+(t.toComplete?" bad":""),text:t.toComplete?"MT5 · à compléter":"MT5"}));
     if(t.onLevel)tags.append(el("span",{class:"tag",text:"niveau clé"}));
     if(t.withBias)tags.append(el("span",{class:"tag",text:"avec le biais"}));
     tags.append(t.rules?el("span",{class:"tag",text:"règles respectées"}):el("span",{class:"tag bad",text:"hors règles"}));
@@ -468,9 +481,13 @@ function renderAccounts(){
     const acts=el("div",{class:"row"});
     if(!a.active){const b=el("button",{type:"button",class:"btn ghost sm",text:"Rendre actif"});b.addEventListener("click",()=>{$("#acct-switch").value=String(a.id);$("#acct-switch").dispatchEvent(new Event("change"))});acts.append(b)}
     const e=el("button",{type:"button",class:"btn ghost sm",text:"Modifier"});e.addEventListener("click",()=>openAccForm(a));
+    const k=el("button",{type:"button",class:"btn ghost sm",text:"Clé MT5"});k.addEventListener("click",()=>mt5Key(a));
     const x=el("button",{type:"button",class:"btn ghost sm danger",text:"Supprimer"});x.addEventListener("click",()=>deleteAccount(a));
-    acts.append(e,x);
-    return el("div",{class:"acc"+(a.active?" on":"")},head,el("div",{class:"t2",text:sub}),nums,acts);
+    acts.append(e,k,x);
+    if(a.mt5){const r=el("button",{type:"button",class:"btn ghost sm",text:"Couper MT5"});r.addEventListener("click",()=>mt5Revoke(a));acts.insertBefore(r,x)}
+    const sn=SNAPS[a.id];
+    const mt=el("div",{class:"t2",text:a.mt5?("MT5 relié"+(sn?" · dernier envoi "+sn.at.slice(8,10)+"/"+sn.at.slice(5,7)+" "+sn.at.slice(11,16)+" · solde "+money2(sn.balance):" · aucun envoi reçu")):"MT5 non relié"});
+    return el("div",{class:"acc"+(a.active?" on":"")},head,el("div",{class:"t2",text:sub}),mt,nums,acts);
   }));
   renderPayouts();
 }
@@ -541,6 +558,86 @@ function renderPayouts(){
 }
 $("#btn-backup").addEventListener("click",async()=>{try{await download("export/backup.json");toast("Sauvegarde téléchargée")}catch(e){toast("Sauvegarde impossible : "+errMsg(e))}});
 
+/* ---------- signaux TradingView ---------- */
+async function loadSignals(){
+  const box=$("#signals");
+  try{const list=await api("signals",{params:{limit:100}});
+    if(!list.length){box.replaceChildren(el("div",{class:"empty",text:"Aucun signal reçu pour l’instant."}));return}
+    box.replaceChildren(...list.map(s=>{
+      const at=new Date(s.receivedAt.replace(" ","T"));
+      const head=[s.symbol,s.tf,s.type,s.price!=null?fmt(s.price,2):""].filter(Boolean).join(" · ")||"Alerte";
+      const sub="reçu le "+at.toLocaleDateString("fr-FR",{day:"numeric",month:"short"})+" à "+at.toLocaleTimeString("fr-FR")+(s.barTime?" · bougie de "+s.barTime.slice(11,16)+" · écart "+(s.delay>=0?"+":"")+s.delay+" s":"");
+      return el("div",{class:"sig"},el("div",{class:"when",text:at.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}),
+        el("div",null,el("div",{class:"t1",text:head}),el("div",{class:"t2",text:sub}),s.payload?el("pre",{text:s.payload}):null));
+    }));
+  }catch(e){box.replaceChildren(el("div",{class:"empty",text:"Lecture impossible : "+errMsg(e)}))}
+}
+$("#signals-panel").addEventListener("toggle",e=>{if(e.target.open)loadSignals()});
+$("#sig-refresh").addEventListener("click",loadSignals);
+$("#sig-clear").addEventListener("click",async()=>{if(!confirm("Vider tout le journal des signaux ?"))return;try{await api("signals",{method:"DELETE"});loadSignals();toast("Journal des signaux vidé")}catch(e){toast("Impossible : "+errMsg(e))}});
+
+/* ---------- connexions : MT5, TradingView, Telegram ---------- */
+function secretBox(id,children){const b=$(id);b.replaceChildren(...children);b.hidden=false;b.scrollIntoView({behavior:"smooth",block:"center"})}
+async function mt5Key(a){
+  if(a.mt5&&!confirm("Remplacer la clé MT5 de « "+a.name+" » ? L’EA devra recevoir la nouvelle clé."))return;
+  try{const r=await api("accounts/"+a.id+"/mt5-key",{method:"POST"});a.mt5=true;renderAccounts();
+    secretBox("#mt5-key-box",[el("div",null,el("b",{text:"Clé MT5 de « "+a.name+" »"}),document.createTextNode(" (affichée une seule fois, copiez-la dans l’EA) :")),el("code",{text:r.key}),el("div",null,"Adresse : ",el("code",{text:r.url}))])}
+  catch(e){toast("Impossible : "+errMsg(e))}
+}
+async function mt5Revoke(a){
+  if(!confirm("Couper la liaison MT5 de « "+a.name+" » ?"))return;
+  try{await api("accounts/"+a.id+"/mt5-key",{method:"DELETE"});a.mt5=false;renderAccounts();toast("Liaison MT5 coupée")}catch(e){toast("Impossible : "+errMsg(e))}
+}
+let CONN=null;
+async function loadConnections(){
+  try{CONN=await api("connections")}catch(e){return}
+  $("#ea-link").href=CFG.ea||"#";
+  try{$("#mt5-host").textContent=new URL(CONN.mt5Url).origin}catch(e){}
+  $("#mt5-url").textContent=CONN.mt5Url;
+  $("#tv-state").textContent=CONN.tradingview.active?"Webhook actif. Générer une nouvelle adresse coupe l’ancienne.":"Aucun webhook actif.";
+  $("#tv-revoke").hidden=!CONN.tradingview.active;
+  const tg=CONN.telegram;
+  $("#tg-setup").hidden=tg.connected;$("#tg-on").hidden=!tg.connected;
+  if(tg.connected){
+    const st=$("#tg-state");
+    if(tg.linked)st.replaceChildren("Bot ",el("b",{text:"@"+tg.bot}),document.createTextNode(" relié. Commandes : /jour, /plan, /aide."));
+    else st.replaceChildren("Bot ",el("b",{text:"@"+tg.bot}),document.createTextNode(" connecté. Dernière étape : ouvrez "),el("a",{href:tg.startLink,target:"_blank",rel:"noopener",text:"ce lien"}),document.createTextNode(" puis appuyez sur « Démarrer » (ou envoyez au bot : /start "+tg.code+")."));
+    $$("#tg-alerts input").forEach(i=>{i.checked=!!tg.alerts[i.dataset.a];i.disabled=!tg.linked});
+    $("#tg-test").disabled=!tg.linked;
+  }
+  const rf=CONN.refusals||[];
+  $("#refusals-box summary").textContent="Accès refusés aux points d’entrée ("+rf.length+")";
+  $("#refusals").replaceChildren(...(rf.length?rf.map(r=>el("div",{class:"t2",style:"font-size:13px;color:var(--muted);margin-top:4px",text:r.time+" · "+r.entry+" · "+r.reason+" · "+r.ip})):[el("p",{class:"hint",style:"margin-top:8px",text:"Aucun refus."})]));
+}
+$("#tv-rotate").addEventListener("click",async()=>{
+  if(CONN&&CONN.tradingview.active&&!confirm("Générer une nouvelle adresse ? L’ancienne cessera de fonctionner."))return;
+  try{const r=await api("connections/tradingview",{method:"POST"});
+    const tpl='{"symbol":"{{ticker}}","tf":"{{interval}}","signal":"triangle achat","price":{{close}},"bar_time":"{{time}}","fired":"{{timenow}}"}';
+    secretBox("#tv-box",[el("div",null,el("b",{text:"Adresse du webhook"}),document.createTextNode(" (affichée une seule fois) — dans l’alerte TradingView › Notifications › URL du webhook :")),el("pre",{text:r.url}),
+      el("div",{style:"margin-top:6px",text:"Message de l’alerte (adaptez « signal » à chaque alerte) :"}),el("pre",{text:tpl})]);
+    loadConnections()}
+  catch(e){toast("Impossible : "+errMsg(e))}
+});
+$("#tv-revoke").addEventListener("click",async()=>{if(!confirm("Couper le webhook TradingView ?"))return;try{await api("connections/tradingview",{method:"DELETE"});$("#tv-box").hidden=true;loadConnections();toast("Webhook coupé")}catch(e){toast("Impossible : "+errMsg(e))}});
+$("#tg-connect").addEventListener("click",async()=>{
+  const token=$("#tg-token").value.trim();if(!token){toast("Collez le jeton du bot.");return}
+  const b=$("#tg-connect");b.disabled=true;
+  try{await api("connections/telegram",{method:"POST",body:{token}});$("#tg-token").value="";await loadConnections();toast("Bot connecté")}
+  catch(e){toast(errMsg(e))}
+  b.disabled=false;
+});
+$$("#tg-alerts input").forEach(i=>i.addEventListener("change",async()=>{
+  try{await api("connections/telegram",{method:"PUT",body:{alerts:{[i.dataset.a]:i.checked}}});toast("Alerte "+(i.checked?"activée":"coupée"))}catch(e){i.checked=!i.checked;toast("Impossible : "+errMsg(e))}
+}));
+$("#tg-test").addEventListener("click",async()=>{try{await api("connections/telegram/test",{method:"POST"});toast("Message envoyé sur Telegram")}catch(e){toast(errMsg(e))}});
+$("#tg-off").addEventListener("click",async()=>{if(!confirm("Déconnecter le bot Telegram ?"))return;try{await api("connections/telegram",{method:"DELETE"});loadConnections();toast("Bot déconnecté")}catch(e){toast("Impossible : "+errMsg(e))}});
+
+/* ---------- mise à jour périodique (trades MT5, solde) ---------- */
+setInterval(async()=>{
+  if(document.hidden||EDIT_ID)return;
+  try{const b=await api("bootstrap");TRADES=b.trades||[];SNAPS=b.snaps||{};refreshAll()}catch(e){}
+},120000);
+
 function refreshAll(){
   renderTrades();calc();
   if(!$("#tab-stats").hidden)renderStats();
@@ -552,7 +649,7 @@ async function start(){
   buildChecklist();buildFund();
   try{
     const b=await api("bootstrap");
-    ACCOUNTS=b.accounts||[];TRADES=b.trades||[];PAYOUTS=b.payouts||[];
+    ACCOUNTS=b.accounts||[];TRADES=b.trades||[];PAYOUTS=b.payouts||[];SNAPS=b.snaps||{};
   }catch(e){toast("Chargement impossible : "+errMsg(e));setStatus("err","Hors ligne")}
   setActive();fillAccountSelects();resetTradeForm();resetPayoutForm();
   try{THIS_WEEK_PLAN=await api("plans/"+weekId(mondayOf(new Date())))}catch(e){THIS_WEEK_PLAN=null}

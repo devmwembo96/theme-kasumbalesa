@@ -1,0 +1,526 @@
+<?php
+/**
+ * Bot Telegram (mode webhook) et tâches planifiées (WP-Cron, toutes les 5 minutes) :
+ * - alerte à 80 % puis à 100 % de la limite de perte journalière ;
+ * - annonce économique du plan dans moins de 15 minutes ;
+ * - rappel du plan le week-end (samedi 10 h, dimanche 18 h) s'il n'est pas prêt ;
+ * - commandes /jour, /plan, /aide.
+ *
+ * Liaison sécurisée : seul le chat qui envoie « /start CODE » (code affiché dans le carnet)
+ * reçoit les alertes ; les requêtes du webhook doivent porter l'en-tête secret de Telegram.
+ *
+ * @package CarnetXAU
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * Telegram et WP-Cron.
+ */
+class CX_Telegram {
+
+	const CRON = 'cx_cron';
+
+	/**
+	 * Accroches.
+	 */
+	public static function init() {
+		add_filter( 'cron_schedules', array( __CLASS__, 'schedules' ) ); // phpcs:ignore WordPress.WP.CronInterval
+		add_action( self::CRON, array( __CLASS__, 'run_cron' ) );
+		add_action( 'rest_api_init', array( __CLASS__, 'routes' ) );
+	}
+
+	/**
+	 * Intervalle de 5 minutes.
+	 *
+	 * @param array $s Intervalles.
+	 * @return array
+	 */
+	public static function schedules( $s ) {
+		$s['cx_5min'] = array(
+			'interval' => 5 * MINUTE_IN_SECONDS,
+			'display'  => 'Toutes les 5 minutes (Carnet XAU)',
+		);
+		return $s;
+	}
+
+	/**
+	 * Programme la tâche si besoin.
+	 */
+	public static function schedule() {
+		if ( ! wp_next_scheduled( self::CRON ) ) {
+			wp_schedule_event( time() + MINUTE_IN_SECONDS, 'cx_5min', self::CRON );
+		}
+	}
+
+	/**
+	 * Route du webhook (publique, protégée par l'en-tête secret).
+	 */
+	public static function routes() {
+		register_rest_route(
+			CX_Rest::NS,
+			'/telegram',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'webhook' ),
+				'permission_callback' => '__return_true',
+			)
+		);
+	}
+
+	/* ------------------------------------------------------------------
+	 * Réglages et API
+	 * ------------------------------------------------------------------ */
+
+	/**
+	 * Réglages Telegram.
+	 *
+	 * @return array {token, bot, secret, code, chat, alerts{daily,news,weekend}}
+	 */
+	public static function cfg() {
+		$c = CX_Guard::settings()['telegram'] ?? array();
+		$c = is_array( $c ) ? $c : array();
+		$c['alerts'] = array_merge(
+			array(
+				'daily'   => true,
+				'news'    => true,
+				'weekend' => true,
+			),
+			is_array( $c['alerts'] ?? null ) ? $c['alerts'] : array()
+		);
+		return $c;
+	}
+
+	/**
+	 * Appel de l'API Telegram.
+	 *
+	 * @param string $method Méthode (sendMessage, getMe…).
+	 * @param array  $params Paramètres.
+	 * @param string $token  Jeton du bot (par défaut celui enregistré).
+	 * @return array|WP_Error Champ « result » de la réponse.
+	 */
+	public static function api( $method, $params = array(), $token = null ) {
+		$token = $token ?? ( self::cfg()['token'] ?? '' );
+		if ( '' === (string) $token ) {
+			return new WP_Error( 'cx_tg', 'Bot Telegram non configuré.' );
+		}
+		$res = wp_remote_post(
+			'https://api.telegram.org/bot' . $token . '/' . $method,
+			array(
+				'timeout' => 15,
+				'headers' => array( 'Content-Type' => 'application/json' ),
+				'body'    => wp_json_encode( $params ),
+			)
+		);
+		if ( is_wp_error( $res ) ) {
+			return new WP_Error( 'cx_tg', 'Telegram injoignable : ' . $res->get_error_message() );
+		}
+		$j = json_decode( wp_remote_retrieve_body( $res ), true );
+		if ( empty( $j['ok'] ) ) {
+			return new WP_Error( 'cx_tg', 'Telegram : ' . ( $j['description'] ?? 'réponse invalide' ) );
+		}
+		return $j['result'] ?? array();
+	}
+
+	/**
+	 * Envoie un message au chat lié.
+	 *
+	 * @param string $text Texte (HTML simple de Telegram).
+	 * @return bool|WP_Error
+	 */
+	public static function send( $text ) {
+		$c = self::cfg();
+		if ( empty( $c['token'] ) || empty( $c['chat'] ) ) {
+			return new WP_Error( 'cx_tg', 'Bot non relié à un chat : envoyez /start et le code au bot.' );
+		}
+		$r = self::api(
+			'sendMessage',
+			array(
+				'chat_id'                  => $c['chat'],
+				'text'                     => $text,
+				'parse_mode'               => 'HTML',
+				'disable_web_page_preview' => true,
+			)
+		);
+		return is_wp_error( $r ) ? $r : true;
+	}
+
+	/**
+	 * Connecte un bot : vérifie le jeton, installe le webhook, crée le code de liaison.
+	 *
+	 * @param string $token Jeton donné par @BotFather.
+	 * @return array|WP_Error
+	 */
+	public static function connect( $token ) {
+		$token = trim( (string) $token );
+		if ( ! preg_match( '/^\d{5,}:[A-Za-z0-9_-]{30,}$/', $token ) ) {
+			return new WP_Error( 'cx_invalid', 'Jeton de bot invalide (format 123456:ABC…).', array( 'status' => 400 ) );
+		}
+		$me = self::api( 'getMe', array(), $token );
+		if ( is_wp_error( $me ) ) {
+			$me->add_data( array( 'status' => 400 ) );
+			return $me;
+		}
+		$secret = CX_Guard::secret( 48 );
+		$hook   = self::api(
+			'setWebhook',
+			array(
+				'url'                  => rest_url( CX_Rest::NS . '/telegram' ),
+				'secret_token'         => $secret,
+				'allowed_updates'      => array( 'message' ),
+				'drop_pending_updates' => true,
+			),
+			$token
+		);
+		if ( is_wp_error( $hook ) ) {
+			$hook->add_data( array( 'status' => 400 ) );
+			return $hook;
+		}
+		$old = self::cfg();
+		CX_Guard::set(
+			'telegram',
+			array(
+				'token'  => $token,
+				'bot'    => (string) ( $me['username'] ?? '' ),
+				'secret' => $secret,
+				'code'   => strtoupper( CX_Guard::secret( 8 ) ),
+				'chat'   => null,
+				'alerts' => $old['alerts'],
+			)
+		);
+		return self::status();
+	}
+
+	/**
+	 * Déconnecte le bot (retire le webhook).
+	 */
+	public static function disconnect() {
+		if ( ! empty( self::cfg()['token'] ) ) {
+			self::api( 'deleteWebhook' );
+		}
+		CX_Guard::set( 'telegram', null );
+	}
+
+	/**
+	 * État pour l'interface (jamais le jeton ni le secret).
+	 *
+	 * @return array
+	 */
+	public static function status() {
+		$c   = self::cfg();
+		$bot = (string) ( $c['bot'] ?? '' );
+		return array(
+			'connected' => ! empty( $c['token'] ),
+			'bot'       => $bot,
+			'linked'    => ! empty( $c['chat'] ),
+			'code'      => empty( $c['chat'] ) ? (string) ( $c['code'] ?? '' ) : '',
+			'startLink' => ( $bot && empty( $c['chat'] ) && ! empty( $c['code'] ) ) ? 'https://t.me/' . $bot . '?start=' . $c['code'] : '',
+			'alerts'    => $c['alerts'],
+		);
+	}
+
+	/**
+	 * Active ou coupe des alertes.
+	 *
+	 * @param array $alerts {daily, news, weekend}.
+	 * @return array État.
+	 */
+	public static function set_alerts( $alerts ) {
+		$c = self::cfg();
+		foreach ( array( 'daily', 'news', 'weekend' ) as $k ) {
+			if ( isset( $alerts[ $k ] ) ) {
+				$c['alerts'][ $k ] = (bool) $alerts[ $k ];
+			}
+		}
+		CX_Guard::set( 'telegram', $c );
+		return self::status();
+	}
+
+	/* ------------------------------------------------------------------
+	 * Webhook
+	 * ------------------------------------------------------------------ */
+
+	/**
+	 * Messages reçus par le bot.
+	 *
+	 * @param WP_REST_Request $req Requête de Telegram.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function webhook( WP_REST_Request $req ) {
+		$limit = CX_Guard::throttle( 'telegram', 60 );
+		if ( $limit ) {
+			return $limit;
+		}
+		$c = self::cfg();
+		if ( empty( $c['secret'] ) || ! hash_equals( (string) $c['secret'], (string) $req->get_header( 'x_telegram_bot_api_secret_token' ) ) ) {
+			return CX_Guard::refuse( 'telegram', 'en-tête secret absent ou faux' );
+		}
+		$msg  = $req->get_json_params()['message'] ?? array();
+		$chat = isset( $msg['chat']['id'] ) ? (string) $msg['chat']['id'] : '';
+		$text = trim( (string) ( $msg['text'] ?? '' ) );
+		$ok   = new WP_REST_Response( array( 'ok' => true ), 200 );
+		if ( '' === $chat ) {
+			return $ok;
+		}
+
+		// Liaison : /start CODE (lien t.me/bot?start=CODE).
+		if ( empty( $c['chat'] ) ) {
+			if ( preg_match( '/^\/start\s+([A-Za-z0-9]+)/', $text, $m ) && ! empty( $c['code'] ) && hash_equals( (string) $c['code'], strtoupper( $m[1] ) ) ) {
+				$c['chat'] = $chat;
+				$c['code'] = '';
+				CX_Guard::set( 'telegram', $c );
+				self::send( "✅ <b>Carnet XAU</b> est relié à ce chat.\n\n" . self::help() );
+			}
+			return $ok;
+		}
+		if ( $chat !== (string) $c['chat'] ) {
+			return $ok; // Un autre chat : ignoré.
+		}
+
+		$cmd = strtolower( strtok( $text, " @\n" ) );
+		if ( '/jour' === $cmd ) {
+			self::send( self::day_summary() );
+		} elseif ( '/plan' === $cmd ) {
+			self::send( self::plan_summary( self::monday() ) );
+		} else {
+			self::send( self::help() );
+		}
+		return $ok;
+	}
+
+	/**
+	 * Aide des commandes.
+	 *
+	 * @return string
+	 */
+	private static function help() {
+		return "Commandes :\n/jour — trades et résultat du jour\n/plan — plan de la semaine\n/aide — cette aide\n\nAlertes : limite journalière, annonce dans 15 min, rappel du plan le week-end.";
+	}
+
+	/* ------------------------------------------------------------------
+	 * Résumés
+	 * ------------------------------------------------------------------ */
+
+	/**
+	 * Lundi de la semaine en cours (ou d'une date), fuseau du site.
+	 *
+	 * @param DateTimeImmutable|null $d Date.
+	 * @return string AAAA-MM-JJ.
+	 */
+	public static function monday( $d = null ) {
+		$d = $d ?? new DateTimeImmutable( 'now', wp_timezone() );
+		return $d->modify( '-' . ( (int) $d->format( 'N' ) - 1 ) . ' days' )->format( 'Y-m-d' );
+	}
+
+	/**
+	 * Montant en dollars.
+	 *
+	 * @param float $v Montant.
+	 * @return string
+	 */
+	private static function usd( $v ) {
+		return ( $v < 0 ? '−' : '' ) . number_format( abs( $v ), 2, ',', ' ' ) . ' $';
+	}
+
+	/**
+	 * Compte actif.
+	 *
+	 * @return array|null
+	 */
+	private static function active() {
+		foreach ( CX_Repo::accounts() as $a ) {
+			if ( $a['active'] ) {
+				return $a;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Résumé du jour du compte actif.
+	 *
+	 * @return string
+	 */
+	public static function day_summary() {
+		$a = self::active();
+		if ( ! $a ) {
+			return 'Aucun compte.';
+		}
+		$today = current_time( 'Y-m-d' );
+		$tt    = array_filter( CX_Repo::trades( $a['id'] ), fn( $t ) => $t['date'] === $today );
+		$pnl   = array_sum( array_map( fn( $t ) => (float) $t['pnl'], $tt ) );
+		$loss  = count( array_filter( $tt, fn( $t ) => $t['r'] < 0 ) );
+		$lim   = $a['size'] * $a['params']['daily'] / 100;
+		$lines = array(
+			'<b>' . esc_html( $a['name'] ) . '</b> — ' . wp_date( 'l j F' ),
+			sprintf( 'Trades : %d/%d · pertes : %d/%d', count( $tt ), $a['params']['maxtrades'], $loss, $a['params']['maxloss'] ),
+			'Résultat : ' . self::usd( $pnl ),
+			'Limite journalière : ' . self::usd( $lim ),
+		);
+		$snap = CX_Ingest::latest_snapshots()->{$a['id']} ?? null;
+		if ( $snap ) {
+			$lines[] = sprintf( 'MT5 (%s) : solde %s, équité %s', substr( $snap['at'], 11, 5 ), self::usd( $snap['balance'] ), self::usd( $snap['equity'] ) );
+		}
+		return implode( "\n", $lines );
+	}
+
+	/**
+	 * Résumé d'un plan hebdomadaire.
+	 *
+	 * @param string $week Lundi.
+	 * @return string
+	 */
+	public static function plan_summary( $week ) {
+		$p = CX_Repo::plan( $week );
+		if ( ! $p ) {
+			return 'Pas encore de plan pour la semaine du ' . wp_date( 'j F', strtotime( $week ) ) . '.';
+		}
+		$bias  = array(
+			'h' => 'haussier',
+			'b' => 'baissier',
+			'n' => 'neutre / range',
+		)[ $p['bias'] ] ?? 'non défini';
+		$lines = array( '<b>Plan de la semaine du ' . wp_date( 'j F', strtotime( $week ) ) . '</b>', 'Biais : ' . $bias );
+		$lv    = array_filter( $p['levels'], fn( $l ) => '' !== $l['price'] );
+		usort( $lv, fn( $x, $y ) => (float) $y['price'] <=> (float) $x['price'] );
+		foreach ( $lv as $l ) {
+			$lines[] = '• ' . esc_html( $l['price'] . ' ' . $l['type'] . ( $l['note'] ? ' — ' . $l['note'] : '' ) );
+		}
+		foreach ( $p['cal'] as $e ) {
+			$lines[] = '📅 ' . esc_html( $e['day'] . ' ' . $e['time'] . ' ' . $e['event'] );
+		}
+		foreach ( $p['sc'] as $s ) {
+			$lines[] = '→ ' . esc_html( $s['text'] );
+		}
+		return implode( "\n", $lines );
+	}
+
+	/* ------------------------------------------------------------------
+	 * Alertes
+	 * ------------------------------------------------------------------ */
+
+	/**
+	 * Alerte de limite journalière (80 % puis 100 %), une fois par niveau et par jour.
+	 *
+	 * @param int   $account_id Compte.
+	 * @param float $loss       Perte du jour en $ (positive = perte).
+	 */
+	public static function check_daily( $account_id, $loss ) {
+		$c = self::cfg();
+		$a = CX_Repo::account( $account_id );
+		if ( empty( $c['chat'] ) || empty( $c['alerts']['daily'] ) || ! $a || $loss <= 0 ) {
+			return;
+		}
+		$lim = $a['size'] * $a['params']['daily'] / 100;
+		if ( $lim <= 0 ) {
+			return;
+		}
+		$day = current_time( 'Y-m-d' );
+		foreach ( array(
+			100 => '🛑 <b>Limite de perte journalière atteinte</b>',
+			80  => '⚠️ <b>Vous approchez de la limite de perte journalière</b>',
+		) as $level => $title ) {
+			if ( $loss >= $lim * $level / 100 ) {
+				if ( CX_Guard::once( "daily|{$account_id}|{$day}|{$level}" ) ) {
+					self::send( sprintf( "%s\n%s : perte du jour %s sur %s autorisés. Arrêtez de trader aujourd’hui.", $title, esc_html( $a['name'] ), self::usd( $loss ), self::usd( $lim ) ) );
+				}
+				return;
+			}
+		}
+	}
+
+	/**
+	 * Même alerte à partir des trades du jour notés dans le journal.
+	 *
+	 * @param int $account_id Compte.
+	 */
+	public static function check_daily_from_trades( $account_id ) {
+		$today = current_time( 'Y-m-d' );
+		$pnl   = 0;
+		foreach ( CX_Repo::trades( $account_id ) as $t ) {
+			if ( $t['date'] === $today ) {
+				$pnl += (float) $t['pnl'];
+			}
+		}
+		self::check_daily( $account_id, -$pnl );
+	}
+
+	/**
+	 * Tâche toutes les 5 minutes.
+	 */
+	public static function run_cron() {
+		$c = self::cfg();
+		if ( ! empty( $c['chat'] ) ) {
+			if ( ! empty( $c['alerts']['news'] ) ) {
+				self::news();
+			}
+			if ( ! empty( $c['alerts']['weekend'] ) ) {
+				self::weekend();
+			}
+		}
+		self::prune();
+	}
+
+	/**
+	 * Annonces du plan qui tombent dans les 15 prochaines minutes.
+	 *
+	 * @param DateTimeImmutable|null $now Instant (par défaut maintenant, fuseau du site).
+	 */
+	public static function news( $now = null ) {
+		$tz   = wp_timezone();
+		$now  = $now ?? new DateTimeImmutable( 'now', $tz );
+		$days = array( 1 => 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche' );
+		$p    = CX_Repo::plan( self::monday( $now ) );
+		if ( ! $p ) {
+			return;
+		}
+		$today = $days[ (int) $now->format( 'N' ) ];
+		foreach ( $p['cal'] as $e ) {
+			if ( $e['day'] !== $today || '' === $e['time'] ) {
+				continue;
+			}
+			$at    = new DateTimeImmutable( $now->format( 'Y-m-d' ) . ' ' . $e['time'], $tz );
+			$delta = $at->getTimestamp() - $now->getTimestamp();
+			if ( $delta > 0 && $delta <= 15 * MINUTE_IN_SECONDS && CX_Guard::once( 'news|' . $now->format( 'Y-m-d' ) . '|' . $e['time'] . '|' . $e['event'] ) ) {
+				self::send( sprintf( "📅 <b>%s à %s</b> (dans %d min)\nPas de trade 15 min avant, 30 min après.", esc_html( $e['event'] ? $e['event'] : 'Annonce' ), $e['time'], max( 1, (int) round( $delta / 60 ) ) ) );
+			}
+		}
+	}
+
+	/**
+	 * Rappel du plan le week-end, s'il n'est pas prêt pour lundi.
+	 *
+	 * @param DateTimeImmutable|null $now Instant (par défaut maintenant, fuseau du site).
+	 */
+	public static function weekend( $now = null ) {
+		$now = $now ?? new DateTimeImmutable( 'now', wp_timezone() );
+		$dow = (int) $now->format( 'N' );
+		$h   = (int) $now->format( 'G' );
+		if ( ! ( 6 === $dow && $h >= 10 ) && ! ( 7 === $dow && $h >= 18 ) ) {
+			return;
+		}
+		$next = $now->modify( 'next monday' )->format( 'Y-m-d' );
+		if ( CX_Repo::plan( $next ) ) {
+			return;
+		}
+		if ( CX_Guard::once( 'weekend|' . $next . '|' . $dow ) ) {
+			self::send( sprintf( "📝 Le plan de la semaine du %s n’est pas encore prêt.\nBiais, niveaux clés, annonces, scénarios : %s", wp_date( 'j F', strtotime( $next ) ), get_permalink( CX_Front::page_id() ) ) );
+		}
+	}
+
+	/**
+	 * Ménage quotidien : instantanés de plus de 30 jours, signaux de plus de 90 jours.
+	 */
+	public static function prune() {
+		global $wpdb;
+		$day = current_time( 'Y-m-d' );
+		if ( get_option( 'cx_last_prune' ) === $day ) {
+			return;
+		}
+		update_option( 'cx_last_prune', $day, false );
+		$snaps = CX_Install::table( 'snapshots' );
+		$sigs  = CX_Install::table( 'signals' );
+		$wpdb->query( $wpdb->prepare( "DELETE FROM $snaps WHERE horodatage < %s", gmdate( 'Y-m-d H:i:s', strtotime( current_time( 'mysql' ) ) - 30 * DAY_IN_SECONDS ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+		$wpdb->query( $wpdb->prepare( "DELETE FROM $sigs WHERE recu_le < %s", gmdate( 'Y-m-d H:i:s', strtotime( current_time( 'mysql' ) ) - 90 * DAY_IN_SECONDS ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+	}
+}

@@ -31,6 +31,7 @@ defined( 'ABSPATH' ) || exit;
 			<span class="phase" id="t-phase">Phase 1</span>
 			<span class="meta" id="t-meta"></span>
 		</div>
+		<div class="mt5-line" id="mt5-line" hidden></div>
 		<div class="ticket-in grid g4">
 			<label class="f">Solde du matin ($)<input id="in-balance" type="number" step="0.01" inputmode="decimal"></label>
 			<label class="f">Jours déjà tradés<input id="in-days" type="number" min="0" step="1" inputmode="numeric"></label>
@@ -176,10 +177,17 @@ defined( 'ABSPATH' ) || exit;
 	<div class="row" style="margin-bottom:10px">
 		<h2 style="margin:0">Trades</h2><span class="spacer"></span>
 		<select id="jf-account" class="auto" aria-label="Filtrer par compte"></select>
-		<select id="jf-setup" class="auto" aria-label="Filtrer par setup"><option value="">Tous les setups</option><option value="1">Setup 1</option><option value="2">Setup 2</option><option value="hors">Hors setup</option></select>
+		<select id="jf-setup" class="auto" aria-label="Filtrer par setup"><option value="">Tous les setups</option><option value="1">Setup 1</option><option value="2">Setup 2</option><option value="hors">Hors setup</option><option value="todo">MT5 à compléter</option></select>
 		<button type="button" class="btn ghost sm" id="btn-csv">Exporter en CSV</button>
 	</div>
 	<div class="trades" id="trades"></div>
+
+	<details class="panel" id="signals-panel" style="margin-top:14px">
+		<summary>Signaux TradingView reçus</summary>
+		<p class="hint" style="margin-top:10px">Chaque alerte de l’indicateur est notée avec son heure de réception. Un signal qui arrive bien après la bougie, ou qui disparaît du graphique ensuite, trahit un indicateur qui repeint.</p>
+		<div class="row" style="margin-bottom:10px"><button type="button" class="btn ghost sm" id="sig-refresh">Actualiser</button><span class="spacer"></span><button type="button" class="btn ghost sm danger" id="sig-clear">Vider le journal des signaux</button></div>
+		<div class="trades" id="signals"></div>
+	</details>
 </section>
 
 <!-- ============ STATS ============ -->
@@ -245,6 +253,43 @@ defined( 'ABSPATH' ) || exit;
 			<button type="button" class="btn ghost" id="pf-cancel" hidden>Annuler la modification</button>
 		</div>
 		<div class="trades" id="payouts" style="margin-top:14px"></div>
+	</div>
+
+	<div class="panel" id="connections">
+		<h3>Connexions</h3>
+		<div class="conn">
+			<h4>MetaTrader 5</h4>
+			<p class="hint">L’EA envoie chaque trade fermé et, toutes les minutes, le solde, l’équité et la perte du jour. Une clé par compte : bouton « Clé MT5 » sur la carte du compte.</p>
+			<ol class="steps">
+				<li>Téléchargez l’EA : <a id="ea-link" download="CarnetXAU.mq5">CarnetXAU.mq5</a>, puis placez-le dans MQL5/Experts et compilez-le dans MetaEditor.</li>
+				<li>Dans MT5 : Outils › Options › Expert Advisors, cochez « Autoriser WebRequest » et ajoutez l’adresse <code id="mt5-host"></code>.</li>
+				<li>Glissez l’EA sur un graphique XAUUSD, collez l’adresse <code id="mt5-url"></code> et la clé du compte.</li>
+			</ol>
+			<div class="secret" id="mt5-key-box" hidden></div>
+		</div>
+		<div class="conn">
+			<h4>TradingView</h4>
+			<p class="hint" id="tv-state"></p>
+			<div class="row"><button type="button" class="btn ghost sm" id="tv-rotate">Générer l’adresse du webhook</button><button type="button" class="btn ghost sm danger" id="tv-revoke" hidden>Couper</button></div>
+			<div class="secret" id="tv-box" hidden></div>
+		</div>
+		<div class="conn">
+			<h4>Telegram</h4>
+			<div id="tg-setup">
+				<p class="hint">Créez un bot avec @BotFather (commande /newbot), puis collez ici le jeton qu’il vous donne.</p>
+				<div class="row"><input id="tg-token" type="text" autocomplete="off" placeholder="123456789:AA…" style="flex:1;min-width:220px"><button type="button" class="btn gold sm" id="tg-connect">Connecter le bot</button></div>
+			</div>
+			<div id="tg-on" hidden>
+				<p id="tg-state"></p>
+				<div class="row" id="tg-alerts">
+					<label class="check"><input type="checkbox" data-a="daily"><span>Limite journalière</span></label>
+					<label class="check"><input type="checkbox" data-a="news"><span>Annonce dans 15 min</span></label>
+					<label class="check"><input type="checkbox" data-a="weekend"><span>Rappel du plan le week-end</span></label>
+				</div>
+				<div class="row"><button type="button" class="btn ghost sm" id="tg-test">Envoyer un message de test</button><button type="button" class="btn ghost sm danger" id="tg-off">Déconnecter</button></div>
+			</div>
+		</div>
+		<details class="conn" id="refusals-box"><summary>Accès refusés aux points d’entrée</summary><div id="refusals"></div></details>
 	</div>
 
 	<div class="panel">

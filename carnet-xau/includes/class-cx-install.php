@@ -50,7 +50,15 @@ class CX_Install {
 		self::add_caps();
 		self::ensure_page();
 		self::ensure_default_account();
+		CX_Telegram::schedule();
 		update_option( 'cx_db_version', CX_DB_VERSION, false );
+	}
+
+	/**
+	 * Désactivation : arrête les tâches planifiées.
+	 */
+	public static function deactivate() {
+		wp_clear_scheduled_hook( CX_Telegram::CRON );
 	}
 
 	/**
@@ -70,6 +78,7 @@ class CX_Install {
 					)
 				);
 			}
+			CX_Telegram::schedule();
 			update_option( 'cx_db_version', CX_DB_VERSION, false );
 		}
 	}
@@ -86,6 +95,8 @@ class CX_Install {
 		$trades   = self::table( 'trades' );
 		$plans    = self::table( 'plans' );
 		$payouts  = self::table( 'payouts' );
+		$signals  = self::table( 'signals' );
+		$snaps    = self::table( 'snapshots' );
 
 		dbDelta(
 			"CREATE TABLE $accounts (
@@ -100,6 +111,7 @@ class CX_Install {
   phase_debut date DEFAULT NULL,
   parametres longtext NOT NULL,
   actif tinyint(1) NOT NULL DEFAULT 0,
+  mt5_cle varchar(64) DEFAULT NULL,
   created_at datetime NOT NULL,
   updated_at datetime NOT NULL,
   PRIMARY KEY  (id),
@@ -127,6 +139,7 @@ CREATE TABLE $trades (
   notes text NOT NULL,
   source varchar(6) NOT NULL DEFAULT 'manuel',
   ticket_mt5 varchar(32) DEFAULT NULL,
+  a_completer tinyint(1) NOT NULL DEFAULT 0,
   created_at datetime NOT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY ticket_mt5 (ticket_mt5),
@@ -163,6 +176,28 @@ CREATE TABLE $payouts (
   created_at datetime NOT NULL,
   PRIMARY KEY  (id),
   KEY account_id (account_id)
+) $c;
+CREATE TABLE $signals (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  recu_le datetime NOT NULL,
+  symbole varchar(30) NOT NULL DEFAULT '',
+  unite varchar(10) NOT NULL DEFAULT '',
+  type_signal varchar(60) NOT NULL DEFAULT '',
+  prix decimal(12,3) DEFAULT NULL,
+  heure_bougie datetime DEFAULT NULL,
+  payload text NOT NULL,
+  PRIMARY KEY  (id),
+  KEY recu_le (recu_le)
+) $c;
+CREATE TABLE $snaps (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  account_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  horodatage datetime NOT NULL,
+  solde decimal(12,2) NOT NULL DEFAULT 0,
+  equite decimal(12,2) NOT NULL DEFAULT 0,
+  perte_jour decimal(12,2) NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  KEY account_horodatage (account_id,horodatage)
 ) $c;"
 		);
 	}

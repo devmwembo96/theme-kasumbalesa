@@ -95,6 +95,18 @@ class CX_Rest {
 
 		self::route( '/captures', 'POST', 'upload_capture' );
 
+		self::route( '/accounts/(?P<id>\d+)/mt5-key', 'POST', 'mt5_key' );
+		self::route( '/accounts/(?P<id>\d+)/mt5-key', 'DELETE', 'mt5_key_revoke' );
+		self::route( '/connections', 'GET', 'connections' );
+		self::route( '/connections/tradingview', 'POST', 'tv_rotate' );
+		self::route( '/connections/tradingview', 'DELETE', 'tv_revoke' );
+		self::route( '/connections/telegram', 'POST', 'tg_connect' );
+		self::route( '/connections/telegram', 'PUT', 'tg_alerts' );
+		self::route( '/connections/telegram', 'DELETE', 'tg_disconnect' );
+		self::route( '/connections/telegram/test', 'POST', 'tg_test' );
+		self::route( '/signals', 'GET', 'list_signals' );
+		self::route( '/signals', 'DELETE', 'clear_signals' );
+
 		self::route( '/export/trades.csv', 'GET', 'export_csv' );
 		self::route( '/export/backup.json', 'GET', 'export_json' );
 	}
@@ -135,6 +147,7 @@ class CX_Rest {
 				'accounts' => CX_Repo::accounts(),
 				'trades'   => CX_Repo::trades(),
 				'payouts'  => CX_Repo::payouts(),
+				'snaps'    => CX_Ingest::latest_snapshots(),
 			)
 		);
 	}
@@ -195,7 +208,11 @@ class CX_Rest {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public static function create_trade( WP_REST_Request $req ) {
-		return self::out( CX_Repo::save_trade( (array) $req->get_json_params() ), 201 );
+		$t = CX_Repo::save_trade( (array) $req->get_json_params() );
+		if ( ! is_wp_error( $t ) ) {
+			CX_Telegram::check_daily_from_trades( $t['accountId'] );
+		}
+		return self::out( $t, 201 );
 	}
 
 	/**
@@ -203,7 +220,11 @@ class CX_Rest {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public static function update_trade( WP_REST_Request $req ) {
-		return self::out( CX_Repo::save_trade( (array) $req->get_json_params(), (int) $req['id'] ) );
+		$t = CX_Repo::save_trade( (array) $req->get_json_params(), (int) $req['id'] );
+		if ( ! is_wp_error( $t ) ) {
+			CX_Telegram::check_daily_from_trades( $t['accountId'] );
+		}
+		return self::out( $t );
 	}
 
 	/**
@@ -339,6 +360,128 @@ class CX_Rest {
 			),
 			201
 		);
+	}
+
+	/* Connexions (version 2) ------------------------------------------ */
+
+	/**
+	 * Nouvelle clé MT5 d'un compte, renvoyée une seule fois.
+	 *
+	 * @param WP_REST_Request $req Requête.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function mt5_key( WP_REST_Request $req ) {
+		$id = (int) $req['id'];
+		if ( ! CX_Repo::account( $id ) ) {
+			return self::not_found();
+		}
+		$key = 'cx' . CX_Guard::secret( 38 );
+		CX_Repo::set_mt5_key( $id, CX_Guard::hash( $key ) );
+		return self::out(
+			array(
+				'key' => $key,
+				'url' => rest_url( self::NS . '/mt5' ),
+			)
+		);
+	}
+
+	/**
+	 * @param WP_REST_Request $req Requête.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function mt5_key_revoke( WP_REST_Request $req ) {
+		return CX_Repo::set_mt5_key( (int) $req['id'], null ) ? self::out( array( 'revoked' => true ) ) : self::not_found();
+	}
+
+	/**
+	 * État des connexions (aucun secret).
+	 *
+	 * @return WP_REST_Response
+	 */
+	public static function connections() {
+		return self::out(
+			array(
+				'mt5Url'      => rest_url( self::NS . '/mt5' ),
+				'tradingview' => array(
+					'active' => ! empty( CX_Guard::settings()['tradingview'] ),
+					'url'    => rest_url( self::NS . '/tradingview' ),
+				),
+				'telegram'    => CX_Telegram::status(),
+				'refusals'    => array_slice( CX_Guard::refusals(), 0, 20 ),
+				'cron'        => wp_next_scheduled( CX_Telegram::CRON ) ? wp_date( 'H:i', wp_next_scheduled( CX_Telegram::CRON ) ) : null,
+			)
+		);
+	}
+
+	/**
+	 * Nouveau jeton TradingView, renvoyé une seule fois avec l'URL du webhook.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public static function tv_rotate() {
+		$token = CX_Guard::secret( 32 );
+		CX_Guard::set( 'tradingview', CX_Guard::hash( $token ) );
+		return self::out(
+			array(
+				'token' => $token,
+				'url'   => add_query_arg( 'token', $token, rest_url( self::NS . '/tradingview' ) ),
+			)
+		);
+	}
+
+	/** @return WP_REST_Response */
+	public static function tv_revoke() {
+		CX_Guard::set( 'tradingview', null );
+		return self::out( array( 'revoked' => true ) );
+	}
+
+	/**
+	 * @param WP_REST_Request $req Requête {token}.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function tg_connect( WP_REST_Request $req ) {
+		return self::out( CX_Telegram::connect( (string) ( $req->get_json_params()['token'] ?? '' ) ) );
+	}
+
+	/**
+	 * @param WP_REST_Request $req Requête {alerts}.
+	 * @return WP_REST_Response
+	 */
+	public static function tg_alerts( WP_REST_Request $req ) {
+		return self::out( CX_Telegram::set_alerts( (array) ( $req->get_json_params()['alerts'] ?? array() ) ) );
+	}
+
+	/** @return WP_REST_Response */
+	public static function tg_disconnect() {
+		CX_Telegram::disconnect();
+		return self::out( CX_Telegram::status() );
+	}
+
+	/** @return WP_REST_Response|WP_Error */
+	public static function tg_test() {
+		$r = CX_Telegram::send( "🔔 Message de test du <b>Carnet XAU</b>.
+
+" . CX_Telegram::day_summary() );
+		if ( is_wp_error( $r ) ) {
+			$r->add_data( array( 'status' => 400 ) );
+			return $r;
+		}
+		return self::out( array( 'sent' => true ) );
+	}
+
+	/**
+	 * @param WP_REST_Request $req Requête (?limit=).
+	 * @return WP_REST_Response
+	 */
+	public static function list_signals( WP_REST_Request $req ) {
+		return self::out( CX_Ingest::signals( absint( $req->get_param( 'limit' ) ) ? absint( $req->get_param( 'limit' ) ) : 100 ) );
+	}
+
+	/** @return WP_REST_Response */
+	public static function clear_signals() {
+		global $wpdb;
+		$wpdb->query( 'TRUNCATE TABLE ' . CX_Install::table( 'signals' ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+		return self::out( array( 'cleared' => true ) );
 	}
 
 	/* Exports ----------------------------------------------------------- */

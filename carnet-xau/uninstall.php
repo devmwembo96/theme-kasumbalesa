@@ -22,6 +22,11 @@ if ( $cx_page ) {
 
 delete_option( 'cx_page_id' );
 delete_option( 'cx_db_version' );
+delete_option( 'cx_settings' );
+delete_option( 'cx_refusals' );
+delete_option( 'cx_once' );
+delete_option( 'cx_last_prune' );
+wp_clear_scheduled_hook( 'cx_cron' );
 
 foreach ( wp_roles()->role_objects as $cx_role ) {
 	$cx_role->remove_cap( 'manage_carnet_xau' );
