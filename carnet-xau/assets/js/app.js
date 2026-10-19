@@ -309,7 +309,7 @@ function originIndex(bars,text,prices){
   for(let i=bars.length-4;i>=0;i--){const b=bars[i];if(prices.some(p=>[b[1],b[2],b[3],b[4]].some(v=>Math.abs(v-p)<=.3)))return i}
   return 0;
 }
-// Dessin des zones et niveaux du plan de Claude, sous les bougies, dans le style LuxAlgo.
+// Dessin des zones et niveaux du plan de Claude, sous les bougies.
 function planPrimitive(bars,items){
   let chart=null,series=null;
   const draw=target=>target.useBitmapCoordinateSpace(({context:ctx,bitmapSize:sz,horizontalPixelRatio:hr,verticalPixelRatio:vr})=>{
@@ -333,7 +333,6 @@ function candleChart(c,tf,wid){
   const all=((CANDLES||{}).tf||{})[tf]||[];if(all.length<10||!window.LightweightCharts)return null;
   if(CUR_CHART){CUR_CHART.remove();CUR_CHART=null}
   const LW=window.LightweightCharts,small=innerWidth<600,p=c.prediction||{};
-  // Couleurs de l'indicateur SMC de LuxAlgo.
   const bull="#089981",bear="#F23645",muted=cssVar("--muted","#5A6676"),line=cssVar("--line","#D3D9E1"),bg=cssVar("--surface","#FFFFFF"),font=cssVar("--sans","sans-serif");
   const box=el("div",{class:"lwc",style:"height:"+(small?440:420)+"px"}),info=el("p",{class:"hint cinfo"});
   const chart=LW.createChart(box,{autoSize:true,layout:{background:{type:"solid",color:bg},textColor:muted,fontFamily:font,fontSize:11},
@@ -350,7 +349,7 @@ function candleChart(c,tf,wid){
   ser.applyOptions({autoscaleInfoProvider:orig=>{const r=orig();if(!r||!r.priceRange)return r;let {minValue:lo,maxValue:hi}=r.priceRange;const span=hi-lo,near=v=>v>lo-span*.5&&v<hi+span*.5;
     zones.forEach(o=>{if(near(o.low)||near(o.high)){lo=Math.min(lo,o.low);hi=Math.max(hi,o.high)}});levels.forEach(o=>{if(near(o.price)){lo=Math.min(lo,o.price);hi=Math.max(hi,o.price)}});
     if(Number.isFinite(inv)&&near(inv)){lo=Math.min(lo,inv);hi=Math.max(hi,inv)}return {priceRange:{minValue:lo,maxValue:hi},margins:r.margins}}});
-  // Zones de Claude : bleu pour l'achat, rouge pour la vente (comme les order blocks de LuxAlgo).
+  // Zones de Claude : bleu pour l'achat, rouge pour la vente.
   const items={font,bull,bear,
     zones:zones.map(({low,high,z})=>{const buy=z.side!=="vente",dead=z.state==="cassee",mine=tfNorm(z.tf)===tf;
       return {low,high,from:originIndex(all,z.origin,[low,high]),fill:dead?rgba(muted,.08):buy?(mine?"rgba(49,121,245,.30)":"rgba(49,121,245,.14)"):(mine?"rgba(247,124,128,.34)":"rgba(247,124,128,.16)"),
@@ -375,8 +374,7 @@ function chartCard(c,wid){
   const draw=()=>{bar.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.tf===CHART_TF)));box.replaceChildren(candleChart(c,CHART_TF,wid)||el("div",{class:"empty",text:"Pas assez de bougies."}))};
   tfs.forEach(t=>{const b=el("button",{type:"button",class:"tf","data-tf":t},el("b",{text:t}),counts(t)?el("span",{text:counts(t)+" zone"+(counts(t)>1?"s":"")}):null);b.addEventListener("click",()=>{CHART_TF=t;draw()});bar.append(b)});
   draw();
-  const at=(CANDLES||{}).at?"Bougies du courtier ("+((CANDLES||{}).account||"MT5")+"), reçues le "+new Date(CANDLES.at.replace(" ","T")).toLocaleString("fr-FR",{weekday:"long",hour:"2-digit",minute:"2-digit"})+". ":"";
-  return card("Graphique des niveaux",bar,box,el("p",{class:"hint",style:"margin-top:8px",text:at+"Glissez pour faire défiler, pincez pour zoomer, touchez une bougie pour ses valeurs. Seules les zones et les niveaux du plan de Claude sont tracés : bleu = achat, rouge = vente, plus soutenus pour l’unité de temps affichée ; trait violet : invalidation. Heures du courtier."}));
+  return card("Graphique des niveaux",bar,box,el("p",{class:"hint",style:"margin-top:8px",text:"Glissez pour faire défiler, pincez pour zoomer, touchez une bougie pour ses valeurs. Zones du plan : bleu = achat, rouge = vente, plus soutenues pour l’unité de temps affichée ; trait violet : invalidation."}));
 }
 let VIEW_INITIAL=false;
 const zoneKey=z=>Number(z.low).toFixed(2)+"-"+Number(z.high).toFixed(2)+"-"+(z.side==="vente"?"s":"b");
