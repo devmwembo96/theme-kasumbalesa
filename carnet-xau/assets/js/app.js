@@ -296,77 +296,74 @@ async function loadCandles(){
   try{CANDLES=await api("candles");CANDLES_AT=Date.now()}catch(e){CANDLES=CANDLES||{}}
   return CANDLES;
 }
+// Graphique de TradingView (Lightweight Charts) : bougies du courtier, zones et niveaux du plan.
+let CUR_CHART=null;
+function cssVar(n,f){const v=getComputedStyle(document.getElementById("cx-app")||document.body).getPropertyValue(n).trim();return v||f}
+function rgba(c,a){const m=/^#([0-9a-f]{6})$/i.exec(c);if(!m)return c;const n=parseInt(m[1],16);return "rgba("+(n>>16)+","+(n>>8&255)+","+(n&255)+","+a+")"}
+// Rectangles des zones, niveaux et début de semaine, dessinés sous les bougies.
+function planPrimitive(items){
+  let chart=null,series=null;
+  const draw=target=>target.useBitmapCoordinateSpace(({context:ctx,bitmapSize:sz,horizontalPixelRatio:hr,verticalPixelRatio:vr})=>{
+    if(!series)return;
+    ctx.save();ctx.font=Math.round(11*vr)+"px "+cssVar("--sans","sans-serif");ctx.textBaseline="top";
+    if(items.weekStart!=null){const x=chart.timeScale().timeToCoordinate(items.weekStart);
+      if(x!=null){ctx.fillStyle=items.weekFill;ctx.fillRect(Math.round(x*hr),0,sz.width-Math.round(x*hr),sz.height);ctx.fillStyle=items.muted;const px0=Math.round(x*hr),room=sz.width-px0>110*hr;ctx.textAlign=room?"left":"right";ctx.fillText(room?"semaine du plan":"semaine du plan →",room?px0+6*hr:px0-6*hr,sz.height-18*vr);ctx.textAlign="left"}}
+    items.zones.forEach(z=>{const y1=series.priceToCoordinate(z.high),y2=series.priceToCoordinate(z.low);if(y1==null||y2==null)return;
+      const top=Math.round(Math.min(y1,y2)*vr),h=Math.max(2,Math.round(Math.abs(y2-y1)*vr));
+      ctx.fillStyle=z.fill;ctx.fillRect(0,top,sz.width,h);ctx.strokeStyle=z.stroke;ctx.lineWidth=Math.max(1,hr);ctx.setLineDash(z.dead?[4*hr,3*hr]:[]);ctx.strokeRect(0,top,sz.width,h);
+      ctx.fillStyle=z.text;ctx.font=(z.mine?"700 ":"")+Math.round(11*vr)+"px "+cssVar("--sans","sans-serif");ctx.fillText(z.label,6*hr,top+3*vr)});
+    ctx.setLineDash([3*hr,3*hr]);ctx.font=Math.round(10*vr)+"px "+cssVar("--sans","sans-serif");ctx.textAlign="right";
+    let last=-1e9;items.levels.slice().sort((a,b)=>b.price-a.price).forEach(l=>{const y=series.priceToCoordinate(l.price);if(y==null)return;const py=Math.round(y*vr);
+      ctx.strokeStyle=items.muted;ctx.beginPath();ctx.moveTo(0,py);ctx.lineTo(sz.width,py);ctx.stroke();
+      const ty=Math.max(py-14*vr,last+12*vr);last=ty;ctx.fillStyle=items.muted;ctx.fillText(l.label,sz.width-6*hr,ty)});
+    ctx.restore()});
+  const view={zOrder:()=>"bottom",renderer:()=>({draw:()=>{},drawBackground:draw})};
+  return {attached:p=>{chart=p.chart;series=p.series},detached:()=>{chart=series=null},updateAllViews:()=>{},paneViews:()=>[view]};
+}
 function candleChart(c,tf,wid){
-  const all=((CANDLES||{}).tf||{})[tf]||[];if(all.length<10)return null;
-  const small=innerWidth<600,bars=all.slice(-Math.round(TF_BARS[tf]*(small?.7:1))),p=c.prediction||{},zones=c.zones||[],levels=c.levels||[];
-  let lo=Math.min(...bars.map(b=>b[3])),hi=Math.max(...bars.map(b=>b[2]));
-  const span=hi-lo,last=bars[bars.length-1][4];
-  // Les zones et niveaux proches du prix élargissent l'échelle ; les plus lointains sont signalés au bord.
-  const near=v=>Number.isFinite(v)&&v>lo-span*.6&&v<hi+span*.6;
-  zones.forEach(z=>{const a=num(z.low),b=num(z.high);if(near(a)||near(b)){lo=Math.min(lo,a);hi=Math.max(hi,b)}});
-  [...levels.map(l=>num(l.price)),num(p.invalidation)].forEach(v=>{if(near(v)){lo=Math.min(lo,v);hi=Math.max(hi,v)}});
-  const pad=(hi-lo)*.05;lo-=pad;hi+=pad;
-  const W=small?400:640,H=small?440:380,L=4,R=small?50:62,T=8,B=24,cw=(W-L-R)/bars.length,X=i=>L+cw*(i+.5),Y=v=>T+(hi-v)*(H-T-B)/(hi-lo);
-  const ns="http://www.w3.org/2000/svg",s=document.createElementNS(ns,"svg");
-  s.setAttribute("viewBox","0 0 "+W+" "+H);s.setAttribute("class","cchart");s.setAttribute("role","img");s.setAttribute("aria-label","Graphique XAUUSD en "+TF_L[tf]+" avec les zones du plan");
-  const add=(tag,a,txt,parent)=>{const n=document.createElementNS(ns,tag);for(const k in a)n.setAttribute(k,a[k]);if(txt!=null)n.textContent=txt;(parent||s).append(n);return n};
-  const clip=v=>Math.max(T,Math.min(H-B,v));
-  // Grille de prix.
-  const step=[1,2,5,10,20,25,50,100,200,250,500].find(x=>(hi-lo)/x<=6)||1000;
-  for(let v=Math.ceil(lo/step)*step;v<=hi;v+=step){add("line",{x1:L,x2:W-R,y1:Y(v),y2:Y(v),class:"g"});add("text",{x:W-R+6,y:Y(v)+4,class:"ax"},fmt(v,0))}
-  // Repères de temps : début de chaque jour (H1), lundi (H4), début de mois (D1).
-  const dt=t=>new Date(t*1000),key=t=>{const d=dt(t);return tf==="H1"?d.getUTCDate():tf==="H4"?Math.floor((t/86400+3)/7):d.getUTCMonth()};
-  const lab=t=>{const d=dt(t);return tf==="D1"?d.toLocaleDateString("fr-FR",{month:"short",timeZone:"UTC"}):d.toLocaleDateString("fr-FR",{weekday:tf==="H1"?"short":undefined,day:"numeric",month:tf==="H4"?"short":undefined,timeZone:"UTC"})};
-  let lastLab=-99;bars.forEach((b,i)=>{if(i&&key(b[0])!==key(bars[i-1][0])){const x=X(i)-cw/2;add("line",{x1:x,x2:x,y1:T,y2:H-B,class:"g v"});if(x-lastLab>(small?56:64)&&x<W-R-30){add("text",{x:x+3,y:H-8,class:"ax"},lab(b[0]));lastLab=x}}});
-  // Début de la semaine du plan.
-  if(wid&&tf!=="D1"){const t0=Date.parse(wid+"T00:00:00Z")/1000,i=bars.findIndex(b=>b[0]>=t0);if(i>0){add("rect",{x:X(i)-cw/2,y:T,width:W-R-X(i)+cw/2,height:H-T-B,class:"wk"});const wx=X(i)-cw/2,room=W-R-wx>96;add("text",{x:room?wx+4:wx-4,y:H-B-5,class:"ax wk-l","text-anchor":room?"start":"end"},"semaine du plan"+(room?"":" →"))}}
-  // Zones : celles de l'unité de temps affichée sont pleines, les autres en léger.
-  const edge=[];
-  zones.forEach(z=>{const a=num(z.low),b=num(z.high);if(!Number.isFinite(a)||!Number.isFinite(b))return;
-    const buy=z.side!=="vente",dead=z.state==="cassee",mine=tfNorm(z.tf)===tf,name=(z.type||"Zone")+" "+(z.tf||"")+(dead?" (cassée)":"");
-    if(b<lo||a>hi){edge.push({up:a>hi,t:(a>hi?"▲ ":"▼ ")+name+" "+fmt(a,0)+"–"+fmt(b,0),c:buy?"buy":"sell"});return}
-    const y1=clip(Y(b)),y2=clip(Y(a));
-    add("rect",{x:L,y:y1,width:W-R-L,height:Math.max(3,y2-y1),class:"z "+(dead?"dead":buy?"buy":"sell")+(mine?" mine":"")});
-    add("text",{x:L+6,y:y1+13,class:"zl "+(buy?"buy":"sell")+(mine?" mine":"")},name+" · "+fmt(a,1)+"–"+fmt(b,1));
-  });
-  // Niveaux de liquidité et invalidation.
-  const rl=[];
-  levels.forEach(l=>{const v=num(l.price);if(!Number.isFinite(v))return;if(v<lo||v>hi){edge.push({up:v>hi,t:(v>hi?"▲ ":"▼ ")+(l.type||"Niveau")+" "+fmt(v,0),c:"lvl"});return}
-    add("line",{x1:L,x2:W-R,y1:Y(v),y2:Y(v),class:"lv"});rl.push({y:Y(v)-3,t:(l.type||"Niveau")+" "+fmt(v,1),c:"ll"})});
-  const inv=num(p.invalidation);
-  if(Number.isFinite(inv)){if(inv<lo||inv>hi)edge.push({up:inv>hi,t:(inv>hi?"▲ ":"▼ ")+"invalidation "+fmt(inv,0),c:"sell"});
-    else{add("line",{x1:L,x2:W-R,y1:Y(inv),y2:Y(inv),class:"inv"});rl.push({y:Y(inv)-3,t:"invalidation "+fmt(inv,1),c:"ll inv-l"})}}
-  // Étiquettes de droite écartées pour ne pas se chevaucher.
-  rl.sort((a,b)=>a.y-b.y);let ly=-99;const lg=[];rl.forEach(l=>{const y=Math.max(l.y,ly+12);ly=y;lg.push([l,y])});
-  // Bougies.
-  const g=add("g",{});const bw=Math.max(1.5,cw*.64);
-  bars.forEach((b,i)=>{const up=b[4]>=b[1],k=up?"up":"down";add("line",{x1:X(i),x2:X(i),y1:Y(b[2]),y2:Y(b[3]),class:"w "+k},null,g);
-    add("rect",{x:X(i)-bw/2,y:Y(Math.max(b[1],b[4])),width:bw,height:Math.max(1,Math.abs(Y(b[1])-Y(b[4]))),class:"b "+k},null,g)});
-  lg.forEach(([l,y])=>add("text",{x:W-R-4,y:Math.min(y,H-B-4),class:l.c,"text-anchor":"end"},l.t));
-  // Dernier prix.
-  add("line",{x1:L,x2:W-R,y1:Y(last),y2:Y(last),class:"px"});
-  add("rect",{x:W-R+1,y:Y(last)-9,width:R-2,height:18,rx:4,class:"px-b"});add("text",{x:W-R+6,y:Y(last)+4,class:"px-t"},fmt(last,2));
-  // Éléments hors du graphique, au bord haut ou bas.
-  edge.filter(e=>e.up).forEach((e,i)=>add("text",{x:L+6,y:T+26+i*14,class:"edge "+e.c},e.t));
-  edge.filter(e=>!e.up).forEach((e,i)=>add("text",{x:L+6,y:H-B-8-i*14,class:"edge "+e.c},e.t));
-  // Toucher ou survol : valeurs de la bougie.
-  const info=el("p",{class:"hint cinfo",text:"Touchez une bougie pour voir ses valeurs."}),cross=add("line",{x1:0,x2:0,y1:T,y2:H-B,class:"cross",visibility:"hidden"});
-  const show=ev=>{const r=s.getBoundingClientRect(),x=(ev.clientX-r.left)*W/r.width,i=Math.max(0,Math.min(bars.length-1,Math.floor((x-L)/cw))),b=bars[i];
-    cross.setAttribute("x1",X(i));cross.setAttribute("x2",X(i));cross.setAttribute("visibility","visible");
-    info.textContent=dt(b[0]).toLocaleString("fr-FR",{weekday:"short",day:"numeric",month:"short",hour:tf==="D1"?undefined:"2-digit",minute:tf==="D1"?undefined:"2-digit",timeZone:"UTC"})+" · O "+fmt(b[1],2)+" · H "+fmt(b[2],2)+" · B "+fmt(b[3],2)+" · C "+fmt(b[4],2)};
-  s.addEventListener("pointermove",show);s.addEventListener("pointerdown",show);
-  return el("div",null,s,info);
+  const all=((CANDLES||{}).tf||{})[tf]||[];if(all.length<10||!window.LightweightCharts)return null;
+  if(CUR_CHART){CUR_CHART.remove();CUR_CHART=null}
+  const LW=window.LightweightCharts,small=innerWidth<600,p=c.prediction||{};
+  const win=cssVar("--win","#1F7A5A"),loss=cssVar("--loss","#B23A2E"),muted=cssVar("--muted","#5A6676"),line=cssVar("--line","#D3D9E1"),ink=cssVar("--ink","#17202B"),gold=cssVar("--gold","#A87A1E"),bg=cssVar("--surface","#FFFFFF");
+  const box=el("div",{class:"lwc",style:"height:"+(small?420:400)+"px"}),info=el("p",{class:"hint cinfo"});
+  const chart=LW.createChart(box,{autoSize:true,layout:{background:{type:"solid",color:bg},textColor:muted,fontFamily:cssVar("--sans","sans-serif"),fontSize:11},
+    grid:{vertLines:{color:rgba(line,.5)},horzLines:{color:rgba(line,.5)}},rightPriceScale:{borderColor:line,scaleMargins:{top:.08,bottom:.08}},
+    timeScale:{borderColor:line,timeVisible:tf!=="D1",secondsVisible:false,rightOffset:4},crosshair:{mode:LW.CrosshairMode.Normal},handleScroll:{vertTouchDrag:false},
+    localization:{locale:"fr-FR",priceFormatter:v=>fmt(v,2)}});
+  CUR_CHART=chart;
+  const ser=chart.addCandlestickSeries({upColor:win,downColor:loss,borderUpColor:win,borderDownColor:loss,wickUpColor:win,wickDownColor:loss,priceLineColor:gold});
+  const data=all.map(b=>({time:b[0],open:b[1],high:b[2],low:b[3],close:b[4]}));ser.setData(data);
+  // Zones et niveaux proches du prix pris dans l'échelle automatique.
+  const zones=(c.zones||[]).map(z=>({low:num(z.low),high:num(z.high),z})).filter(o=>Number.isFinite(o.low)&&Number.isFinite(o.high));
+  const levels=(c.levels||[]).map(l=>({price:num(l.price),label:(l.type||"Niveau")+" "+fmt(num(l.price),1)})).filter(l=>Number.isFinite(l.price));
+  ser.applyOptions({autoscaleInfoProvider:orig=>{const r=orig();if(!r||!r.priceRange)return r;let {minValue:lo,maxValue:hi}=r.priceRange;const span=hi-lo,near=v=>v>lo-span*.6&&v<hi+span*.6;
+    zones.forEach(o=>{if(near(o.low)||near(o.high)){lo=Math.min(lo,o.low);hi=Math.max(hi,o.high)}});levels.forEach(l=>{if(near(l.price)){lo=Math.min(lo,l.price);hi=Math.max(hi,l.price)}});
+    const inv=num(p.invalidation);if(Number.isFinite(inv)&&near(inv)){lo=Math.min(lo,inv);hi=Math.max(hi,inv)}
+    return {priceRange:{minValue:lo,maxValue:hi},margins:r.margins}}});
+  const items={muted,weekFill:rgba(gold,.06),weekStart:null,levels,zones:zones.map(({low,high,z})=>{const buy=z.side!=="vente",dead=z.state==="cassee",mine=tfNorm(z.tf)===tf,col=dead?muted:buy?win:loss;
+    return {low,high,dead,mine,fill:rgba(col,dead?.06:mine?.22:.1),stroke:rgba(col,mine?.9:.45),text:rgba(col,mine?1:.75),label:(z.type||"Zone")+" "+(z.tf||"")+" · "+fmt(low,1)+"–"+fmt(high,1)+(dead?" (cassée)":"")}})};
+  if(wid&&tf!=="D1"){const t0=Date.parse(wid+"T00:00:00Z")/1000,b=all.find(x=>x[0]>=t0);if(b)items.weekStart=b[0]}
+  ser.attachPrimitive(planPrimitive(items));
+  const inv=num(p.invalidation);if(Number.isFinite(inv))ser.createPriceLine({price:inv,color:loss,lineWidth:1,lineStyle:LW.LineStyle.Dashed,axisLabelVisible:true,title:"Invalidation"});
+  // Vue de départ : les dernières bougies, comme à l'ouverture de TradingView.
+  const n=Math.round(TF_BARS[tf]*(small?.7:1)),fit=()=>chart.timeScale().setVisibleLogicalRange({from:data.length-n,to:data.length+3});
+  // Le graphique n’a sa largeur qu’une fois affiché : on cadre au premier redimensionnement.
+  const ro=new ResizeObserver(()=>{if(box.clientWidth){fit();ro.disconnect()}});ro.observe(box);
+  // Valeurs de la bougie sous le réticule (la dernière par défaut).
+  const show=b=>{if(!b)return;const d=new Date(b.time*1000);info.textContent=d.toLocaleString("fr-FR",{weekday:"short",day:"numeric",month:"short",hour:tf==="D1"?undefined:"2-digit",minute:tf==="D1"?undefined:"2-digit",timeZone:"UTC"})+" · O "+fmt(b.open,2)+" · H "+fmt(b.high,2)+" · B "+fmt(b.low,2)+" · C "+fmt(b.close,2)};
+  show(data[data.length-1]);chart.subscribeCrosshairMove(e=>show(e&&e.seriesData&&e.seriesData.get(ser)||data[data.length-1]));
+  return el("div",null,box,info);
 }
 function chartCard(c,wid){
   const box=el("div",{class:"cbox"}),bar=el("div",{class:"tfbar",role:"group","aria-label":"Unité de temps"});
-  const tfs=["H1","H4","D1"].filter(t=>(((CANDLES||{}).tf||{})[t]||[]).length>=10);if(!tfs.length)return null;
+  const tfs=["H1","H4","D1"].filter(t=>(((CANDLES||{}).tf||{})[t]||[]).length>=10);if(!tfs.length||!window.LightweightCharts)return null;
   if(!tfs.includes(CHART_TF))CHART_TF=tfs.includes("H4")?"H4":tfs[0];
   const counts=t=>(c.zones||[]).filter(z=>tfNorm(z.tf)===t).length;
   const draw=()=>{bar.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.tf===CHART_TF)));box.replaceChildren(candleChart(c,CHART_TF,wid)||el("div",{class:"empty",text:"Pas assez de bougies."}))};
   tfs.forEach(t=>{const b=el("button",{type:"button",class:"tf","data-tf":t},el("b",{text:t}),counts(t)?el("span",{text:counts(t)+" zone"+(counts(t)>1?"s":"")}):null);b.addEventListener("click",()=>{CHART_TF=t;draw()});bar.append(b)});
   draw();
   const at=(CANDLES||{}).at?"Bougies du courtier ("+((CANDLES||{}).account||"MT5")+"), reçues le "+new Date(CANDLES.at.replace(" ","T")).toLocaleString("fr-FR",{weekday:"long",hour:"2-digit",minute:"2-digit"})+". ":"";
-  return card("Graphique des niveaux",bar,box,el("p",{class:"hint",style:"margin-top:8px",text:at+"Zones vertes : achat · rouges : vente · pleines : zones de l’unité de temps affichée, pâles : des autres unités · tirets rouges : invalidation · étiquette de couleur à droite : dernier prix. Heures du courtier."}));
+  return card("Graphique des niveaux",bar,box,el("p",{class:"hint",style:"margin-top:8px",text:at+"Glissez pour faire défiler, pincez pour zoomer, touchez une bougie pour ses valeurs. Zones vertes : achat · rouges : vente · appuyées : zones de l’unité de temps affichée · tirets rouges : invalidation. Heures du courtier."}));
 }
 let VIEW_INITIAL=false;
 const zoneKey=z=>Number(z.low).toFixed(2)+"-"+Number(z.high).toFixed(2)+"-"+(z.side==="vente"?"s":"b");

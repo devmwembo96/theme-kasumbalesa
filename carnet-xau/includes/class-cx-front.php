@@ -151,7 +151,10 @@ class CX_Front {
 		wp_register_style( 'cx-app', false, array(), CX_VERSION );
 		wp_enqueue_style( 'cx-app' );
 		wp_add_inline_style( 'cx-app', (string) file_get_contents( CX_DIR . 'assets/css/app.css' ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions
-		wp_register_script( 'cx-app', false, array(), CX_VERSION, array( 'in_footer' => true ) );
+		// Graphiques de TradingView (Lightweight Charts, Apache 2.0) : la version est dans le nom du
+		// fichier, le cache du serveur ne peut donc pas en servir une autre.
+		wp_register_script( 'cx-lwc', CX_URL . 'assets/vendor/lightweight-charts-4.2.3.js', array(), null, array( 'in_footer' => true ) ); // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion
+		wp_register_script( 'cx-app', false, array( 'cx-lwc' ), CX_VERSION, array( 'in_footer' => true ) );
 		wp_enqueue_script( 'cx-app' );
 		wp_add_inline_script( 'cx-app', (string) file_get_contents( CX_DIR . 'assets/js/app.js' ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 
