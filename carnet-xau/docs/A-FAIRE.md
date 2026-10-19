@@ -29,6 +29,14 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 - Chaîne Telegram reliée (tous les messages du carnet), propositions d’amélioration de Claude
   (`ideas`) dans les deux tâches et dans l’onglet Plan.
 
+## Mises à jour du plugin
+
+- Depuis la 2.15.1, le plugin se met à jour sans l’écran Extensions (choix de l’utilisateur) :
+  zip `carnet-xau-x.y.z.zip` envoyé dans la médiathèque, puis `POST /carnet-xau/v1/update`
+  {version, url, sha256} avec le mot de passe d’application (administrateur). La tâche du
+  carnet l’installe dans les 5 minutes (empreinte vérifiée, 3 essais) et prévient sur Telegram.
+  État : `GET /carnet-xau/v1/update`.
+
 ## À valider sur le compte démo
 
 - EA 2.7 : setup 3 (iFVG), cassure sur le dernier sommet ou creux pivot, entrée « retour FVG »
