@@ -7,7 +7,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'RN_VERSION', '1.2.0' );
+define( 'RN_VERSION', '1.2.1' );
 define( 'RN_DIR', get_template_directory() );
 define( 'RN_URI', get_template_directory_uri() );
 

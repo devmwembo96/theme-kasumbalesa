@@ -17,14 +17,16 @@ function rn_fonts_url() {
 }
 
 /**
- * Version d'un fichier (date de modification) pour le cache navigateur.
+ * Contenu d'un fichier du thème, pour l'intégrer à la page : le cache de l'hébergeur ignore le
+ * paramètre de version des fichiers statiques et servirait l'ancienne feuille après une mise à jour.
  *
  * @param string $path Chemin relatif au thème.
  * @return string
  */
-function rn_asset_version( $path ) {
+function rn_asset_inline( $path ) {
 	$file = RN_DIR . '/' . $path;
-	return file_exists( $file ) ? RN_VERSION . '.' . filemtime( $file ) : RN_VERSION;
+	$code = file_exists( $file ) ? (string) file_get_contents( $file ) : ''; // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+	return str_replace( 'url("../', 'url("' . RN_URI . '/assets/', $code );
 }
 
 /**
@@ -32,17 +34,12 @@ function rn_asset_version( $path ) {
  */
 function rn_enqueue_assets() {
 	wp_enqueue_style( 'rn-fonts', rn_fonts_url(), array(), null ); // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion
-	wp_enqueue_style( 'rn-main', RN_URI . '/assets/css/main.css', array(), rn_asset_version( 'assets/css/main.css' ) );
-	wp_enqueue_script(
-		'rn-main',
-		RN_URI . '/assets/js/main.js',
-		array(),
-		rn_asset_version( 'assets/js/main.js' ),
-		array(
-			'in_footer' => true,
-			'strategy'  => 'defer',
-		)
-	);
+	wp_register_style( 'rn-main', false, array(), RN_VERSION );
+	wp_enqueue_style( 'rn-main' );
+	wp_add_inline_style( 'rn-main', rn_asset_inline( 'assets/css/main.css' ) );
+	wp_register_script( 'rn-main', false, array(), RN_VERSION, true );
+	wp_enqueue_script( 'rn-main' );
+	wp_add_inline_script( 'rn-main', rn_asset_inline( 'assets/js/main.js' ) );
 	if ( is_singular() && comments_open() && get_option( 'thread_comments' ) ) {
 		wp_enqueue_script( 'comment-reply' );
 	}
