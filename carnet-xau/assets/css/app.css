@@ -265,3 +265,10 @@
 .cx-app .tfbar .tf[aria-pressed=true] b{color:var(--gold-ink)}
 .cx-app .lwc{width:100%;border-radius:var(--radius);overflow:hidden;border:1px solid var(--line)}
 .cx-app .cinfo{margin:6px 0 0;font-variant-numeric:tabular-nums;min-height:1.4em}
+.cx-app .canal{margin-top:10px}
+.cx-app .canal-head{margin:0 0 8px;font-weight:600}
+.cx-app .canal-z{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.cx-app .canal-z li{padding:8px 10px;border-radius:var(--radius);border-left:3px solid;background:var(--sunk)}
+.cx-app .canal-z li.buy{border-color:#3179f5}.cx-app .canal-z li.sell{border-color:#e5484d}
+.cx-app .canal-z b{display:block;font-size:.88rem;font-variant-numeric:tabular-nums}
+.cx-app .canal-z span{display:block;font-size:.84rem;color:var(--muted);margin-top:2px}

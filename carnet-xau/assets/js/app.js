@@ -366,15 +366,27 @@ function candleChart(c,tf,wid){
   show(data[data.length-1]);chart.subscribeCrosshairMove(e=>show(e&&e.seriesData&&e.seriesData.get(ser)||data[data.length-1]));
   return el("div",null,box,info);
 }
+// Lecture du plan pour l'unité de temps affichée : biais, invalidation et zones de cette unité.
+function chartAnalysis(c,tf){
+  const p=c.prediction||{},out=el("div",{class:"canal"});
+  const probs=[["Haussier",p.bull],["Baissier",p.bear],["Range",p.range]].filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]);
+  const head=[probs.length?"Biais "+probs[0][0].toLowerCase()+" "+probs[0][1]+" %":"",Number.isFinite(num(p.invalidation))?"invalidation "+px(p.invalidation):""].filter(Boolean).join(" · ");
+  if(head)out.append(el("p",{class:"canal-head",text:head}));
+  const zs=(c.zones||[]).filter(z=>tfNorm(z.tf)===tf).sort((a,b)=>num(b.high)-num(a.high));
+  if(!zs.length){out.append(el("p",{class:"hint",text:"Aucune zone du plan en "+tf+"."}));return out}
+  out.append(el("ul",{class:"canal-z"},...zs.map(z=>{const buy=z.side!=="vente",st={testee:"testée",cassee:"cassée"}[z.state];
+    return el("li",{class:buy?"buy":"sell"},el("b",{text:(buy?"Achat":"Vente")+" · "+(z.type||"Zone")+" "+(z.tf||"")+" · "+px(z.low)+" – "+px(z.high)+(st?" ("+st+")":"")}),z.note?el("span",{text:z.note}):null)})));
+  return out;
+}
 function chartCard(c,wid){
-  const box=el("div",{class:"cbox"}),bar=el("div",{class:"tfbar",role:"group","aria-label":"Unité de temps"});
+  const box=el("div",{class:"cbox"}),bar=el("div",{class:"tfbar",role:"group","aria-label":"Unité de temps"}),ana=el("div");
   const tfs=["H1","H4","D1"].filter(t=>(((CANDLES||{}).tf||{})[t]||[]).length>=10);if(!tfs.length||!window.LightweightCharts)return null;
   if(!tfs.includes(CHART_TF))CHART_TF=tfs.includes("H4")?"H4":tfs[0];
   const counts=t=>(c.zones||[]).filter(z=>tfNorm(z.tf)===t).length;
-  const draw=()=>{bar.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.tf===CHART_TF)));box.replaceChildren(candleChart(c,CHART_TF,wid)||el("div",{class:"empty",text:"Pas assez de bougies."}))};
+  const draw=()=>{bar.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.tf===CHART_TF)));box.replaceChildren(candleChart(c,CHART_TF,wid)||el("div",{class:"empty",text:"Pas assez de bougies."}));ana.replaceChildren(chartAnalysis(c,CHART_TF))};
   tfs.forEach(t=>{const b=el("button",{type:"button",class:"tf","data-tf":t},el("b",{text:t}),counts(t)?el("span",{text:counts(t)+" zone"+(counts(t)>1?"s":"")}):null);b.addEventListener("click",()=>{CHART_TF=t;draw()});bar.append(b)});
   draw();
-  return card("Graphique des niveaux",bar,box,el("p",{class:"hint",style:"margin-top:8px",text:"Glissez pour faire défiler, pincez pour zoomer, touchez une bougie pour ses valeurs. Zones du plan : bleu = achat, rouge = vente, plus soutenues pour l’unité de temps affichée ; trait violet : invalidation."}));
+  return card("Graphique des niveaux",bar,box,ana);
 }
 let VIEW_INITIAL=false;
 const zoneKey=z=>Number(z.low).toFixed(2)+"-"+Number(z.high).toFixed(2)+"-"+(z.side==="vente"?"s":"b");
