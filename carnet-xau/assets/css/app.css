@@ -248,8 +248,9 @@
 .cx-app .coach-l ul{margin:4px 0 0;padding-left:20px}
 
 /* lecture seule (carnet public) */
-.cx-app .ro-bar{max-width:980px;margin:10px auto 0;padding:8px 14px;border-radius:var(--radius);background:var(--gold-soft);color:var(--gold-ink);font-size:14px}
+.cx-app .ro-bar{max-width:948px;margin:10px 16px 0;padding:8px 14px;border-radius:var(--radius);background:var(--gold-soft);color:var(--gold-ink);font-size:14px}
 .cx-app .ro-bar span{font-weight:700}
+@media (min-width:980px){.cx-app .ro-bar{margin:10px auto 0}}
 .cx-app .ro-bar a{color:inherit;font-weight:600;text-decoration:underline}
 .cx-app.ro #btn-log,.cx-app.ro #settings,.cx-app.ro #trade-form,.cx-app.ro #acc-new,.cx-app.ro #acc-form,.cx-app.ro #connections,.cx-app.ro #backup-panel,.cx-app.ro #sig-clear,.cx-app.ro #btn-csv,
 .cx-app.ro #payouts-panel .grid,.cx-app.ro #payouts-panel datalist,.cx-app.ro #payouts-panel>.row,.cx-app.ro .trade .row,.cx-app.ro .acc .row{display:none!important}
