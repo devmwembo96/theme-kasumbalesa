@@ -36,7 +36,11 @@
 			?>
 		</nav>
 		<div class="rn-header__actions">
-			<?php echo rn_button( rn_mod( 'cta_label' ), rn_contact_url(), 'primary rn-btn--sm rn-header__cta', '' ); // phpcs:ignore ?>
+			<?php
+			echo rn_carnet_url()
+				? rn_button( __( 'Carnet', 'revnefty' ), rn_carnet_url(), 'primary rn-btn--sm rn-header__cta', 'journal' ) // phpcs:ignore
+				: rn_button( rn_mod( 'cta_label' ), rn_contact_url(), 'primary rn-btn--sm rn-header__cta rn-hide-sm', '' ); // phpcs:ignore
+			?>
 			<button type="button" class="rn-icon-btn rn-menu-toggle" aria-controls="rn-drawer" aria-expanded="false">
 				<?php echo rn_icon( 'menu' ); // phpcs:ignore ?>
 				<span class="screen-reader-text"><?php esc_html_e( 'Ouvrir le menu', 'revnefty' ); ?></span>
@@ -67,7 +71,10 @@
 		?>
 	</nav>
 	<div class="rn-drawer__foot rn-wrap">
-		<?php echo rn_button( rn_mod( 'cta_label' ), rn_contact_url(), 'primary rn-btn--block' ); // phpcs:ignore ?>
+		<?php if ( rn_carnet_url() ) : ?>
+			<?php echo rn_button( __( 'Ouvrir le carnet', 'revnefty' ), rn_carnet_url(), 'primary rn-btn--block', 'journal' ); // phpcs:ignore ?>
+		<?php endif; ?>
+		<?php echo rn_button( rn_mod( 'cta_label' ), rn_contact_url(), 'ghost rn-btn--block' ); // phpcs:ignore ?>
 		<?php rn_contact_block(); ?>
 	</div>
 </div>

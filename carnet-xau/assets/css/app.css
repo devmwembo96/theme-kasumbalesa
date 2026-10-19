@@ -254,3 +254,5 @@
 .cx-app .ro-bar a{color:inherit;font-weight:600;text-decoration:underline}
 .cx-app.ro #btn-log,.cx-app.ro #settings,.cx-app.ro #trade-form,.cx-app.ro #acc-new,.cx-app.ro #acc-form,.cx-app.ro #connections,.cx-app.ro #backup-panel,.cx-app.ro #sig-clear,.cx-app.ro #btn-csv,
 .cx-app.ro #payouts-panel .grid,.cx-app.ro #payouts-panel datalist,.cx-app.ro #payouts-panel>.row,.cx-app.ro .trade .row,.cx-app.ro .acc .row{display:none!important}
+.cx-app.ro #tab-jour input:disabled,.cx-app.ro #tab-jour select:disabled{opacity:1;color:var(--ink);-webkit-text-fill-color:var(--ink);cursor:default}
+.cx-app.ro #tab-jour input:disabled::placeholder{color:transparent}

@@ -960,6 +960,11 @@ function readOnlyMode(){
   if(CFG.login)bar.append(el("a",{href:CFG.login,text:"Se connecter pour modifier"}));
   ROOT.querySelector(".cx-bar").after(bar);
 }
+// Lecture seule : les champs de calcul du jour, la check-list et les paramètres sont figés.
+function lockReadOnly(){
+  if(!CFG.readOnly)return;
+  ROOT.querySelectorAll("#tab-jour input, #tab-jour select, #tab-jour textarea, #tab-jour button").forEach(i=>{i.disabled=true;i.setAttribute("aria-disabled","true")});
+}
 async function start(){
   readOnlyMode();
   buildChecklist();
@@ -971,6 +976,7 @@ async function start(){
   try{THIS_WEEK_PLAN=await api("plans/"+weekId(planWeek()))}catch(e){THIS_WEEK_PLAN=null}
   renderPlanMini();loadPlan();renderTrades();calc();
   loadCalendar();
+  lockReadOnly();
   if("serviceWorker" in navigator&&CFG.sw&&window.isSecureContext){navigator.serviceWorker.register(CFG.sw,{scope:CFG.scope||"/"}).catch(()=>{})}
 }
 start();

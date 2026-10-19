@@ -11,6 +11,7 @@ get_template_part( 'template-parts/hero' );
 if ( rn_mod( 'ticker_enable' ) ) {
 	get_template_part( 'template-parts/ticker' );
 }
+get_template_part( 'template-parts/carnet-live' );
 get_template_part( 'template-parts/steps' );
 get_template_part( 'template-parts/pillars' );
 get_template_part( 'template-parts/risk' );

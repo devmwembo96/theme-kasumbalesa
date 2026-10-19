@@ -20,8 +20,13 @@ $rn_points = array_filter( array( rn_mod( 'hero_point_1' ), rn_mod( 'hero_point_
 			<?php endif; ?>
 			<div class="rn-hero__actions">
 				<?php
-				echo rn_button( rn_mod( 'hero_cta_label' ), rn_mod( 'hero_cta_url' ), 'primary' ); // phpcs:ignore
-				echo rn_button( rn_mod( 'hero_cta2_label' ), '#contact' === rn_mod( 'hero_cta2_url' ) ? rn_contact_url() : rn_mod( 'hero_cta2_url' ), 'ghost', '' ); // phpcs:ignore
+				if ( rn_carnet_url() ) {
+					echo rn_button( __( 'Ouvrir le carnet', 'revnefty' ), rn_carnet_url(), 'primary', 'journal' ); // phpcs:ignore
+					echo rn_button( rn_mod( 'hero_cta_label' ), rn_mod( 'hero_cta_url' ), 'ghost', '' ); // phpcs:ignore
+				} else {
+					echo rn_button( rn_mod( 'hero_cta_label' ), rn_mod( 'hero_cta_url' ), 'primary' ); // phpcs:ignore
+					echo rn_button( rn_mod( 'hero_cta2_label' ), '#contact' === rn_mod( 'hero_cta2_url' ) ? rn_contact_url() : rn_mod( 'hero_cta2_url' ), 'ghost', '' ); // phpcs:ignore
+				}
 				?>
 			</div>
 			<?php if ( $rn_points ) : ?>
@@ -41,8 +46,8 @@ $rn_points = array_filter( array( rn_mod( 'hero_point_1' ), rn_mod( 'hero_point_
 			<div class="rn-dashrow">
 			<div class="rn-xau">
 				<span class="rn-xau__logo">
-					<img class="rn-xau__metal" src="https://s3-symbol-logo.tradingview.com/metal/gold.svg" width="64" height="64" alt="" loading="lazy" referrerpolicy="no-referrer">
-					<img class="rn-xau__flag" src="https://s3-symbol-logo.tradingview.com/country/US.svg" width="30" height="30" alt="" loading="lazy" referrerpolicy="no-referrer">
+					<img class="rn-xau__metal" src="<?php echo esc_url( RN_URI . '/assets/img/tv-gold.svg' ); ?>" width="64" height="64" alt="">
+					<img class="rn-xau__flag" src="<?php echo esc_url( RN_URI . '/assets/img/tv-us.svg' ); ?>" width="30" height="30" alt="">
 				</span>
 				<span class="rn-xau__sym">XAUUSD</span>
 				<span class="rn-xau__name"><?php esc_html_e( 'Or / Dollar US', 'revnefty' ); ?></span>
@@ -50,8 +55,8 @@ $rn_points = array_filter( array( rn_mod( 'hero_point_1' ), rn_mod( 'hero_point_
 			<div class="rn-dash">
 				<div class="rn-dash__head">
 					<span class="rn-dash__logo">
-						<img src="https://s3-symbol-logo.tradingview.com/metal/gold.svg" width="22" height="22" alt="" loading="lazy" referrerpolicy="no-referrer">
-						<img src="https://s3-symbol-logo.tradingview.com/country/US.svg" width="22" height="22" alt="" loading="lazy" referrerpolicy="no-referrer">
+						<img src="<?php echo esc_url( RN_URI . '/assets/img/tv-gold.svg' ); ?>" width="22" height="22" alt="">
+						<img src="<?php echo esc_url( RN_URI . '/assets/img/tv-us.svg' ); ?>" width="22" height="22" alt="">
 					</span>
 					<span class="rn-dash__sym">XAUUSD</span>
 					<span class="rn-dash__tag">H1</span>
