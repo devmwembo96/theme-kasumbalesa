@@ -30,7 +30,7 @@
 //|    l'ouvrir dans MetaEditor et compiler (F7).                    |
 //| 2. MT5 : Outils › Options › Expert Advisors : cocher             |
 //|    « Autoriser WebRequest pour les URL listées » et ajouter      |
-//|    https://ville-de-kasumbalesa.cd                               |
+//|    https://revnefty.store                                        |
 //| 3. Notifications mobiles : Outils › Options › Notifications,     |
 //|    activer et saisir le MetaQuotes ID de l'application MT5.      |
 //| 4. Glisser l'EA sur un graphique XAUUSD (M1 conseillé) et coller |
@@ -58,7 +58,7 @@
 #property version   "2.63"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
-input string InpUrl         = "https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
+input string InpUrl         = "https://revnefty.store/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
 input string InpKey         = "";    // Clé MT5 du compte (onglet Comptes)
 input string InpSymbol      = "XAU"; // Trades envoyés : symboles qui contiennent… (vide = tous)
 input int    InpDaysBack    = 3;     // Jours d'historique renvoyés à chaque synchronisation

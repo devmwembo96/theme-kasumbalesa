@@ -5,7 +5,7 @@ Le plan de la semaine du Carnet XAU est rédigé **exclusivement** par une tâch
 ## Publication
 
 ```
-PUT https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/claude/plans/{lundi}
+PUT https://revnefty.store/wp-json/carnet-xau/v1/claude/plans/{lundi}
 En-tête  X-CX-Key: <jeton du plan>          (Comptes › Connexions › Plan de la semaine)
 Corps    JSON ci-dessous
 ```
@@ -19,8 +19,8 @@ Corps    JSON ci-dessous
 ## Sources à lire avant d'écrire
 
 ```
-GET https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/calendar?week={lundi}
-GET https://ville-de-kasumbalesa.cd/wp-json/carnet-xau/v1/candles
+GET https://revnefty.store/wp-json/carnet-xau/v1/calendar?week={lundi}
+GET https://revnefty.store/wp-json/carnet-xau/v1/candles
 ```
 
 - `calendar?week=` : annonces USD à fort et moyen impact de la semaine (ForexFactory, relu

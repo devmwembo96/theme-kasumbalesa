@@ -345,7 +345,13 @@ class CX_Front {
 			nocache_headers();
 			header( 'Content-Type: text/plain; charset=utf-8' );
 			header( 'Content-Disposition: attachment; filename="CarnetXAU.mq5"' );
-			readfile( CX_DIR . 'assets/mt5/CarnetXAU.mq5.txt' ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+			// L'adresse par défaut de l'EA devient celle de ce site, quel que soit son domaine.
+			$host = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+			echo str_replace( // phpcs:ignore WordPress.Security.EscapeOutput -- fichier source de l'EA.
+				array( 'https://revnefty.store/wp-json/carnet-xau/v1/mt5', 'https://revnefty.store       ' ),
+				array( rest_url( CX_Rest::NS . '/mt5' ), str_pad( 'https://' . $host, 29 ) ),
+				(string) file_get_contents( CX_DIR . 'assets/mt5/CarnetXAU.mq5.txt' ) // phpcs:ignore WordPress.WP.AlternativeFunctions
+			);
 			exit;
 		}
 
