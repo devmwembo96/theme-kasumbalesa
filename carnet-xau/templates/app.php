@@ -283,6 +283,7 @@ defined( 'ABSPATH' ) || exit;
 					<label class="check"><input type="checkbox" data-a="signals"><span>Signaux et invalidation (EA MT5)</span></label>
 					<label class="check"><input type="checkbox" data-a="report"><span>Rapport de la semaine (samedi 9 h)</span></label>
 				</div>
+				<div class="row" id="tg-channel" style="margin-top:6px"><p class="hint" id="tg-channel-state" style="flex:1;margin:0"></p><button type="button" class="btn ghost sm" id="tg-channel-off" hidden>Retirer la chaîne</button></div>
 				<div class="row"><button type="button" class="btn ghost sm" id="tg-test">Envoyer un message de test</button><button type="button" class="btn ghost sm danger" id="tg-off">Déconnecter</button></div>
 			</div>
 		</div>

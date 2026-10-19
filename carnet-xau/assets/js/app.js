@@ -1005,6 +1005,8 @@ async function loadConnections(){
     else st.replaceChildren("Bot ",el("b",{text:"@"+tg.bot}),document.createTextNode(" connecté. Dernière étape : ouvrez "),el("a",{href:tg.startLink,target:"_blank",rel:"noopener",text:"ce lien"}),document.createTextNode(" puis appuyez sur « Démarrer » (ou envoyez au bot : /start "+tg.code+")."));
     $$("#tg-alerts input").forEach(i=>{i.checked=!!tg.alerts[i.dataset.a];i.disabled=!tg.linked});
     $("#tg-test").disabled=!tg.linked;
+    $("#tg-channel-state").textContent=tg.channel?"Chaîne « "+tg.channel+" » : tous les messages du carnet y sont aussi publiés.":tg.linked?"Chaîne Telegram : ajoutez @"+tg.bot+" comme administrateur de votre chaîne (droit « Publier des messages ») ; elle sera reliée automatiquement.":"";
+    $("#tg-channel-off").hidden=!tg.channel;
   }
   const rf=CONN.refusals||[];
   $("#refusals-box summary").textContent="Accès refusés aux points d’entrée ("+rf.length+")";
@@ -1039,6 +1041,7 @@ $$("#tg-alerts input").forEach(i=>i.addEventListener("change",async()=>{
   try{await api("connections/telegram",{method:"PUT",body:{alerts:{[i.dataset.a]:i.checked}}});toast("Alerte "+(i.checked?"activée":"coupée"))}catch(e){i.checked=!i.checked;toast("Impossible : "+errMsg(e))}
 }));
 $("#tg-test").addEventListener("click",async()=>{try{await api("connections/telegram/test",{method:"POST"});toast("Message envoyé sur Telegram")}catch(e){toast(errMsg(e))}});
+$("#tg-channel-off").addEventListener("click",async()=>{if(!confirm("Ne plus publier sur la chaîne ?"))return;try{await api("connections/telegram/channel",{method:"DELETE"});loadConnections();toast("Chaîne retirée")}catch(e){toast("Impossible : "+errMsg(e))}});
 $("#tg-off").addEventListener("click",async()=>{if(!confirm("Déconnecter le bot Telegram ?"))return;try{await api("connections/telegram",{method:"DELETE"});loadConnections();toast("Bot déconnecté")}catch(e){toast("Impossible : "+errMsg(e))}});
 
 /* ---------- mise à jour périodique (trades MT5, solde) ---------- */

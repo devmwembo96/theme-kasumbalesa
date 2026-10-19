@@ -112,6 +112,7 @@ class CX_Rest {
 		self::route( '/connections/telegram', 'PUT', 'tg_alerts' );
 		self::route( '/connections/telegram', 'DELETE', 'tg_disconnect' );
 		self::route( '/connections/telegram/test', 'POST', 'tg_test' );
+		self::route( '/connections/telegram/channel', 'DELETE', 'tg_channel_off' );
 		self::route( '/signals', 'GET', 'list_signals' );
 		self::route( '/signals', 'DELETE', 'clear_signals' );
 
@@ -510,6 +511,11 @@ class CX_Rest {
 	public static function tg_disconnect() {
 		CX_Telegram::disconnect();
 		return self::out( CX_Telegram::status() );
+	}
+
+	/** @return WP_REST_Response */
+	public static function tg_channel_off() {
+		return self::out( CX_Telegram::channel_off() );
 	}
 
 	/** @return WP_REST_Response|WP_Error */

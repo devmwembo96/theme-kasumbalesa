@@ -125,26 +125,94 @@ class CX_Telegram {
 	}
 
 	/**
-	 * Envoie un message au chat lié.
+	 * Envoie un message au chat lié et, s'il y en a une, à la chaîne Telegram.
 	 *
-	 * @param string $text Texte (HTML simple de Telegram).
+	 * @param string $text  Texte (HTML simple de Telegram).
+	 * @param bool   $reply Réponse à une commande : chat privé seulement.
 	 * @return bool|WP_Error
 	 */
-	public static function send( $text ) {
+	public static function send( $text, $reply = false ) {
 		$c = self::cfg();
 		if ( empty( $c['token'] ) || empty( $c['chat'] ) ) {
 			return new WP_Error( 'cx_tg', 'Bot non relié à un chat : envoyez /start et le code au bot.' );
 		}
-		$r = self::api(
+		$to = array( $c['chat'] );
+		if ( ! $reply && ! empty( $c['channel'] ) ) {
+			$to[] = $c['channel'];
+		}
+		$err = null;
+		foreach ( $to as $chat ) {
+			$r = self::post( $chat, $text );
+			if ( is_wp_error( $r ) ) {
+				$err = $r;
+			}
+		}
+		return $err ?? true;
+	}
+
+	/**
+	 * Un message vers un chat précis.
+	 *
+	 * @param string $chat Identifiant du chat ou de la chaîne.
+	 * @param string $text Texte.
+	 * @return array|WP_Error
+	 */
+	private static function post( $chat, $text ) {
+		return self::api(
 			'sendMessage',
 			array(
-				'chat_id'                  => $c['chat'],
+				'chat_id'                  => $chat,
 				'text'                     => $text,
 				'parse_mode'               => 'HTML',
 				'disable_web_page_preview' => true,
 			)
 		);
-		return is_wp_error( $r ) ? $r : true;
+	}
+
+	/**
+	 * Installe le webhook (messages du bot et ajout du bot à une chaîne).
+	 *
+	 * @param string $token  Jeton du bot.
+	 * @param string $secret Secret attendu dans l'en-tête de Telegram.
+	 * @return array|WP_Error
+	 */
+	private static function set_hook( $token, $secret ) {
+		return self::api(
+			'setWebhook',
+			array(
+				'url'                  => rest_url( CX_Rest::NS . '/telegram' ),
+				'secret_token'         => $secret,
+				'allowed_updates'      => array( 'message', 'my_chat_member' ),
+				'drop_pending_updates' => false,
+			),
+			$token
+		);
+	}
+
+	/**
+	 * Webhook d'une version précédente (sans l'ajout aux chaînes) : réinstallé une fois.
+	 */
+	private static function upgrade_hook() {
+		$c = self::cfg();
+		if ( empty( $c['token'] ) || empty( $c['secret'] ) || ( $c['hook'] ?? 0 ) >= 2 ) {
+			return;
+		}
+		if ( ! is_wp_error( self::set_hook( $c['token'], $c['secret'] ) ) ) {
+			$c['hook'] = 2;
+			CX_Guard::set( 'telegram', $c );
+		}
+	}
+
+	/**
+	 * Retire la chaîne : les messages ne partent plus que dans le chat privé.
+	 *
+	 * @return array État.
+	 */
+	public static function channel_off() {
+		$c = self::cfg();
+		unset( $c['channel'], $c['channel_title'] );
+		CX_Guard::set( 'telegram', $c );
+		return self::status();
 	}
 
 	/**
@@ -164,16 +232,7 @@ class CX_Telegram {
 			return $me;
 		}
 		$secret = CX_Guard::secret( 48 );
-		$hook   = self::api(
-			'setWebhook',
-			array(
-				'url'                  => rest_url( CX_Rest::NS . '/telegram' ),
-				'secret_token'         => $secret,
-				'allowed_updates'      => array( 'message' ),
-				'drop_pending_updates' => true,
-			),
-			$token
-		);
+		$hook   = self::set_hook( $token, $secret );
 		if ( is_wp_error( $hook ) ) {
 			$hook->add_data( array( 'status' => 400 ) );
 			return $hook;
@@ -187,6 +246,7 @@ class CX_Telegram {
 				'secret' => $secret,
 				'code'   => strtoupper( CX_Guard::secret( 8 ) ),
 				'chat'   => null,
+				'hook'   => 2,
 				'alerts' => $old['alerts'],
 			)
 		);
@@ -217,6 +277,7 @@ class CX_Telegram {
 			'linked'    => ! empty( $c['chat'] ),
 			'code'      => empty( $c['chat'] ) ? (string) ( $c['code'] ?? '' ) : '',
 			'startLink' => ( $bot && empty( $c['chat'] ) && ! empty( $c['code'] ) ) ? 'https://t.me/' . $bot . '?start=' . $c['code'] : '',
+			'channel'   => empty( $c['channel'] ) ? '' : (string) ( $c['channel_title'] ?? $c['channel'] ),
 			'alerts'    => $c['alerts'],
 		);
 	}
@@ -257,7 +318,12 @@ class CX_Telegram {
 		if ( empty( $c['secret'] ) || ! hash_equals( (string) $c['secret'], (string) $req->get_header( 'x_telegram_bot_api_secret_token' ) ) ) {
 			return CX_Guard::refuse( 'telegram', 'en-tête secret absent ou faux' );
 		}
-		$msg  = $req->get_json_params()['message'] ?? array();
+		$upd = (array) $req->get_json_params();
+		if ( isset( $upd['my_chat_member'] ) ) {
+			self::channel_member( (array) $upd['my_chat_member'], $c );
+			return new WP_REST_Response( array( 'ok' => true ), 200 );
+		}
+		$msg  = $upd['message'] ?? array();
 		$chat = isset( $msg['chat']['id'] ) ? (string) $msg['chat']['id'] : '';
 		$text = trim( (string) ( $msg['text'] ?? '' ) );
 		$ok   = new WP_REST_Response( array( 'ok' => true ), 200 );
@@ -271,7 +337,7 @@ class CX_Telegram {
 				$c['chat'] = $chat;
 				$c['code'] = '';
 				CX_Guard::set( 'telegram', $c );
-				self::send( "✅ <b>Carnet XAU</b> est relié à ce chat.\n\n" . self::help() );
+				self::send( "✅ <b>Carnet XAU</b> est relié à ce chat.\n\n" . self::help(), true );
 			}
 			return $ok;
 		}
@@ -281,18 +347,50 @@ class CX_Telegram {
 
 		$cmd = strtolower( strtok( $text, " @\n" ) );
 		if ( '/jour' === $cmd ) {
-			self::send( self::day_summary() );
+			self::send( self::day_summary(), true );
 		} elseif ( '/plan' === $cmd ) {
 			// Le week-end, le plan utile est celui de la semaine qui commence.
 			$now = new DateTimeImmutable( 'now', CX_Repo::tz() );
-			self::send( self::plan_summary( (int) $now->format( 'N' ) >= 6 ? $now->modify( 'next monday' )->format( 'Y-m-d' ) : self::monday( $now ) ) );
+			self::send( self::plan_summary( (int) $now->format( 'N' ) >= 6 ? $now->modify( 'next monday' )->format( 'Y-m-d' ) : self::monday( $now ) ), true );
 		} elseif ( '/rapport' === $cmd ) {
 			$a = self::active();
-			self::send( $a ? CX_Report::summary( CX_Report::data( $a, CX_Report::week() ) ) : 'Aucun compte.' );
+			self::send( $a ? CX_Report::summary( CX_Report::data( $a, CX_Report::week() ) ) : 'Aucun compte.', true );
 		} else {
-			self::send( self::help() );
+			self::send( self::help(), true );
 		}
 		return $ok;
+	}
+
+	/**
+	 * Le bot est ajouté à une chaîne (ou en est retiré). La chaîne n'est retenue que si c'est
+	 * l'utilisateur relié au carnet qui en a fait le bot administrateur avec le droit de publier.
+	 *
+	 * @param array $m Mise à jour « my_chat_member ».
+	 * @param array $c Réglages Telegram.
+	 */
+	private static function channel_member( $m, $c ) {
+		$chat = (array) ( $m['chat'] ?? array() );
+		if ( 'channel' !== ( $chat['type'] ?? '' ) || empty( $c['chat'] ) ) {
+			return;
+		}
+		$id     = (string) ( $chat['id'] ?? '' );
+		$title  = (string) ( $chat['title'] ?? $id );
+		$member = (array) ( $m['new_chat_member'] ?? array() );
+		$admin  = 'administrator' === ( $member['status'] ?? '' ) && ! empty( $member['can_post_messages'] );
+		if ( $admin && (string) ( $m['from']['id'] ?? '' ) === (string) $c['chat'] ) {
+			if ( (string) ( $c['channel'] ?? '' ) === $id ) {
+				return;
+			}
+			$c['channel']       = $id;
+			$c['channel_title'] = $title;
+			CX_Guard::set( 'telegram', $c );
+			self::post( $id, '📣 Cette chaîne recevra désormais les messages du <b>Carnet XAU</b> : plan de la semaine, relectures, annonces, signaux et rapports.' );
+			self::post( $c['chat'], sprintf( '✅ Chaîne « %s » reliée : tous les messages du carnet y sont aussi publiés. Vos commandes (/jour, /plan, /rapport) restent ici.', esc_html( $title ) ) );
+		} elseif ( (string) ( $c['channel'] ?? '' ) === $id && ! $admin ) {
+			unset( $c['channel'], $c['channel_title'] );
+			CX_Guard::set( 'telegram', $c );
+			self::post( $c['chat'], sprintf( '⚠️ Le bot n’est plus administrateur de la chaîne « %s » : les messages ne partent plus que dans ce chat.', esc_html( $title ) ) );
+		}
 	}
 
 	/**
@@ -620,6 +718,7 @@ class CX_Telegram {
 	 * Tâche toutes les 5 minutes.
 	 */
 	public static function run_cron() {
+		self::upgrade_hook();
 		$c = self::cfg();
 		if ( ! empty( $c['chat'] ) ) {
 			if ( ! empty( $c['alerts']['news'] ) ) {
