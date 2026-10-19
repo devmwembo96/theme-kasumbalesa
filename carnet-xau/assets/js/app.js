@@ -228,7 +228,7 @@ function calc(){
 }
 
 /* ---------- check-list ---------- */
-const CHECKS=["Setup 1 (liquidité) ou setup 2 (continuation) clairement identifié","Niveau fixe touché (EQH/EQL, 2 Liq, PDH/PDL, session fermée) ou BoS confirmé","Gros triangle de signal dans le bon sens","Aucun filtre : pas de news, pas de signal opposé depuis 15 min, pas de range serré","Stop entre 1,50 $ et 4,00 $","Au moins 2R de place jusqu’à la prochaine liquidité"];
+const CHECKS=["Setup 1 (liquidité), 2 (continuation) ou 3 (iFVG) clairement identifié","Niveau fixe touché (EQH/EQL, 2 Liq, PDH/PDL, session fermée) ou BoS confirmé","Gros triangle de signal dans le bon sens","Aucun filtre : pas de news, pas de signal opposé depuis 15 min, pas de range serré","Stop entre 1,50 $ et 4,00 $","Au moins 2R de place jusqu’à la prochaine liquidité"];
 function buildChecklist(){
   $("#checklist").replaceChildren(...CHECKS.map((t,i)=>{const cb=el("input",{type:"checkbox",id:"cx-ck"+i});cb.addEventListener("change",updateVerdict);return el("label",{class:"check"},cb,el("span",{text:t}))}));
 }
@@ -628,7 +628,7 @@ $("#tf-save").addEventListener("click",async()=>{
 $("#jf-setup").addEventListener("change",renderTrades);
 $("#jf-account").addEventListener("change",renderTrades);
 $("#btn-csv").addEventListener("click",async()=>{try{await download("export/trades.csv",{account:$("#jf-account").value})}catch(e){toast("Export impossible : "+errMsg(e))}});
-const SETUP_L={"1":"Setup 1","2":"Setup 2","hors":"Hors setup"};
+const SETUP_L={"1":"Setup 1","2":"Setup 2","3":"Setup 3 (iFVG)","hors":"Hors setup"};
 const tradeKey=t=>(t.date||"")+(t.time||"")+String(t.id).padStart(10,"0");
 function sortedTrades(list){return list.slice().sort((a,b)=>tradeKey(b).localeCompare(tradeKey(a)))}
 function renderTrades(){
@@ -702,7 +702,7 @@ function renderStats(){
     const z=document.createElementNS(ns,"line");z.setAttribute("x1",pd);z.setAttribute("x2",W-pd);z.setAttribute("y1",Y(0));z.setAttribute("y2",Y(0));z.setAttribute("stroke","var(--line)");z.setAttribute("stroke-dasharray","4 4");svg.append(z);
     const p=document.createElementNS(ns,"polyline");p.setAttribute("points",pts.map((v,i)=>X(i).toFixed(1)+","+Y(v).toFixed(1)).join(" "));p.setAttribute("fill","none");p.setAttribute("stroke","var(--gold)");p.setAttribute("stroke-width","2.5");p.setAttribute("vector-effect","non-scaling-stroke");svg.append(p);
     cv.replaceChildren(svg)}
-  bars("#by-setup",[{label:"Setup 1",list:T.filter(t=>t.setup==="1")},{label:"Setup 2",list:T.filter(t=>t.setup==="2")},{label:"Hors setup",list:T.filter(t=>t.setup==="hors")}]);
+  bars("#by-setup",[{label:"Setup 1",list:T.filter(t=>t.setup==="1")},{label:"Setup 2",list:T.filter(t=>t.setup==="2")},{label:"Setup 3 (iFVG)",list:T.filter(t=>t.setup==="3")},{label:"Hors setup",list:T.filter(t=>t.setup==="hors")}]);
   const lv=[...new Set(T.map(t=>t.level).filter(Boolean))];
   bars("#by-level",lv.map(l=>({label:l,list:T.filter(t=>t.level===l)})).sort((x,y)=>y.list.length-x.list.length));
   bars("#by-hour",[["asie","Asie (0 h–9 h)"],["londres","Londres (9 h–14 h)"],["ny","New York (14 h–18 h)"],["soir","Soir (18 h–24 h)"]].map(([k,l])=>({label:l,list:T.filter(t=>hourBucket(t)===k)})));
@@ -767,13 +767,15 @@ async function loadClaudeSignals(){
   const box=$("#csignals");let list=[];
   try{list=await api("claude-signals")}catch(e){box.replaceChildren(el("div",{class:"empty",text:"Lecture impossible : "+errMsg(e)}));return}
   if(!list.length){box.replaceChildren(el("div",{class:"empty",text:"Aucun signal pour l’instant : ils arriveront quand l’EA tournera sur MT5."}));return}
-  const done=list.filter(s=>["gagne","perdu","be"].includes(s.status));
+  // Les signaux « retour FVG » sont une variante d'entrée des mêmes signaux : comptés à part.
+  const closed=list.filter(s=>["gagne","perdu","be"].includes(s.status)),done=closed.filter(s=>s.kind!=="retest"),ret=closed.filter(s=>s.kind==="retest");
+  list=list.filter(s=>s.kind!=="retest");
   const st=arr=>{const w=arr.filter(s=>s.r>0).length,l=arr.filter(s=>s.r<0).length,sum=arr.reduce((a,s)=>a+(s.r||0),0);
     return {n:arr.length,w,l,wr:w+l?w/(w+l):null,avg:arr.length?sum/arr.length:null,sum,hit2r:arr.length?arr.filter(s=>s.hit2r).length/arr.length:null}};
   const a=st(done), pc=v=>v==null?"—":fmt(v*100,0)+" %", rs=v=>v==null?"—":(v>=0?"+":"−")+fmt(Math.abs(v),2)+"R";
   const cancelled=list.filter(s=>s.status==="annule").length, open=list.filter(s=>s.status==="ouvert"||s.status==="attente").length, taken=list.filter(s=>s.taken).length;
   const grp=(label,arr)=>{const g=st(arr);return [label,String(g.n),pc(g.wr),rs(g.avg),rs(g.sum)]};
-  const rows=[grp("Setup 1",done.filter(s=>s.setup==="1")),grp("Setup 2",done.filter(s=>s.setup==="2")),grp("BUY / SELL NOW",done.filter(s=>s.kind==="now")),grp("LIMIT",done.filter(s=>s.kind==="limit")),grp("Achat",done.filter(s=>s.side==="buy")),grp("Vente",done.filter(s=>s.side==="sell"))].filter(r=>r[1]!=="0");
+  const rows=[grp("Setup 1 (liquidité)",done.filter(s=>s.setup==="1")),grp("Setup 2 (continuation)",done.filter(s=>s.setup==="2")),grp("Setup 3 (iFVG)",done.filter(s=>s.setup==="3")),grp("Entrée au marché (NOW)",done.filter(s=>s.kind==="now")),grp("Entrée au retour FVG",ret),grp("LIMIT",done.filter(s=>s.kind==="limit")),grp("Achat",done.filter(s=>s.side==="buy")),grp("Vente",done.filter(s=>s.side==="sell"))].filter(r=>r[1]!=="0");
   box.replaceChildren(
     el("div",{class:"kpis"},kv("Taux de réussite",pc(a.wr),a.w+" gagnés · "+a.l+" perdus"),kv("R moyen",rs(a.avg)),kv("Total",rs(a.sum),done.length+" signaux clôturés"),kv("2R atteint",pc(a.hit2r)),
       kv("En cours",String(open)),kv("Limites annulées",String(cancelled)),kv("Pris par vous",list.length?fmt(taken/list.length*100,0)+" %":"—",taken+" sur "+list.length)),
@@ -784,7 +786,7 @@ async function loadClaudeSignals(){
       el("span",{class:"bias "+(s.side==="sell"?"b":"h"),text:(s.side==="sell"?"SELL ":"BUY ")+(s.kind==="limit"?"LIMIT":"NOW")+(s.setup?" · S"+s.setup:"")}),
       s.zone,px(s.entry)+" / "+px(s.sl)+" / "+px(s.tp),CS_STATUS[s.status]||s.status,
       s.r==null?"—":rs(s.r)+(s.hit2r?" (2R)":""),s.taken?"Oui":"Non"])),
-    el("p",{class:"hint",style:"margin-top:8px",text:"Taux de réussite calculé sur les signaux clôturés (gagnés et perdus) ; les limites annulées n’en font pas partie. « Pris » : un trade de votre journal dans le même sens, à 15 minutes près. Fiable à partir d’une trentaine de signaux."}));
+    el("p",{class:"hint",style:"margin-top:8px",text:"Taux de réussite calculé sur les signaux clôturés (gagnés et perdus) ; les limites annulées n’en font pas partie. « Entrée au retour FVG » : les mêmes signaux, entrés par un ordre limite au bord du FVG (même stop, même objectif), pour comparer avec l’entrée au marché. « Pris » : un trade de votre journal dans le même sens, à 15 minutes près. Fiable à partir d’une trentaine de signaux."}));
 }
 
 /* ---------- simulateur Monte-Carlo ---------- */

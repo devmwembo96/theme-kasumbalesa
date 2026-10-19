@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.6.3                                    |
+//| CarnetXAU.mq5 — version 2.7.0                                    |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1, H4, H1).     |
@@ -38,24 +38,32 @@
 //|                                                                  |
 //| Règles du signal (calculées à partir du plan de Claude) :        |
 //| - le prix touche une zone de Claude non cassée ;                 |
-//| - extrême de la touche dans la zone (mèche tolérée), puis        |
-//|   cassure de structure M1 dans le sens de la zone : clôture      |
-//|   au-delà du dernier sommet (achat) ou creux (vente) précédent ; |
-//| - setup 1 si l'extrême a balayé un niveau de liquidité de Claude |
-//|   (ou le bord de la zone) ; sinon setup 2, seulement dans le     |
-//|   sens du biais dominant ;                                       |
+//| - extrême de la touche dans la zone (mèche tolérée) ;            |
+//| - setup 3 (iFVG) : une bougie M1 clôture au-delà du FVG          |
+//|   contraire laissé par la jambe qui a amené le prix dans la zone |
+//|   (FVG baissier pour un achat, haussier pour une vente) : le FVG |
+//|   est inversé et devient le support (résistance) ;               |
+//| - sinon cassure de structure M1 : clôture au-delà du dernier     |
+//|   sommet pivot (achat) ou creux pivot (vente) avant l'extrême ;  |
+//|   setup 1 si l'extrême a balayé un niveau de liquidité de Claude |
+//|   (ou le bord de la zone), sinon setup 2, seulement dans le sens |
+//|   du biais dominant ;                                            |
 //| - stop derrière l'extrême + marge, entre 1,50 et 4,00 $ ; s'il  |
 //|   est plus large : BUY LIMIT / SELL LIMIT au prix où le stop     |
 //|   revient à 4,00 $ (repli attendu, valable 30 minutes) ;         |
 //| - au moins 2R de place jusqu'à la prochaine zone ou niveau       |
 //|   opposé (objectif = ce niveau, sinon 3R) ;                      |
+//| - entrée « retour FVG » suivie en parallèle (trade virtuel, sans |
+//|   alerte) : ordre limite au bord de l'iFVG (setup 3) ou du FVG   |
+//|   laissé par la cassure (setups 1 et 2), même stop, 30 min ;     |
+//|   le carnet compare les deux entrées ;                           |
 //| - filtres : pas d'annonce dans 15 min (ni dans les 30 min        |
 //|   passées), spread ≤ spread max % du stop, limites du jour       |
 //|   (trades, pertes, 80 % de la perte journalière), invalidation   |
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.63"
+#property version   "2.70"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 input string InpUrl         = "https://revnefty.store/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
@@ -67,7 +75,9 @@ input bool   InpDrawPlan    = true;  // Tracer le plan de Claude
 input bool   InpSignals     = true;  // Calculer les signaux BUY NOW / SELL NOW
 input double InpSLBuffer    = 0.30;  // Marge du stop derrière l'extrême ($, en plus du spread)
 input int    InpTouchBars   = 30;    // Bougies M1 où chercher la touche de zone
-input int    InpSwingBars   = 10;    // Bougies M1 avant l'extrême pour le sommet / creux à casser
+input int    InpSwingBars   = 20;    // Bougies M1 avant l'extrême où chercher le sommet / creux pivot et le FVG
+input double InpFvgMin      = 0.30;  // Taille minimale d'un FVG ($)
+input bool   InpRetest      = true;  // Suivre aussi l'entrée « retour FVG » (trade virtuel, sans alerte)
 input int    InpCooldownMin = 60;    // Minutes sans nouveau signal sur la même zone
 input bool   InpUseLimit    = true;  // Stop trop large : proposer un ordre limite (stop ramené au maximum)
 input int    InpLimitMin    = 30;    // Validité d'un signal limite, en minutes
@@ -207,8 +217,8 @@ void OnTick()
 bool PendingLimit()
   {
    for(int i = 0; i < ArraySize(g_tracks); i++)
-      if(g_tracks[i].status == 0)
-         return true;
+      if(g_tracks[i].status == 0 && StringFind(g_tracks[i].label, "RETOUR") < 0)
+         return true;                               // la variante « retour FVG » ne bloque rien
    return false;
   }
 
@@ -330,7 +340,8 @@ void ProcessBar(double hi, double lo, double cl, datetime t, bool late)
             for(int n = 0; n < ArraySize(names); n++)
                ObjectSetInteger(0, g_tracks[i].id + names[n], OBJPROP_COLOR, C'225,225,225');
             ObjectSetString(0, g_tracks[i].id + "_T", OBJPROP_TEXT, g_tracks[i].label + " annulé (prix non atteint en " + IntegerToString(InpLimitMin) + " min)");
-            if(!late)
+            bool variant = StringFind(g_tracks[i].label, "RETOUR") >= 0;   // variante suivie sans alerte
+            if(!late && !variant)
                Notify("Carnet XAU : " + g_tracks[i].label + " " + Fr(e, 2) + " annulé, prix non atteint en " + IntegerToString(InpLimitMin) + " min.");
             TrackEvent(i, "annule", "", t);
             g_status = g_tracks[i].label + " annulé (délai écoulé).";
@@ -341,7 +352,7 @@ void ProcessBar(double hi, double lo, double cl, datetime t, bool late)
             g_tracks[i].status = 1;
             g_tracks[i].opened = t - 60;
             changed = true;
-            if(!late)
+            if(!late && StringFind(g_tracks[i].label, "RETOUR") < 0)
                Notify("Carnet XAU : " + g_tracks[i].label + " atteint à " + Fr(e, 2) + " — conditions réunies, à vous de décider.");
             TrackEvent(i, "ouvert", "", t);
            }
@@ -1068,7 +1079,7 @@ bool Swept(bool buy, double extreme, double closeAtExtreme, double zoneEdge)
 
 void CheckSignals()
   {
-   int need = InpTouchBars + InpSwingBars + 2;
+   int need = InpTouchBars + InpSwingBars + 4;
    MqlRates r[];
    ArraySetAsSeries(r, true);
    if(CopyRates(_Symbol, PERIOD_M1, 1, need, r) < need)
@@ -1106,19 +1117,64 @@ void CheckSignals()
       if(buy ? r[e].close < z.lo : r[e].close > z.hi)
          continue;
 
-      // Sommet (achat) ou creux (vente) à casser : avant l'extrême.
-      double swing = buy ? 0 : DBL_MAX;
-      for(int k = e + 1; k <= e + InpSwingBars && k < need; k++)
-         swing = buy ? MathMax(swing, r[k].high) : MathMin(swing, r[k].low);
-      // Cassure fraîche : la dernière bougie clôture au-delà, la précédente non.
-      bool brk = buy ? (r[0].close > swing && r[1].close <= swing) : (r[0].close < swing && r[1].close >= swing);
-      if(!brk)
-         continue;
-
       bool   sweep = Swept(buy, extreme, r[e].close, buy ? z.lo : z.hi);
-      string setup = sweep ? "1" : "2";
-      if(!sweep && dir != d)
-         continue;                                // setup 2 : seulement avec le biais
+      string setup = "";
+      double retest = 0;                          // entrée « retour FVG » (0 = aucune)
+
+      // Setup 3, iFVG : le FVG contraire le plus récent de la jambe vers la zone (bougies e…e+N),
+      // jamais clôturé au-delà jusqu'ici, est franchi en clôture par la dernière bougie.
+      for(int k = e; k <= e + InpSwingBars && k + 2 < need; k++)
+        {
+         double top = buy ? r[k + 2].low : r[k].low;    // achat : FVG baissier entre le bas de A et le haut de C
+         double bot = buy ? r[k].high : r[k + 2].high;  // vente : FVG haussier entre le haut de A et le bas de C
+         if(top - bot < InpFvgMin)
+            continue;
+         bool used = false;
+         for(int j = 1; j < k; j++)
+            if(buy ? r[j].close > top : r[j].close < bot)
+               used = true;                       // déjà inversé plus tôt
+         if(!used && (buy ? (r[0].close > top && r[1].close <= top) : (r[0].close < bot && r[1].close >= bot)))
+           {
+            setup  = "3";
+            retest = buy ? top : bot;             // retour sur le bord de l'iFVG
+           }
+         break;                                   // seul le FVG le plus récent compte
+        }
+
+      if(setup == "")
+        {
+         // Cassure de structure : dernier sommet pivot (achat) ou creux pivot (vente) avant l'extrême,
+         // à défaut le plus haut (plus bas) des N bougies.
+         double swing = buy ? 0 : DBL_MAX;
+         bool   piv   = false;
+         for(int k = e + 2; k <= e + InpSwingBars && k + 2 < need; k++)
+           {
+            if(buy ? (r[k].high > r[k - 1].high && r[k].high > r[k - 2].high && r[k].high >= r[k + 1].high && r[k].high >= r[k + 2].high)
+                   : (r[k].low < r[k - 1].low && r[k].low < r[k - 2].low && r[k].low <= r[k + 1].low && r[k].low <= r[k + 2].low))
+              {
+               swing = buy ? r[k].high : r[k].low;
+               piv   = true;
+               break;
+              }
+           }
+         if(!piv)
+            for(int k = e + 1; k <= e + InpSwingBars && k < need; k++)
+               swing = buy ? MathMax(swing, r[k].high) : MathMin(swing, r[k].low);
+         // Cassure fraîche : la dernière bougie clôture au-delà, la précédente non.
+         bool brk = buy ? (r[0].close > swing && r[1].close <= swing) : (r[0].close < swing && r[1].close >= swing);
+         if(!brk)
+            continue;
+         setup = sweep ? "1" : "2";
+         if(!sweep && dir != d)
+            continue;                             // setup 2 : seulement avec le biais
+         // Retour : bord du FVG le plus récent laissé par la cassure (bougies 0…e).
+         for(int k = 0; k + 2 <= e; k++)
+            if(buy ? (r[k].low - r[k + 2].high >= InpFvgMin) : (r[k + 2].low - r[k].high >= InpFvgMin))
+              {
+               retest = buy ? r[k].low : r[k].high;
+               break;
+              }
+        }
 
       double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
@@ -1178,13 +1234,20 @@ void CheckSignals()
          DrawPanel();
          continue;
         }
-      ShowSignal(buy, kind, setup, z, entry, sl, tp, rr, lot, stop, r[0].time);
+      // Variante « retour FVG » : même stop et même objectif, entrée plus proche de l'extrême.
+      double vStop = retest > 0 ? MathAbs(retest - sl) : 0;
+      bool   vOk   = InpRetest && retest > 0 && kind == "NOW" && (buy ? retest < entry : retest > entry)
+                     && vStop >= g_stopMin && vStop <= g_stopMax && MathAbs(tp - retest) / vStop >= 2.0;
+      ShowSignal(buy, kind, setup, z, entry, sl, tp, rr, lot, stop, r[0].time, vOk ? retest : 0);
+      if(vOk)
+         ShowRetest(buy, setup, z, retest, sl, tp, MathAbs(tp - retest) / vStop,
+                    MathFloor(risk / (vStop * g_contract) * 100.0 + 1e-9) / 100.0, vStop, r[0].time);
       g_lastSignal = TimeCurrent();
       return;
      }
   }
 
-void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, double sl, double tp, double rr, double lot, double stop, datetime t)
+void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, double sl, double tp, double rr, double lot, double stop, datetime t, double retest)
   {
    g_signalCount++;
    string id = PFX_SIG + IntegerToString((long)t);
@@ -1233,7 +1296,42 @@ void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, do
    SendEvent("{\"type\":\"signal\",\"ref\":" + JsonText(ref) + ",\"kind\":\"" + (kind == "LIMIT" ? "limit" : "now") + "\",\"side\":\"" + (buy ? "buy" : "sell") + "\",\"setup\":\"" + setup + "\",\"zone\":"
              + JsonText(z.type + " " + z.tf + " " + Num(z.lo, 2) + "-" + Num(z.hi, 2)) + ",\"entry\":" + Num(entry, 2) + ",\"sl\":" + Num(sl, 2)
              + ",\"tp\":" + Num(tp, 2) + ",\"lot\":" + Num(lot, 2) + ",\"rr\":" + Num(rr, 2) + ",\"stop\":" + Num(stop, 2)
+             + (retest > 0 ? ",\"retest\":" + Num(retest, 2) : "")
              + ",\"time\":" + IntegerToString((long)TimeGMT()) + "}");
    DrawPanel();
+  }
+
+//--- Variante « retour FVG » : trade virtuel en ordre limite, suivi sans alerte pour comparer les entrées.
+void ShowRetest(bool buy, string setup, CxZone &z, double entry, double sl, double tp, double rr, double lot, double stop, datetime t)
+  {
+   string id = PFX_SIG + IntegerToString((long)t) + "r";
+   string ref = IntegerToString((long)t) + "r";
+   int k = ArraySize(g_tracks);
+   ArrayResize(g_tracks, k + 1);
+   g_tracks[k].ref     = ref;
+   g_tracks[k].id      = id;
+   g_tracks[k].label   = (buy ? "BUY " : "SELL ") + "RETOUR";
+   g_tracks[k].buy     = buy;
+   g_tracks[k].entry   = entry;
+   g_tracks[k].sl      = sl;
+   g_tracks[k].tp      = tp;
+   g_tracks[k].stop    = stop;
+   g_tracks[k].status  = 0;
+   g_tracks[k].hit2r   = false;
+   g_tracks[k].mfe     = 0;
+   g_tracks[k].mae     = 0;
+   g_tracks[k].expires = TimeCurrent() + InpLimitMin * 60;
+   g_tracks[k].opened  = 0;
+   SaveTracks();
+   ObjectCreate(0, id + "_E", OBJ_TREND, 0, t, entry, t + 30 * 60, entry);
+   ObjectSetInteger(0, id + "_E", OBJPROP_STYLE, STYLE_DOT);
+   ObjectSetInteger(0, id + "_E", OBJPROP_COLOR, buy ? clrSeaGreen : clrIndianRed);
+   ObjectSetInteger(0, id + "_E", OBJPROP_RAY_RIGHT, false);
+   ObjectSetString(0, id + "_E", OBJPROP_TOOLTIP, "Retour FVG " + Fr(entry, 2));
+   ObjBase(id + "_E");
+   SendEvent("{\"type\":\"signal\",\"variant\":true,\"ref\":" + JsonText(ref) + ",\"kind\":\"retest\",\"side\":\"" + (buy ? "buy" : "sell") + "\",\"setup\":\"" + setup + "\",\"zone\":"
+             + JsonText(z.type + " " + z.tf + " " + Num(z.lo, 2) + "-" + Num(z.hi, 2)) + ",\"entry\":" + Num(entry, 2) + ",\"sl\":" + Num(sl, 2)
+             + ",\"tp\":" + Num(tp, 2) + ",\"lot\":" + Num(lot, 2) + ",\"rr\":" + Num(rr, 2) + ",\"stop\":" + Num(stop, 2)
+             + ",\"time\":" + IntegerToString((long)TimeGMT()) + "}");
   }
 //+------------------------------------------------------------------+

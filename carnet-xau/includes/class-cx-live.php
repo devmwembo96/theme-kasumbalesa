@@ -220,11 +220,13 @@ class CX_Live {
 
 		if ( 'signal' === $type ) {
 			$side = 'sell' === ( $in['side'] ?? '' ) ? 'sell' : 'buy';
-			$kind = 'limit' === ( $in['kind'] ?? '' ) ? 'limit' : 'now';
+			$kind = CX_Repo::pick( (string) ( $in['kind'] ?? '' ), array( 'now', 'limit', 'retest' ), 'now' );
+			// Variante « retour FVG » : suivie pour comparer les entrées, sans message.
+			$send = $send && 'retest' !== $kind;
 			$data = array(
 				'kind'  => $kind,
 				'side'  => $side,
-				'setup' => CX_Repo::pick( (string) ( $in['setup'] ?? '' ), array( '1', '2' ), '' ),
+				'setup' => CX_Repo::pick( (string) ( $in['setup'] ?? '' ), array( '1', '2', '3' ), '' ),
 				'zone'  => CX_Repo::text( $in['zone'] ?? '', 80 ),
 				'entry' => $num( 'entry' ),
 				'sl'    => $num( 'sl' ),
@@ -233,7 +235,8 @@ class CX_Live {
 				'rr'    => CX_Repo::num( $in['rr'] ?? null, 0, 100 ),
 				'stop'  => CX_Repo::num( $in['stop'] ?? null, 0, 1000 ),
 			);
-			$label = ( 'sell' === $side ? 'SELL ' : 'BUY ' ) . ( 'limit' === $kind ? 'LIMIT' : 'NOW' ) . ( $data['setup'] ? ' · setup ' . $data['setup'] : '' );
+			$retest = $num( 'retest' );
+			$label  = ( 'sell' === $side ? 'SELL ' : 'BUY ' ) . array( 'now' => 'NOW', 'limit' => 'LIMIT', 'retest' => 'RETOUR' )[ $kind ] . ( $data['setup'] ? ' · setup ' . $data['setup'] . ( '3' === $data['setup'] ? ' (iFVG)' : '' ) : '' );
 			// Trade virtuel « Signal Claude » : suivi jusqu'à sa clôture (signal_update), qu'il soit pris ou non.
 			$ref = preg_replace( '/[^0-9A-Za-z_-]/', '', (string) ( $in['ref'] ?? '' ) );
 			$ref = '' !== $ref ? $ref : (string) $at->getTimestamp();
@@ -260,8 +263,8 @@ class CX_Live {
 					'stop_usd'   => $data['stop'],
 					'lot'        => $data['lot'],
 					'rr'         => $data['rr'],
-					'statut'     => 'limit' === $kind ? 'attente' : 'ouvert',
-					'ouvert_le'  => 'limit' === $kind ? null : $at->format( 'Y-m-d H:i:s' ),
+					'statut'     => 'now' === $kind ? 'ouvert' : 'attente',
+					'ouvert_le'  => 'now' === $kind ? $at->format( 'Y-m-d H:i:s' ) : null,
 				)
 			);
 			$wpdb->insert(
@@ -279,7 +282,7 @@ class CX_Live {
 			if ( $send ) {
 				CX_Telegram::send(
 					sprintf(
-						"%s <b>%s</b> — %s\nZone : %s\nEntrée %s · stop %s · objectif %s (%sR)\nLot : %s (stop %s $)\n" . ( 'limit' === $kind ? 'Ordre limite : valable 30 min, en attente d’un repli.' : 'Sortie partielle à 2R, puis stop au prix d’entrée.' ),
+						"%s <b>%s</b> — %s\nZone : %s\nEntrée %s · stop %s · objectif %s (%sR)\nLot : %s (stop %s $)\n" . ( 'limit' === $kind ? 'Ordre limite : valable 30 min, en attente d’un repli.' : 'Sortie partielle à 2R, puis stop au prix d’entrée.' ) . ( null === $retest ? '' : "\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ),
 						'sell' === $side ? '🔴' : '🟢',
 						esc_html( $label ),
 						esc_html( $acc['name'] ),
@@ -378,7 +381,7 @@ class CX_Live {
 			$data['mae_r']      = CX_Repo::num( $in['mae'] ?? null, -50, 50 );
 		}
 		$wpdb->update( $t, $data, array( 'id' => (int) $row->id ) );
-		if ( $send && in_array( $status, array( 'gagne', 'perdu', 'be' ), true ) ) {
+		if ( $send && 'retest' !== $row->genre && in_array( $status, array( 'gagne', 'perdu', 'be' ), true ) ) {
 			$r = (float) ( $data['resultat_r'] ?? 0 );
 			CX_Telegram::send(
 				sprintf(

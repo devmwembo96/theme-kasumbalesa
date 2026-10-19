@@ -148,6 +148,7 @@ class CX_Report {
 		foreach ( array(
 			'1'    => 'Setup 1',
 			'2'    => 'Setup 2',
+			'3'    => 'Setup 3 (iFVG)',
 			'hors' => 'Hors setup',
 		) as $k => $label ) {
 			$list = array_values( array_filter( $trades, fn( $t ) => $t['setup'] === $k ) );

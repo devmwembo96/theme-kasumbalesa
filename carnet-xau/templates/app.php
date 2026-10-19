@@ -108,7 +108,7 @@ defined( 'ABSPATH' ) || exit;
 			<label class="f">Date<input id="tf-date" type="date"></label>
 			<label class="f">Heure<input id="tf-time" type="time"></label>
 			<label class="f">Sens<select id="tf-dir"><option value="achat">Achat</option><option value="vente">Vente</option></select></label>
-			<label class="f">Setup<select id="tf-setup"><option value="1">Setup 1 — liquidité</option><option value="2">Setup 2 — continuation</option><option value="hors">Hors setup</option></select></label>
+			<label class="f">Setup<select id="tf-setup"><option value="1">Setup 1 — liquidité</option><option value="2">Setup 2 — continuation</option><option value="3">Setup 3 — iFVG</option><option value="hors">Hors setup</option></select></label>
 			<label class="f">Niveau ou déclencheur<select id="tf-level">
 				<option value="EQL">EQL</option><option value="EQH">EQH</option><option value="2 Bottom Liq">2 Bottom Liq</option><option value="2 Top Liq">2 Top Liq</option>
 				<option value="PDH">PDH</option><option value="PDL">PDL</option><option value="Session fermée">Extrême de session fermée</option><option value="BoS">BoS / MSB</option><option value="Autre">Autre</option></select></label>
@@ -142,7 +142,7 @@ defined( 'ABSPATH' ) || exit;
 	<div class="row" style="margin-bottom:10px">
 		<h2 style="margin:0">Trades</h2><span class="spacer"></span>
 		<select id="jf-account" class="auto" aria-label="Filtrer par compte"></select>
-		<select id="jf-setup" class="auto" aria-label="Filtrer par setup"><option value="">Tous les setups</option><option value="1">Setup 1</option><option value="2">Setup 2</option><option value="hors">Hors setup</option><option value="todo">MT5 à compléter</option></select>
+		<select id="jf-setup" class="auto" aria-label="Filtrer par setup"><option value="">Tous les setups</option><option value="1">Setup 1</option><option value="2">Setup 2</option><option value="3">Setup 3 (iFVG)</option><option value="hors">Hors setup</option><option value="todo">MT5 à compléter</option></select>
 		<button type="button" class="btn ghost sm" id="btn-csv">Exporter en CSV</button>
 	</div>
 	<div class="trades" id="trades"></div>

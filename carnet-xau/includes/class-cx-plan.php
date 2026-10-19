@@ -88,7 +88,7 @@ class CX_Plan {
 			'effect' => array( 'up', 'down', 'neutral' ),
 			'impact' => array( 'high', 'medium', 'low' ),
 			'bias'   => array( 'h', 'b', 'n' ),
-			'setup'  => array( '1', '2' ),
+			'setup'  => array( '1', '2', '3' ),
 			'tf'     => array( 'W', 'D', 'H4', 'H1', 'M15' ),
 			'day'    => self::DAYS,
 			'verdict' => array( 'bonne', 'partielle', 'mauvaise' ),

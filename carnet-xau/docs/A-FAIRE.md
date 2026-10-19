@@ -29,11 +29,12 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 - Chaîne Telegram reliée (tous les messages du carnet), propositions d’amélioration de Claude
   (`ideas`) dans les deux tâches et dans l’onglet Plan.
 
-## Proposé, en attente d’accord
+## À valider sur le compte démo
 
-- EA 2.7 : heures de session (09:00–12:00, 14:30–17:30), vraie cassure de structure (pivot M1 +
-  bougie de déplacement), note A+/A/B par confluences, entrée au marché et entrée sur le FVG
-  suivies en parallèle.
+- EA 2.7 : setup 3 (iFVG), cassure sur le dernier sommet ou creux pivot, entrée « retour FVG »
+  suivie en parallèle de l’entrée au marché. Toutes sessions, sans note ni filtre ajouté (choix
+  de l’utilisateur : refuser un mauvais trade plutôt qu’en chercher un). Décision après une
+  trentaine de signaux, d’après l’onglet Stats (setups 1, 2, 3 ; marché contre retour FVG).
 
 ## Plus tard
 
