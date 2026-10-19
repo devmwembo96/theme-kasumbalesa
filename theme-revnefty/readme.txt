@@ -1,7 +1,7 @@
 === RevNefty ===
 Requires at least: 6.3
 Requires PHP: 7.4
-Stable tag: 1.0.1
+Stable tag: 1.1.0
 
 Thème de RevNefty Capital Finance : trading de l’or, gestion du risque et challenges prop firm.
 Sombre, mobile d’abord, sans page builder.
@@ -16,6 +16,11 @@ Sombre, mobile d’abord, sans page builder.
 * Menus : principal (en-tête et menu mobile), pied de page, mentions légales. Sans menu, l’en-tête
   propose les ancres de l’accueil (Méthode, Outils, Règles, FAQ, Contact).
 * Logo : celui du Customizer, sinon l’anneau RevNefty et le nom en texte.
+
+== Carnet de trading ==
+
+* Visible sur le site (lien « Carnet » du menu, recherche, plan du site), en lecture seule pour
+  les visiteurs ; un administrateur connecté le modifie (plugin Carnet XAU 2.9.0 ou plus).
 
 == Modèles de page ==
 

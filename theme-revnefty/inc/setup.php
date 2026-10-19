@@ -128,6 +128,9 @@ function rn_menu_fallback( $args ) {
 	foreach ( $items as $anchor => $label ) {
 		$html .= '<li class="menu-item"><a href="' . esc_url( $home . $anchor ) . '">' . esc_html( $label ) . '</a></li>';
 	}
+	if ( rn_carnet_url() ) {
+		$html .= '<li class="menu-item rn-menu-carnet"><a href="' . esc_url( rn_carnet_url() ) . '">' . esc_html__( 'Carnet', 'revnefty' ) . '</a></li>';
+	}
 	printf( '<ul class="%s">%s</ul>', esc_attr( $args['menu_class'] ), $html ); // phpcs:ignore WordPress.Security.EscapeOutput -- échappé ci-dessus.
 }
 
@@ -171,3 +174,19 @@ function rn_carnet_identity( $id ) {
 	);
 }
 add_filter( 'cx_app_identity', 'rn_carnet_identity' );
+
+/**
+ * Carnet de trading visible sur le site (menu, recherche, plan du site), en lecture seule
+ * pour les visiteurs : seul un administrateur connecté le modifie.
+ */
+add_filter( 'cx_page_visible', '__return_true' );
+
+/**
+ * Adresse de la page du carnet, si le plugin est installé.
+ *
+ * @return string
+ */
+function rn_carnet_url() {
+	$id = (int) get_option( 'cx_page_id' );
+	return ( $id && 'publish' === get_post_status( $id ) ) ? (string) get_permalink( $id ) : '';
+}

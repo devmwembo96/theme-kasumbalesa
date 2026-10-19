@@ -166,6 +166,8 @@ class CX_Front {
 					'sw'      => add_query_arg( 'cx_pwa', 'sw', home_url( '/' ) ),
 					'scope'   => wp_parse_url( $page, PHP_URL_PATH ),
 					'version' => CX_VERSION,
+					'readOnly' => self::read_only(),
+					'login'   => wp_login_url( $page ),
 					'ea'      => add_query_arg(
 						array(
 							'cx_pwa' => 'ea',
@@ -177,6 +179,27 @@ class CX_Front {
 			) . ';',
 			'before'
 		);
+	}
+
+	/**
+	 * Page publique ? Par défaut non : tenue hors du site (menus, recherche, plans du site,
+	 * noindex). Un thème ou un mu-plugin peut la rendre visible : filtre « cx_page_visible ».
+	 *
+	 * @return bool
+	 */
+	public static function visible() {
+		return (bool) apply_filters( 'cx_page_visible', false );
+	}
+
+	/**
+	 * Lecture seule pour ce visiteur ? Par défaut, dès que la page est visible : les visiteurs
+	 * consultent, seul un utilisateur connecté ayant la capacité du carnet modifie.
+	 * Filtre « cx_public_read_only » pour changer ce comportement.
+	 *
+	 * @return bool
+	 */
+	public static function read_only() {
+		return (bool) apply_filters( 'cx_public_read_only', self::visible() ) && ! current_user_can( CX_CAP );
 	}
 
 	/**
@@ -225,7 +248,7 @@ class CX_Front {
 	 * @return array
 	 */
 	public static function robots( $robots ) {
-		if ( self::is_app_page() ) {
+		if ( self::is_app_page() && ! self::visible() ) {
 			$robots['noindex']  = true;
 			$robots['nofollow'] = true;
 		}
@@ -239,7 +262,7 @@ class CX_Front {
 	 * @return string
 	 */
 	public static function yoast_robots( $robots ) {
-		return self::is_app_page() ? 'noindex, nofollow' : $robots;
+		return self::is_app_page() && ! self::visible() ? 'noindex, nofollow' : $robots;
 	}
 
 	/**
@@ -248,7 +271,7 @@ class CX_Front {
 	 * @param WP_Query $q Requête.
 	 */
 	public static function search_exclude( $q ) {
-		if ( $q->is_search() && ! is_admin() && self::page_id() ) {
+		if ( $q->is_search() && ! is_admin() && self::page_id() && ! self::visible() ) {
 			$q->set( 'post__not_in', array_merge( (array) $q->get( 'post__not_in' ), array( self::page_id() ) ) );
 		}
 	}
@@ -260,7 +283,7 @@ class CX_Front {
 	 * @return array
 	 */
 	public static function rest_exclude( $args ) {
-		if ( self::page_id() && ! current_user_can( 'edit_pages' ) ) {
+		if ( self::page_id() && ! current_user_can( 'edit_pages' ) && ! self::visible() ) {
 			$args['post__not_in']   = isset( $args['post__not_in'] ) ? (array) $args['post__not_in'] : array();
 			$args['post__not_in'][] = self::page_id();
 		}
@@ -274,7 +297,7 @@ class CX_Front {
 	 * @return array
 	 */
 	public static function exclude( $ids ) {
-		if ( self::page_id() ) {
+		if ( self::page_id() && ! self::visible() ) {
 			$ids[] = self::page_id();
 		}
 		return $ids;
@@ -287,7 +310,7 @@ class CX_Front {
 	 * @return array
 	 */
 	public static function sitemap_exclude( $args ) {
-		if ( self::page_id() ) {
+		if ( self::page_id() && ! self::visible() ) {
 			$args['post__not_in']   = isset( $args['post__not_in'] ) ? (array) $args['post__not_in'] : array();
 			$args['post__not_in'][] = self::page_id();
 		}

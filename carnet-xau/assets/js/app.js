@@ -42,6 +42,7 @@ async function refreshNonce(){
   return false;
 }
 async function api(path,opts={},retry=true){
+  if(CFG.readOnly&&(opts.method||"GET")!=="GET")throw {code:"cx_read_only",message:"lecture seule, connectez-vous pour modifier"};
   const o={method:opts.method||"GET",credentials:"same-origin",headers:{"X-WP-Nonce":CFG.nonce||""}};
   if(opts.body instanceof FormData)o.body=opts.body;
   else if(opts.body!==undefined){o.headers["Content-Type"]="application/json";o.body=JSON.stringify(opts.body)}
@@ -950,7 +951,17 @@ function refreshAll(){
 }
 
 /* ---------- démarrage ---------- */
+// Carnet public en lecture seule : commandes de modification masquées, bandeau de connexion.
+function readOnlyMode(){
+  if(!CFG.readOnly)return;
+  ROOT.classList.add("ro");
+  $("#acct-switch").disabled=true;
+  const bar=el("div",{class:"ro-bar"},el("span",{text:"Lecture seule"}),document.createTextNode(" · Vous consultez le carnet. "));
+  if(CFG.login)bar.append(el("a",{href:CFG.login,text:"Se connecter pour modifier"}));
+  ROOT.querySelector(".cx-bar").after(bar);
+}
 async function start(){
+  readOnlyMode();
   buildChecklist();
   try{
     const b=await api("bootstrap");

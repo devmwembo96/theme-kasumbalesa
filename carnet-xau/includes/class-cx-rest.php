@@ -29,13 +29,19 @@ class CX_Rest {
 	/**
 	 * Contrôle d'accès commun à toutes les routes.
 	 *
+	 * @param WP_REST_Request|null $req Requête.
 	 * @return bool|WP_Error
 	 */
-	public static function can() {
-		if ( CX_Front::can_use() ) {
-			return true;
+	public static function can( $req = null ) {
+		if ( ! CX_Front::can_use() ) {
+			return new WP_Error( 'cx_forbidden', 'Accès réservé.', array( 'status' => is_user_logged_in() ? 403 : 401 ) );
 		}
-		return new WP_Error( 'cx_forbidden', 'Accès réservé.', array( 'status' => is_user_logged_in() ? 403 : 401 ) );
+		// Carnet public en lecture seule : les visiteurs lisent, sans modifier ni voir les connexions.
+		if ( CX_Front::read_only() && $req instanceof WP_REST_Request
+			&& ( 'GET' !== $req->get_method() || preg_match( '#^/' . preg_quote( self::NS, '#' ) . '/(connections|export)/?#', $req->get_route() ) ) ) {
+			return new WP_Error( 'cx_read_only', 'Lecture seule : connectez-vous pour modifier le carnet.', array( 'status' => is_user_logged_in() ? 403 : 401 ) );
+		}
+		return true;
 	}
 
 	/**

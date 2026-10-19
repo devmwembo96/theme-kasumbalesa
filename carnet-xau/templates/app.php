@@ -225,7 +225,7 @@ defined( 'ABSPATH' ) || exit;
 		</div>
 	</div>
 
-	<div class="panel">
+	<div class="panel" id="payouts-panel">
 		<h3>Retraits</h3>
 		<div class="grid g4">
 			<label class="f">Compte<select id="pf-account"></select></label>
@@ -289,7 +289,7 @@ defined( 'ABSPATH' ) || exit;
 		<details class="conn" id="refusals-box"><summary>Accès refusés aux points d’entrée</summary><div id="refusals"></div></details>
 	</div>
 
-	<div class="panel">
+	<div class="panel" id="backup-panel">
 		<h3>Sauvegarde</h3>
 		<p class="hint">Export complet (comptes, trades, plans, retraits) au format JSON. À faire avant toute désinstallation du plugin.</p>
 		<button type="button" class="btn ghost" id="btn-backup">Télécharger la sauvegarde</button>

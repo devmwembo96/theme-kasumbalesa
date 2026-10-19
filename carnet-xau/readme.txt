@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.8.3
+Stable tag: 2.9.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -23,6 +23,11 @@ journal des alertes TradingView, alertes Telegram.
   de la recherche, de l’API /wp/v2/pages, du plan du site WordPress et de Yoast, en noindex.
 * Pour la réserver plus tard, une ligne suffit (mu-plugin ou functions.php) :
   add_filter( 'cx_can_use', fn() => current_user_can( 'manage_carnet_xau' ) );
+* Page publique (filtre cx_page_visible, utilisé par le thème RevNefty) : plus aucune exclusion
+  (menus, recherche, plans du site, indexation) et lecture seule pour les visiteurs (filtre
+  cx_public_read_only) : routes en écriture, connexions et sauvegardes refusées sans la capacité
+  manage_carnet_xau ; commandes de modification masquées, bandeau « Se connecter pour modifier ».
+  Les points d’entrée MT5, TradingView, Telegram et Claude gardent leurs clés.
 * Captures : pièces jointes privées au nom de fichier aléatoire.
 * Pas de cache : la page appelle wpfc_exclude_current_page() (WP Fastest Cache) et définit
   DONOTCACHEPAGE ; son CSS et son JS sont insérés dans la page, car le cache du serveur LWS

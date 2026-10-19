@@ -93,6 +93,7 @@ p { margin: 0 0 1em; }
 .rn-nav__menu { list-style: none; display: flex; gap: 4px; margin: 0; padding: 0; }
 .rn-nav__menu a { display: block; padding: 8px 14px; border-radius: 999px; color: var(--rn-muted); font-weight: 500; font-size: .95rem; }
 .rn-nav__menu a:hover, .rn-nav__menu .current-menu-item > a { color: #fff; background: rgba(255, 255, 255, .06); }
+.rn-nav__menu .rn-menu-carnet a, .rn-drawer__menu .rn-menu-carnet a { color: var(--rn-green); }
 .rn-header__actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .rn-header__cta { display: none !important; }
 .rn-icon-btn { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--rn-line-2); background: rgba(255, 255, 255, .03); color: #fff; cursor: pointer; }
