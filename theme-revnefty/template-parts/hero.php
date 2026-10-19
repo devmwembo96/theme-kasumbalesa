@@ -40,6 +40,10 @@ $rn_points = array_filter( array( rn_mod( 'hero_point_1' ), rn_mod( 'hero_point_
 			</picture>
 			<div class="rn-dash">
 				<div class="rn-dash__head">
+					<span class="rn-dash__logo">
+						<img src="https://s3-symbol-logo.tradingview.com/metal/gold.svg" width="22" height="22" alt="" loading="lazy" referrerpolicy="no-referrer">
+						<img src="https://s3-symbol-logo.tradingview.com/country/US.svg" width="22" height="22" alt="" loading="lazy" referrerpolicy="no-referrer">
+					</span>
 					<span class="rn-dash__sym">XAUUSD</span>
 					<span class="rn-dash__tag">H1</span>
 					<span class="rn-dash__live"><span class="rn-live"></span><?php esc_html_e( 'Plan actif', 'revnefty' ); ?></span>

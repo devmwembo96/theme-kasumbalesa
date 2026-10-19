@@ -150,6 +150,10 @@ body.rn-menu-open { overflow: hidden; }
 }
 .rn-dash__head { display: flex; align-items: center; gap: 8px; font-size: .82rem; margin-bottom: 8px; }
 .rn-dash__sym { font: 800 .95rem/1 var(--rn-head); color: #fff; }
+/* Paire comme sur TradingView : logo de l'or, drapeau américain par-dessus en décalé. */
+.rn-dash__logo { display: inline-flex; flex: none; margin-right: 2px; }
+.rn-dash__logo img { width: 22px; height: 22px; border-radius: 50%; box-shadow: 0 0 0 2px var(--rn-surface); }
+.rn-dash__logo img + img { margin-left: -8px; }
 .rn-dash__tag { padding: 2px 7px; border-radius: 6px; background: rgba(255, 255, 255, .07); color: var(--rn-muted); font-weight: 600; }
 .rn-dash__live { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--rn-green); font-weight: 600; }
 .rn-dash__chart { width: 100%; height: 96px; }
