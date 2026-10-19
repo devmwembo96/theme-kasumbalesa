@@ -1,6 +1,6 @@
 <?php
 /**
- * Haut de la page d'accueil : promesse, boutons et tableau de bord illustratif.
+ * Haut de la page d'accueil : promesse, boutons et petit graphique H1 du courtier.
  *
  * @package RevNefty
  */
@@ -62,12 +62,18 @@ $rn_points = array_filter( array( rn_mod( 'hero_point_1' ), rn_mod( 'hero_point_
 					<span class="rn-dash__tag">H1</span>
 					<span class="rn-dash__live"><span class="rn-live"></span><?php esc_html_e( 'Plan actif', 'revnefty' ); ?></span>
 				</div>
+				<?php
+				$rn_live = rn_hero_data();
+				if ( $rn_live ) :
+					echo $rn_live['svg']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- SVG construit avec des nombres.
+				else :
+					?>
 				<svg class="rn-dash__chart" viewBox="0 0 300 110" preserveAspectRatio="none">
 					<rect x="0" y="62" width="300" height="20" class="rn-dash__zone"/>
 					<line x1="0" y1="22" x2="300" y2="22" class="rn-dash__target"/>
 					<g class="rn-dash__candles">
 						<?php
-						// Bougies décoratives (repli sur la zone, puis départ haussier).
+						// Bougies décoratives (repli sur la zone, puis départ haussier), sans bougies du courtier.
 						$rn_c = array( array( 40, 52, 34, 58, 0 ), array( 52, 60, 46, 66, 0 ), array( 60, 70, 55, 76, 0 ), array( 70, 66, 62, 80, 1 ), array( 66, 54, 50, 72, 1 ), array( 54, 44, 40, 58, 1 ), array( 44, 46, 38, 52, 0 ), array( 46, 34, 30, 50, 1 ), array( 34, 26, 22, 38, 1 ), array( 26, 20, 16, 30, 1 ) );
 						foreach ( $rn_c as $i => $c ) {
 							$x   = 18 + $i * 29;
@@ -78,10 +84,17 @@ $rn_points = array_filter( array( rn_mod( 'hero_point_1' ), rn_mod( 'hero_point_
 						?>
 					</g>
 				</svg>
+				<?php endif; ?>
 				<div class="rn-dash__stats">
-					<div><span><?php esc_html_e( 'Risque', 'revnefty' ); ?></span><b>50 $</b></div>
-					<div><span><?php esc_html_e( 'Objectif', 'revnefty' ); ?></span><b class="up">+8 %</b></div>
-					<div><span><?php esc_html_e( 'Ratio', 'revnefty' ); ?></span><b>1 : 3</b></div>
+					<?php if ( $rn_live ) : ?>
+						<div><span><?php esc_html_e( 'Prix', 'revnefty' ); ?></span><b><?php echo esc_html( number_format( $rn_live['price'], 1, ',', '' ) ); ?></b></div>
+						<div><span><?php esc_html_e( 'Zone', 'revnefty' ); ?></span><b class="<?php echo 'vente' === ( $rn_live['zone']['side'] ?? '' ) ? 'down' : 'up'; ?>"><?php echo esc_html( $rn_live['zone'] ? number_format( (float) $rn_live['zone']['low'], 0, ',', '' ) . ' ' . ( $rn_live['zone']['tf'] ?? '' ) : '—' ); ?></b></div>
+						<div><span><?php esc_html_e( 'Biais', 'revnefty' ); ?></span><b class="<?php echo 'Baissier' === ( $rn_live['bias'][0] ?? '' ) ? 'down' : ( 'Haussier' === ( $rn_live['bias'][0] ?? '' ) ? 'up' : '' ); ?>"><?php echo esc_html( $rn_live['bias'] ? $rn_live['bias'][0] : '—' ); ?></b></div>
+					<?php else : ?>
+						<div><span><?php esc_html_e( 'Risque', 'revnefty' ); ?></span><b>50 $</b></div>
+						<div><span><?php esc_html_e( 'Objectif', 'revnefty' ); ?></span><b class="up">+8 %</b></div>
+						<div><span><?php esc_html_e( 'Ratio', 'revnefty' ); ?></span><b>1 : 3</b></div>
+					<?php endif; ?>
 				</div>
 			</div>
 			</div>

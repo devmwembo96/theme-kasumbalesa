@@ -180,7 +180,7 @@ body.rn-menu-open { overflow: hidden; }
 .rn-dash__candles .up { fill: var(--rn-green); stroke: var(--rn-green); }
 .rn-dash__candles .down { fill: var(--rn-red); stroke: var(--rn-red); }
 .rn-dash__candles line { stroke-width: 1.5; }
-.rn-dash__stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.rn-dash__stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
 .rn-dash__stats div { background: rgba(255, 255, 255, .04); border: 1px solid var(--rn-line); border-radius: 10px; padding: 8px 10px; }
 .rn-dash__stats span { display: block; font-size: .72rem; color: var(--rn-muted); }
 .rn-dash__stats b { font: 700 1.05rem/1.2 var(--rn-head); color: #fff; }
@@ -364,3 +364,9 @@ body .cx-app {
 body .cx-app .btn.gold { color: var(--rn-on-green); }
 body .cx-app .brand .ingot { width: 26px; height: 26px; background: url("../img/ring-128.png") center / contain no-repeat; clip-path: none; border-radius: 0; filter: drop-shadow(0 0 8px var(--rn-glow)); }
 body.rn-app .cx-app .cx-bar { padding-top: env(safe-area-inset-top); }
+.rn-dash__zone--sell { fill: rgba(239, 83, 80, .13); stroke: rgba(239, 83, 80, .55); }
+.rn-dash__stats b.down { color: var(--rn-red); }
+.rn-dash__stats b { white-space: nowrap; }
+@media (max-width: 480px) { .rn-dash__stats b { font-size: .86rem; } .rn-dash__stats span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
+.rn-dash__stats div { min-width: 0; }
+.rn-dash__stats b { overflow: hidden; text-overflow: ellipsis; }
