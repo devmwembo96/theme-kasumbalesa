@@ -14,16 +14,19 @@ ville-de-kasumbalesa.cd (garde une copie des plans, Telegram déconnecté).
 
 ## Ensuite
 
-1. Cron LWS pour revnefty.store : appeler `https://revnefty.store/wp-cron.php`
-   toutes les 5 minutes (Telegram de 7 h, alertes, signaux), sans attendre les visites.
-2. Coordonnées de contact du thème (e-mail, WhatsApp) dans le Customizer.
-3. Réenregistrement automatique du webhook Telegram si le domaine change.
-4. Tests datés à remettre à jour : test-plan, test-report (semaine du 12 octobre),
+1. Coordonnées de contact du thème (e-mail, WhatsApp) dans le Customizer.
+2. Réenregistrement automatique du webhook Telegram si le domaine change.
+3. Tests datés à remettre à jour : test-plan, test-report (semaine du 12 octobre),
    test-cal (lecture ForexFactory).
-5. EA sur les comptes Challenge 1 / FundedNext quand le compte FundedNext existera
+4. EA sur les comptes Challenge 1 / FundedNext quand le compte FundedNext existera
    (une clé MT5 par compte ; seul « Démo Deriv » est relié aujourd’hui).
-6. Ancien site : décider quand arrêter la copie des plans (étape « Copie sur l’ancien
+5. Ancien site : décider quand arrêter la copie des plans (étape « Copie sur l’ancien
    site » des deux tâches Claude) et retirer le carnet de ville-de-kasumbalesa.cd.
+
+## Fait
+
+- Cron serveur LWS activé sur revnefty.store (19 octobre 2026) : le carnet passe
+  toutes les 5 minutes sans attendre les visites.
 
 ## Plus tard
 
