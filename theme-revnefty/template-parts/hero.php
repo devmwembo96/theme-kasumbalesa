@@ -38,6 +38,15 @@ $rn_points = array_filter( array( rn_mod( 'hero_point_1' ), rn_mod( 'hero_point_
 				<source media="(min-width: 900px)" srcset="<?php echo esc_url( RN_URI . '/assets/img/banner-1600.webp' ); ?>">
 				<img src="<?php echo esc_url( RN_URI . '/assets/img/banner-900.webp' ); ?>" width="900" height="506" alt="" fetchpriority="high">
 			</picture>
+			<div class="rn-dashrow">
+			<div class="rn-xau">
+				<span class="rn-xau__logo">
+					<img class="rn-xau__metal" src="https://s3-symbol-logo.tradingview.com/metal/gold.svg" width="64" height="64" alt="" loading="lazy" referrerpolicy="no-referrer">
+					<img class="rn-xau__flag" src="https://s3-symbol-logo.tradingview.com/country/US.svg" width="30" height="30" alt="" loading="lazy" referrerpolicy="no-referrer">
+				</span>
+				<span class="rn-xau__sym">XAUUSD</span>
+				<span class="rn-xau__name"><?php esc_html_e( 'Or / Dollar US', 'revnefty' ); ?></span>
+			</div>
 			<div class="rn-dash">
 				<div class="rn-dash__head">
 					<span class="rn-dash__logo">
@@ -69,6 +78,7 @@ $rn_points = array_filter( array( rn_mod( 'hero_point_1' ), rn_mod( 'hero_point_
 					<div><span><?php esc_html_e( 'Objectif', 'revnefty' ); ?></span><b class="up">+8 %</b></div>
 					<div><span><?php esc_html_e( 'Ratio', 'revnefty' ); ?></span><b>1 : 3</b></div>
 				</div>
+			</div>
 			</div>
 		</div>
 	</div>

@@ -144,10 +144,18 @@ body.rn-menu-open { overflow: hidden; }
 .rn-hero__visual { position: relative; }
 .rn-hero__banner img { width: 100%; border-radius: 22px; border: 1px solid var(--rn-line-2); box-shadow: 0 30px 80px -30px rgba(61, 190, 75, .45); aspect-ratio: 16 / 9; object-fit: cover; }
 .rn-dash {
-	position: relative; margin: -42px 12px 0; padding: 14px 16px; border-radius: 18px;
+	position: relative; flex: 1; min-width: 0; padding: 14px 16px; border-radius: 18px;
 	background: rgba(16, 24, 20, .86); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
 	border: 1px solid var(--rn-line-2); box-shadow: 0 24px 60px -20px rgba(0, 0, 0, .8);
 }
+/* Carte et emblème XAUUSD côte à côte, à cheval sur le bas du visuel. */
+.rn-dashrow { position: relative; display: flex; align-items: center; gap: 12px; margin: -42px 8px 0; }
+.rn-xau { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 78px; text-align: center; }
+.rn-xau__logo { position: relative; width: 64px; height: 64px; }
+.rn-xau__metal { width: 64px; height: 64px; border-radius: 50%; box-shadow: 0 0 0 3px var(--rn-bg), 0 10px 30px -6px rgba(214, 154, 0, .55); }
+.rn-xau__flag { position: absolute; right: -6px; bottom: -4px; width: 30px; height: 30px; border-radius: 50%; box-shadow: 0 0 0 3px var(--rn-bg); }
+.rn-xau__sym { font: 800 .9rem/1 var(--rn-head); color: #fff; letter-spacing: .02em; }
+.rn-xau__name { font-size: .7rem; line-height: 1.2; color: var(--rn-muted); }
 .rn-dash__head { display: flex; align-items: center; gap: 8px; font-size: .82rem; margin-bottom: 8px; }
 .rn-dash__sym { font: 800 .95rem/1 var(--rn-head); color: #fff; }
 /* Paire comme sur TradingView : logo de l'or, drapeau américain par-dessus en décalé. */
@@ -155,7 +163,17 @@ body.rn-menu-open { overflow: hidden; }
 .rn-dash__logo img { width: 22px; height: 22px; border-radius: 50%; box-shadow: 0 0 0 2px var(--rn-surface); }
 .rn-dash__logo img + img { margin-left: -8px; }
 .rn-dash__tag { padding: 2px 7px; border-radius: 6px; background: rgba(255, 255, 255, .07); color: var(--rn-muted); font-weight: 600; }
-.rn-dash__live { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--rn-green); font-weight: 600; }
+.rn-dash__live { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--rn-green); font-weight: 600; white-space: nowrap; }
+@media (max-width: 479px) {
+	.rn-dash { padding: 12px; }
+	.rn-dash__head { gap: 6px; font-size: .74rem; }
+	.rn-dash__sym { font-size: .82rem; }
+	.rn-dash__logo img { width: 18px; height: 18px; }
+	.rn-dash__logo img + img { margin-left: -7px; }
+	.rn-dash__stats { gap: 6px; }
+	.rn-dash__stats div { padding: 7px 8px; }
+	.rn-dash__stats b { font-size: .95rem; }
+}
 .rn-dash__chart { width: 100%; height: 96px; }
 .rn-dash__zone { fill: rgba(61, 190, 75, .13); stroke: rgba(61, 190, 75, .5); stroke-dasharray: 3 3; }
 .rn-dash__target { stroke: rgba(155, 231, 166, .6); stroke-dasharray: 5 4; }
@@ -171,7 +189,12 @@ body.rn-menu-open { overflow: hidden; }
 	.rn-hero { padding: 72px 0 96px; }
 	.rn-hero__inner { grid-template-columns: 1.05fr 1fr; gap: 56px; }
 	.rn-hero__actions .rn-btn { flex: 0 0 auto; }
-	.rn-dash { width: 340px; margin: -46px 28px 0 auto; }
+	.rn-dashrow { justify-content: flex-end; gap: 18px; margin: -46px 28px 0 0; }
+	.rn-dash { flex: 0 1 340px; }
+	.rn-xau { width: 96px; }
+	.rn-xau__logo, .rn-xau__metal { width: 76px; height: 76px; }
+	.rn-xau__flag { width: 34px; height: 34px; }
+	.rn-xau__sym { font-size: 1rem; }
 }
 
 .rn-ticker { border-block: 1px solid var(--rn-line); background: var(--rn-bg-2); min-height: 46px; }
