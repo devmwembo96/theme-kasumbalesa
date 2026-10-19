@@ -549,6 +549,7 @@ class CX_Telegram {
 				$lines[] = '📅 ' . $e( $x['day'] . ' ' . $x['time'] . ' ' . $x['event'] );
 			}
 		}
+		$lines   = array_merge( $lines, self::ideas_lines( $c, $e ) );
 		$lines[] = '';
 		$lines[] = 'Plan complet : ' . get_permalink( CX_Front::page_id() );
 		return implode( "\n", $lines );
@@ -627,9 +628,25 @@ class CX_Telegram {
 				}
 			}
 		}
+		$lines   = array_merge( $lines, self::ideas_lines( $c, $e ) );
 		$lines[] = '';
 		$lines[] = 'Plan : ' . get_permalink( CX_Front::page_id() );
 		return implode( "\n", $lines );
+	}
+
+	/**
+	 * Propositions d'amélioration de Claude, en tête de liste.
+	 *
+	 * @param array    $c Contenu du plan.
+	 * @param callable $e Échappement HTML.
+	 * @return string[]
+	 */
+	private static function ideas_lines( $c, $e ) {
+		$out = array();
+		foreach ( array_slice( (array) ( $c['ideas'] ?? array() ), 0, 2 ) as $x ) {
+			$out[] = '💡 <b>' . $e( $x['title'] ?? 'Proposition' ) . '</b>' . ( empty( $x['solution'] ) ? '' : ' : ' . $e( $x['solution'] ) );
+		}
+		return $out ? array_merge( array( '' ), $out ) : array();
 	}
 
 	/**

@@ -183,3 +183,22 @@ Limites : 6 lignes de structure, 12 zones, 15 niveaux, 8 fondamentaux, 25 annonc
 
 - Biais d'origine = la plus forte des trois probabilités.
 - Niveaux, annonces et scénarios d'origine : résumé de l'onglet Jour, alertes Telegram 15 minutes avant chaque annonce, commande `/plan`.
+
+## Amélioration continue (`ideas`)
+
+À chaque publication (plan du dimanche, relecture, verdict), Claude cherche une faille dans la
+méthode à partir des faits (bougies, signaux de l’EA, trades du journal) et propose une solution
+concrète et testable, sans contredire ce qui existe. Liste complète renvoyée à chaque fois
+(anciennes propositions conservées, 5 au plus) :
+
+```json
+"ideas": [
+  { "area": "entrée", "title": "Entrer sur le FVG M1",
+    "flaw": "La faille constatée et le fait qui la prouve.",
+    "solution": "La solution précise.",
+    "test": "Comment la valider : nombre de signaux ou de trades, critère chiffré." }
+]
+```
+
+`area` : entrée, zones, horaires, sorties, discipline, outil. Affichage : carte « Propositions de
+Claude » de l’onglet Plan ; les deux premières partent aussi sur Telegram.

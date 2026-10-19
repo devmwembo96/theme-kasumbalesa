@@ -273,6 +273,17 @@ class CX_Plan {
 				'weaknesses' => array( 'list', 'text', 6 ),
 				'actions'    => array( 'list', 'text', 5 ),
 			),
+			'ideas'        => array(
+				'list',
+				array(
+					'area'     => 'text',
+					'title'    => 'text',
+					'flaw'     => 'long',
+					'solution' => 'long',
+					'test'     => 'long',
+				),
+				5,
+			),
 			'sources'      => 'long',
 		);
 	}

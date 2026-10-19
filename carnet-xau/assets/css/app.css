@@ -272,3 +272,9 @@
 .cx-app .canal-z li.buy{border-color:#3179f5}.cx-app .canal-z li.sell{border-color:#e5484d}
 .cx-app .canal-z b{display:block;font-size:.88rem;font-variant-numeric:tabular-nums}
 .cx-app .canal-z span{display:block;font-size:.84rem;color:var(--muted);margin-top:2px}
+.cx-app .ideas{display:grid;gap:10px}
+.cx-app .idea{padding:12px;border-radius:var(--radius);background:var(--sunk);border-left:3px solid var(--gold)}
+.cx-app .idea .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
+.cx-app .idea .tag{font-size:.75rem;padding:1px 8px;border-radius:999px;background:var(--gold-soft);color:var(--gold-ink)}
+.cx-app .idea p{margin:4px 0 0;font-size:.9rem}
+.cx-app .idea .k{color:var(--muted);font-weight:600}

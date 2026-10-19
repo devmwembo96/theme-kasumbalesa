@@ -466,6 +466,12 @@ function renderPlanView(p){
   // 11. Règles
   if((c.rules||[]).length)out.push(card("Règles de la semaine",el("ul",{class:"rules"},...c.rules.map(r=>el("li",{text:r})))));
   // Relectures quotidiennes (17 h New York)
+  // Propositions d'amélioration de Claude : faille repérée, solution, et comment la tester.
+  if((c.ideas||[]).length)out.push(card("Propositions de Claude",el("div",{class:"ideas"},...c.ideas.map(x=>el("div",{class:"idea"},
+    el("div",{class:"row"},el("b",{text:x.title||"Proposition"}),x.area?el("span",{class:"tag",text:x.area}):null),
+    x.flaw?el("p",null,el("span",{class:"k",text:"Faille : "}),document.createTextNode(x.flaw)):null,
+    x.solution?el("p",null,el("span",{class:"k",text:"Solution : "}),document.createTextNode(x.solution)):null,
+    x.test?el("p",null,el("span",{class:"k",text:"Test : "}),document.createTextNode(x.test)):null)))));
   if(updates.length)out.push(card("Relectures quotidiennes",el("div",{class:"trades"},...updates.slice().reverse().map(u=>el("div",{class:"upd "+(u.status==="mis_a_jour"?"chg":"keep")},
     el("div",{class:"row"},el("b",{text:new Date(u.date+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"short"})}),el("span",{class:"spacer"}),el("span",{class:"tag "+(u.status==="mis_a_jour"?"bad":""),text:u.status==="mis_a_jour"?"Mis à jour":"Maintenu"})),
     u.reason?el("p",{class:"k",text:u.reason}):null,u.summary?el("p",{text:u.summary}):null,
