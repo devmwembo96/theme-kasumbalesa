@@ -300,31 +300,6 @@ async function loadCandles(){
 let CUR_CHART=null;
 function cssVar(n,f){const v=getComputedStyle(document.getElementById("cx-app")||document.body).getPropertyValue(n).trim();return v||f}
 function rgba(c,a){const m=/^#([0-9a-f]{6})$/i.exec(c);if(!m)return c;const n=parseInt(m[1],16);return "rgba("+(n>>16)+","+(n>>8&255)+","+(n&255)+","+a+")"}
-// Structure de marché à la manière de l'indicateur SMC de LuxAlgo, calculée sur les bougies :
-// sommets et creux (pivots), cassures BOS / CHoCH, EQH / EQL, sommet et creux « forts » ou « faibles ».
-function smcStructure(bars){
-  const n=bars.length,H=i=>bars[i][2],L=i=>bars[i][3],C=i=>bars[i][4];
-  const trs=bars.map((b,i)=>i?Math.max(b[2]-b[3],Math.abs(b[2]-bars[i-1][4]),Math.abs(b[3]-bars[i-1][4])):b[2]-b[3]);
-  const atr=trs.slice(-50).reduce((a,b)=>a+b,0)/Math.min(50,n);
-  const pivots=len=>{const out=[];for(let k=len;k<n-len;k++){let ph=true,pl=true;for(let j=k-len;j<=k+len;j++){if(j===k)continue;if(H(j)>=H(k))ph=false;if(L(j)<=L(k))pl=false}
-    if(ph)out.push({k,hi:true,p:H(k),at:k+len});if(pl)out.push({k,hi:false,p:L(k),at:k+len})}return out.sort((a,b)=>a.at-b.at)};
-  // Cassures : clôture au-delà du dernier sommet (ou creux) non cassé ; CHoCH si la tendance s'inverse.
-  const breaks=(len,internal)=>{const pv=pivots(len),out=[];let top=null,btm=null,trend=0,pi=0;
-    for(let i=0;i<n;i++){while(pi<pv.length&&pv[pi].at<=i){const p=pv[pi++];if(p.hi)top={...p,done:false};else btm={...p,done:false}}
-      if(top&&!top.done&&C(i)>top.p){out.push({from:top.k,to:i,p:top.p,bull:true,kind:trend<0?"CHoCH":"BOS",internal});top.done=true;trend=1}
-      if(btm&&!btm.done&&C(i)<btm.p){out.push({from:btm.k,to:i,p:btm.p,bull:false,kind:trend>0?"CHoCH":"BOS",internal});btm.done=true;trend=-1}}
-    return {out,trend,pv}};
-  const sw=breaks(Math.max(8,Math.min(25,Math.round(n/20))),false),it=breaks(5,true);
-  const swingKeys=new Set(sw.out.map(x=>x.from+"|"+x.bull));
-  const lines=[...sw.out,...it.out.filter(x=>!swingKeys.has(x.from+"|"+x.bull))];
-  // EQH / EQL : deux pivots voisins à moins de 0,1 ATR l'un de l'autre.
-  const eq=[];const pv3=pivots(3);[true,false].forEach(hi=>{const ps=pv3.filter(p=>p.hi===hi);for(let i=1;i<ps.length;i++){if(Math.abs(ps[i].p-ps[i-1].p)<atr*.1)eq.push({from:ps[i-1].k,to:ps[i].k,p:(ps[i].p+ps[i-1].p)/2,hi})}});
-  // Sommet et creux extrêmes depuis le dernier pivot de swing : « fort » ou « faible » selon la tendance.
-  const lastH=sw.pv.filter(p=>p.hi).pop(),lastL=sw.pv.filter(p=>!p.hi).pop();let th=null,tl=null;
-  if(lastH){th={k:lastH.k,p:lastH.p};for(let i=lastH.k;i<n;i++)if(H(i)>th.p)th={k:i,p:H(i)}}
-  if(lastL){tl={k:lastL.k,p:lastL.p};for(let i=lastL.k;i<n;i++)if(L(i)<tl.p)tl={k:i,p:L(i)}}
-  return {lines,eq:eq.slice(-8),trail:{high:th&&{...th,label:sw.trend<0?"Strong High":"Weak High"},low:tl&&{...tl,label:sw.trend>0?"Strong Low":"Weak Low"}},atr};
-}
 // Bougie d'origine d'une zone ou d'un niveau : date « jj/mm » et heure « hh:mm » de `origin`, sinon la
 // dernière bougie dont un extrême touche la borne à quelques centimes près.
 function originIndex(bars,text,prices){
@@ -334,8 +309,8 @@ function originIndex(bars,text,prices){
   for(let i=bars.length-4;i>=0;i--){const b=bars[i];if(prices.some(p=>[b[1],b[2],b[3],b[4]].some(v=>Math.abs(v-p)<=.3)))return i}
   return 0;
 }
-// Dessin du plan et de la structure, sous les bougies, dans le style LuxAlgo.
-function smcPrimitive(bars,items){
+// Dessin des zones et niveaux du plan de Claude, sous les bougies, dans le style LuxAlgo.
+function planPrimitive(bars,items){
   let chart=null,series=null;
   const draw=target=>target.useBitmapCoordinateSpace(({context:ctx,bitmapSize:sz,horizontalPixelRatio:hr,verticalPixelRatio:vr})=>{
     if(!series)return;const ts=chart.timeScale(),X=i=>{const x=ts.timeToCoordinate(bars[Math.max(0,Math.min(bars.length-1,i))][0]);return x==null?null:x*hr},Y=p=>{const y=series.priceToCoordinate(p);return y==null?null:y*vr};
@@ -348,15 +323,6 @@ function smcPrimitive(bars,items){
     // Niveaux du plan : trait fin de l'origine au bord droit, étiquette en bout de trait.
     items.levels.forEach(l=>{const x=X(l.from),y=Y(l.price);if(x==null||y==null)return;ctx.strokeStyle=l.color;ctx.lineWidth=hr;ctx.setLineDash([]);
       ctx.globalAlpha=.75;ctx.beginPath();ctx.moveTo(x,Math.round(y)+.5);ctx.lineTo(sz.width,Math.round(y)+.5);ctx.stroke();ctx.globalAlpha=1;right.push({y:y-7*vr,t:l.label,c:l.color})});
-    // BOS / CHoCH : trait du pivot à la bougie de cassure, étiquette au milieu, au-dessus (haussier) ou en dessous.
-    const s=items.smc;s.lines.forEach(b=>{const x1=X(b.from),x2=X(b.to),y=Y(b.p);if(x1==null||x2==null||y==null)return;const col=b.bull?items.bull:items.bear;
-      ctx.strokeStyle=col;ctx.lineWidth=hr;ctx.setLineDash(b.internal?[4*hr,3*hr]:[]);ctx.beginPath();ctx.moveTo(x1,Math.round(y)+.5);ctx.lineTo(x2,Math.round(y)+.5);ctx.stroke();
-      ctx.fillStyle=col;ctx.font=font(b.internal?9:10);ctx.textAlign="center";ctx.fillText(b.kind,(x1+x2)/2,y+(b.bull?-8:8)*vr)});
-    s.eq.forEach(e=>{const x1=X(e.from),x2=X(e.to),y=Y(e.p);if(x1==null||x2==null||y==null)return;const col=e.hi?items.bear:items.bull;
-      ctx.strokeStyle=col;ctx.lineWidth=hr;ctx.setLineDash([1.5*hr,2.5*hr]);ctx.beginPath();ctx.moveTo(x1,y);ctx.lineTo(x2,y);ctx.stroke();
-      ctx.fillStyle=col;ctx.font=font(9);ctx.textAlign="center";ctx.fillText(e.hi?"EQH":"EQL",(x1+x2)/2,y+(e.hi?-8:9)*vr)});
-    [["high",items.bear,-8],["low",items.bull,9]].forEach(([k,col,dy])=>{const t=s.trail[k];if(!t)return;const x=X(t.k),y=Y(t.p);if(x==null||y==null)return;
-      ctx.strokeStyle=col;ctx.lineWidth=hr;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(x,Math.round(y)+.5);ctx.lineTo(sz.width,Math.round(y)+.5);ctx.stroke();right.push({y:y+dy*vr,t:t.label,c:col})});
     // Étiquettes du bord droit écartées pour ne pas se chevaucher.
     right.sort((a,b)=>a.y-b.y);let ly=-1e9;ctx.font=font(9.5);ctx.textAlign="right";right.forEach(r=>{const y=Math.max(r.y,ly+11*vr);ly=y;ctx.fillStyle=r.c;ctx.fillText(r.t,sz.width-6*hr,y)});
     ctx.restore()});
@@ -385,12 +351,12 @@ function candleChart(c,tf,wid){
     zones.forEach(o=>{if(near(o.low)||near(o.high)){lo=Math.min(lo,o.low);hi=Math.max(hi,o.high)}});levels.forEach(o=>{if(near(o.price)){lo=Math.min(lo,o.price);hi=Math.max(hi,o.price)}});
     if(Number.isFinite(inv)&&near(inv)){lo=Math.min(lo,inv);hi=Math.max(hi,inv)}return {priceRange:{minValue:lo,maxValue:hi},margins:r.margins}}});
   // Zones de Claude : bleu pour l'achat, rouge pour la vente (comme les order blocks de LuxAlgo).
-  const items={font,bull,bear,smc:smcStructure(all),
+  const items={font,bull,bear,
     zones:zones.map(({low,high,z})=>{const buy=z.side!=="vente",dead=z.state==="cassee",mine=tfNorm(z.tf)===tf;
       return {low,high,from:originIndex(all,z.origin,[low,high]),fill:dead?rgba(muted,.08):buy?(mine?"rgba(49,121,245,.30)":"rgba(49,121,245,.14)"):(mine?"rgba(247,124,128,.34)":"rgba(247,124,128,.16)"),
         text:dead?muted:buy?"#3179f5":"#e5484d",label:(z.type||"Zone")+" "+(z.tf||"")+(dead?" cassée":"")}}),
     levels:levels.map(({price,l})=>({price,from:originIndex(all,l.origin,[price]),color:/H$|haut|high/i.test(l.type||"")?bear:/L$|bas|low/i.test(l.type||"")?bull:muted,label:(l.type||"Niveau")}))};
-  ser.attachPrimitive(smcPrimitive(all,items));
+  ser.attachPrimitive(planPrimitive(all,items));
   // Bornes des zones de l'unité de temps affichée et invalidation sur l'échelle de prix, comme TradingView.
   items.zones.forEach((z,i)=>{if(tfNorm(zones[i].z.tf)!==tf)return;[z.high,z.low].forEach(v=>ser.createPriceLine({price:v,color:"#787b86",lineVisible:false,axisLabelVisible:true,title:""}))});
   if(Number.isFinite(inv))ser.createPriceLine({price:inv,color:"#9c27b0",lineWidth:1,lineStyle:LW.LineStyle.Solid,axisLabelVisible:true,title:"Invalidation"});
@@ -410,7 +376,7 @@ function chartCard(c,wid){
   tfs.forEach(t=>{const b=el("button",{type:"button",class:"tf","data-tf":t},el("b",{text:t}),counts(t)?el("span",{text:counts(t)+" zone"+(counts(t)>1?"s":"")}):null);b.addEventListener("click",()=>{CHART_TF=t;draw()});bar.append(b)});
   draw();
   const at=(CANDLES||{}).at?"Bougies du courtier ("+((CANDLES||{}).account||"MT5")+"), reçues le "+new Date(CANDLES.at.replace(" ","T")).toLocaleString("fr-FR",{weekday:"long",hour:"2-digit",minute:"2-digit"})+". ":"";
-  return card("Graphique des niveaux",bar,box,el("p",{class:"hint",style:"margin-top:8px",text:at+"Glissez pour faire défiler, pincez pour zoomer, touchez une bougie pour ses valeurs. Zones de Claude : bleu = achat, rouge = vente, plus soutenues pour l’unité de temps affichée ; trait violet : invalidation. Structure calculée sur les bougies (BOS, CHoCH, EQH/EQL, sommet et creux forts ou faibles), comme l’indicateur SMC de LuxAlgo. Heures du courtier."}));
+  return card("Graphique des niveaux",bar,box,el("p",{class:"hint",style:"margin-top:8px",text:at+"Glissez pour faire défiler, pincez pour zoomer, touchez une bougie pour ses valeurs. Seules les zones et les niveaux du plan de Claude sont tracés : bleu = achat, rouge = vente, plus soutenus pour l’unité de temps affichée ; trait violet : invalidation. Heures du courtier."}));
 }
 let VIEW_INITIAL=false;
 const zoneKey=z=>Number(z.low).toFixed(2)+"-"+Number(z.high).toFixed(2)+"-"+(z.side==="vente"?"s":"b");
