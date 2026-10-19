@@ -74,7 +74,9 @@ add_filter( 'wp_resource_hints', 'rn_resource_hints', 10, 2 );
 function rn_head_script() {
 	?>
 	<script>document.documentElement.className=document.documentElement.className.replace(/\bno-js\b/,'js');</script>
+	<?php if ( ! rn_is_app() ) : ?>
 	<meta name="theme-color" content="#070B09">
+	<?php endif; ?>
 	<meta name="color-scheme" content="dark">
 	<?php
 }

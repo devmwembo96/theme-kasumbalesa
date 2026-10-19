@@ -180,16 +180,41 @@ class CX_Front {
 	}
 
 	/**
+	 * Identité de l'application installée : nom, couleurs, icônes. Un thème peut la changer
+	 * avec le filtre « cx_app_identity » (par exemple pour reprendre le logo du site).
+	 *
+	 * @return array
+	 */
+	public static function identity() {
+		$defaults = array(
+			'name'             => 'Carnet XAU',
+			'short_name'       => 'Carnet XAU',
+			'description'      => 'Carnet de trading XAUUSD',
+			'theme_color'      => '#A87A1E',
+			'background_color' => '#E9EDF1',
+			'icon_192'         => CX_URL . 'assets/icons/icon-192.png',
+			'icon_512'         => CX_URL . 'assets/icons/icon-512.png',
+			'icon_maskable'    => CX_URL . 'assets/icons/icon-512.png',
+			'icon_apple'       => CX_URL . 'assets/icons/icon-192.png',
+		);
+		$id = apply_filters( 'cx_app_identity', $defaults );
+		return is_array( $id ) ? array_merge( $defaults, $id ) : $defaults;
+	}
+
+	/**
 	 * Manifest et métadonnées d'application installable.
 	 */
 	public static function head() {
 		if ( ! self::is_app_page() || ! self::can_use() ) {
 			return;
 		}
+		$id = self::identity();
 		printf(
-			"<link rel=\"manifest\" href=\"%s\" crossorigin=\"use-credentials\">\n<meta name=\"theme-color\" content=\"#A87A1E\">\n<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">\n<meta name=\"mobile-web-app-capable\" content=\"yes\">\n<meta name=\"apple-mobile-web-app-title\" content=\"Carnet XAU\">\n<link rel=\"apple-touch-icon\" href=\"%s\">\n",
+			"<link rel=\"manifest\" href=\"%s\" crossorigin=\"use-credentials\">\n<meta name=\"theme-color\" content=\"%s\">\n<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">\n<meta name=\"mobile-web-app-capable\" content=\"yes\">\n<meta name=\"apple-mobile-web-app-title\" content=\"%s\">\n<link rel=\"apple-touch-icon\" href=\"%s\">\n",
 			esc_url( add_query_arg( 'cx_pwa', 'manifest', home_url( '/' ) ) ),
-			esc_url( CX_URL . 'assets/icons/icon-192.png' )
+			esc_attr( $id['theme_color'] ),
+			esc_attr( $id['short_name'] ),
+			esc_url( $id['icon_apple'] )
 		);
 	}
 
@@ -301,30 +326,33 @@ class CX_Front {
 		if ( 'manifest' === $what ) {
 			nocache_headers();
 			header( 'Content-Type: application/manifest+json; charset=utf-8' );
+			$id = self::identity();
 			echo wp_json_encode(
 				array(
-					'name'             => 'Carnet XAU',
-					'short_name'       => 'Carnet XAU',
-					'description'      => 'Carnet de trading XAUUSD',
+					'name'             => $id['name'],
+					'short_name'       => $id['short_name'],
+					'description'      => $id['description'],
 					'lang'             => 'fr',
 					'start_url'        => $page,
 					'scope'            => wp_parse_url( $page, PHP_URL_PATH ),
 					'display'          => 'standalone',
-					'background_color' => '#E9EDF1',
-					'theme_color'      => '#A87A1E',
+					'background_color' => $id['background_color'],
+					'theme_color'      => $id['theme_color'],
 					'icons'            => array(
 						array(
-							'src'   => CX_URL . 'assets/icons/icon-192.png',
-							'sizes' => '192x192',
-							'type'  => 'image/png',
+							'src'     => $id['icon_192'],
+							'sizes'   => '192x192',
+							'type'    => 'image/png',
+							'purpose' => 'any',
 						),
 						array(
-							'src'   => CX_URL . 'assets/icons/icon-512.png',
-							'sizes' => '512x512',
-							'type'  => 'image/png',
+							'src'     => $id['icon_512'],
+							'sizes'   => '512x512',
+							'type'    => 'image/png',
+							'purpose' => 'any',
 						),
 						array(
-							'src'     => CX_URL . 'assets/icons/icon-512.png',
+							'src'     => $id['icon_maskable'],
 							'sizes'   => '512x512',
 							'type'    => 'image/png',
 							'purpose' => 'maskable',
@@ -345,7 +373,7 @@ class CX_Front {
 				wp_json_encode( CX_VERSION ),
 				wp_json_encode(
 					array(
-						CX_URL . 'assets/icons/icon-192.png',
+						self::identity()['icon_192'],
 					),
 					JSON_UNESCAPED_SLASHES
 				),

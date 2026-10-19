@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.8.2
+Stable tag: 2.8.3
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -14,6 +14,7 @@ journal des alertes TradingView, alertes Telegram.
    un premier compte (FundedNext Stellar 2-Step, 6 000 $) et la page « Carnet XAU »
    (adresse /carnet-xau/), avec le modèle « Pleine largeur » du thème s’il existe.
 3. Ouvrir /carnet-xau/ (pas besoin d’être connecté). Sur téléphone : « Ajouter à l’écran d’accueil ».
+   Nom, couleurs et icônes de l’application installée : filtre cx_app_identity (thème).
 
 == Visibilité ==
 

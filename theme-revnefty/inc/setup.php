@@ -140,6 +140,34 @@ function rn_site_icons() {
 	}
 	printf( '<link rel="icon" href="%s" sizes="32x32">' . "\n", esc_url( RN_URI . '/assets/img/icon-32.png' ) );
 	printf( '<link rel="icon" href="%s" sizes="192x192">' . "\n", esc_url( RN_URI . '/assets/img/icon-192.png' ) );
-	printf( '<link rel="apple-touch-icon" href="%s">' . "\n", esc_url( RN_URI . '/assets/img/icon-180.png' ) );
+	if ( ! rn_is_app() ) { // Sur la page de l'application, le carnet la déclare déjà.
+		printf( '<link rel="apple-touch-icon" href="%s">' . "\n", esc_url( RN_URI . '/assets/img/icon-180.png' ) );
+	}
 }
 add_action( 'wp_head', 'rn_site_icons', 2 );
+
+/**
+ * Carnet de trading installé comme application : nom, couleurs et icônes RevNefty
+ * (filtre du plugin Carnet XAU, sans effet s'il n'est pas installé).
+ *
+ * @param array $id Identité par défaut du plugin.
+ * @return array
+ */
+function rn_carnet_identity( $id ) {
+	$img = RN_URI . '/assets/img/';
+	return array_merge(
+		$id,
+		array(
+			'name'             => 'RevNefty',
+			'short_name'       => 'RevNefty',
+			'description'      => __( 'Carnet de trading de RevNefty Capital Finance', 'revnefty' ),
+			'theme_color'      => '#070B09',
+			'background_color' => '#070B09',
+			'icon_192'         => $img . 'icon-192.png',
+			'icon_512'         => $img . 'icon-512.png',
+			'icon_maskable'    => $img . 'icon-maskable-512.png',
+			'icon_apple'       => $img . 'icon-180.png',
+		)
+	);
+}
+add_filter( 'cx_app_identity', 'rn_carnet_identity' );
