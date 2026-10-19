@@ -1,7 +1,7 @@
 === RevNefty ===
 Requires at least: 6.3
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 
 Thème de RevNefty Capital Finance : trading de l’or, gestion du risque et challenges prop firm.
 Sombre, mobile d’abord, sans page builder.

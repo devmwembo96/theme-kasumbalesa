@@ -118,7 +118,7 @@ add_filter(
 function rn_menu_fallback( $args ) {
 	$home  = home_url( '/' );
 	$items = array(
-		'#carnet'  => __( 'En direct', 'revnefty' ),
+		'#plan'    => __( 'Plan', 'revnefty' ),
 		'#methode' => __( 'Méthode', 'revnefty' ),
 		'#outils'  => __( 'Outils', 'revnefty' ),
 		'#cadre'   => __( 'Règles', 'revnefty' ),
