@@ -26,7 +26,7 @@
 .cx-app .cx-nav{display:flex;width:100%;overflow-x:auto;gap:4px;margin-top:4px}
 .cx-app .cx-nav button{flex:1;min-width:76px;background:none;border:0;border-bottom:3px solid transparent;border-radius:0;padding:9px 6px 8px;font-weight:600;font-size:15px;color:var(--muted);cursor:pointer;box-shadow:none}
 .cx-app .cx-nav button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--gold)}
-@media (max-width:480px){.cx-app .cx-nav{gap:0}.cx-app .cx-nav button{min-width:0;padding:9px 2px 8px;font-size:14px}}
+@media (max-width:480px){.cx-app .cx-nav{gap:0}.cx-app .cx-nav button{min-width:0;padding:9px 1px 8px;font-size:13px}}
 
 .cx-app .cx-main{max-width:980px;margin:0 auto;padding:16px 16px 48px}
 .cx-app section[hidden],.cx-app [hidden]{display:none !important}

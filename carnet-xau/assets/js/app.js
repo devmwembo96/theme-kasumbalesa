@@ -89,7 +89,7 @@ const accName=id=>{const a=ACCOUNTS.find(x=>x.id===id);return a?a.name:"—"};
 $$(".cx-nav button").forEach(b=>b.addEventListener("click",()=>showTab(b.dataset.tab)));
 function showTab(t){
   $$(".cx-nav button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
-  ["jour","plan","journal","stats","comptes"].forEach(x=>{$("#tab-"+x).hidden=x!==t});
+  ["jour","plan","suivi","journal","stats","comptes"].forEach(x=>{$("#tab-"+x).hidden=x!==t});
   if(t==="stats"){renderStats();mcNote();loadReport();loadReliability();loadClaudeSignals()}
   if(t==="comptes"){renderAccounts();loadConnections()}
   const top=ROOT.getBoundingClientRect().top+window.scrollY;
@@ -407,6 +407,16 @@ async function eaParamsCard(){
   return card("Réglages de l’EA",table(["Réglage","Valeur","Bornes"],rows),
     (d.history||[]).length?el("div",null,el("h4",{class:"sub",text:"Ajustements de Claude"}),table(["Date","Réglage","Changement","Raison"],d.history.slice(0,10).map(h=>[new Date(h.at.replace(" ","T")).toLocaleDateString("fr-FR",{day:"numeric",month:"short"}),(d.params[h.key]||{}).label||h.key,fmt(h.from,2)+" → "+fmt(h.to,2)+(h.revert?" (retour)":""),h.reason]))):el("p",{class:"hint",text:"Aucun ajustement pour l’instant : Claude en propose au plus un par jour, après le rejeu de 23:20."}));
 }
+// Séances d'une journée : Asie (06:45), pré-marché (08:33 New York) et plan US (09:15 New York).
+function sessionsCard(date,list){
+  const K={asia:"Session Asie",premarket:"Pré-marché US (Asie et Londres)",us:"Plan de la session US"},O={asia:0,premarket:1,us:2},BI={h:"haussier",b:"baissier",n:"neutre"};
+  return card("Séances du "+new Date(date+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}),el("div",{class:"ideas"},...list.slice().sort((a,b)=>O[a.kind]-O[b.kind]).map(x=>el("div",{class:"idea sess "+x.kind},
+    el("div",{class:"row"},el("b",{text:K[x.kind]||x.kind}),x.bias?el("span",{class:"tag",text:"biais "+BI[x.bias]}):null,x.at?el("span",{class:"k",text:x.at.slice(11,16)}):null),
+    x.summary?el("p",{text:x.summary}):null,
+    ...[["facts","Faits"],["liquidity","Liquidité"],["execution","Exécution"]].filter(([k])=>(x[k]||[]).length).map(([k,h])=>el("div",null,el("p",null,el("span",{class:"k",text:h})),el("ul",{class:"rules"},...x[k].map(t=>el("li",{text:t}))))),
+    (x.zones||[]).length?el("ul",{class:"rules"},...x.zones.map(z=>el("li",{class:z.side==="vente"?"sell":"buy",text:(z.type||"Zone")+" "+px(z.low)+" – "+px(z.high)+(z.note?" : "+z.note:"")}))):null,
+    x.invalid?el("p",null,el("span",{class:"k",text:"Annule le plan : "}),document.createTextNode(x.invalid)):null))));
+}
 function renderPlanView(p){
   const box=$("#plan-view");
   if(!p){box.replaceChildren(el("div",{class:"empty",text:"Le plan de cette semaine n’a pas encore été publié par Claude."}));return}
@@ -430,15 +440,6 @@ function renderPlanView(p){
   const live=p.content.live||{};
   if(live.invalidated)out.push(el("div",{class:"alert stop",style:"margin-bottom:12px",text:"Invalidation touchée (EA MT5) le "+new Date(live.invalidated.at.replace(" ","T")).toLocaleString("fr-FR",{weekday:"long",hour:"2-digit",minute:"2-digit"})+(live.invalidated.price!=null?" à "+px(live.invalidated.price):"")+" : plus de signal dans le sens du biais jusqu’à la prochaine relecture de Claude."}));
   out.push(el("p",{class:"hint byline",text:(p.publishedAt?"Rédigé par Claude":"Bilan rédigé par Claude")+(p.publishedAt?" le "+new Date(p.publishedAt.replace(" ","T")).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+" à "+p.publishedAt.slice(11,16):"")+"."}));
-  // Séances : Asie (06:45), pré-marché (14:30) et plan US (15:15) de la dernière journée analysée.
-  const ses=(p.content.sessions||[]);
-  if(ses.length){const last=ses[ses.length-1].date,K={asia:"Session Asie",premarket:"Pré-marché US (Asie et Londres)",us:"Plan de la session US"},O={asia:0,premarket:1,us:2},BI={h:"haussier",b:"baissier",n:"neutre"};
-    out.push(card("Séances du "+new Date(last+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}),el("div",{class:"ideas"},...ses.filter(x=>x.date===last).sort((a,b)=>O[a.kind]-O[b.kind]).map(x=>el("div",{class:"idea sess "+x.kind},
-      el("div",{class:"row"},el("b",{text:K[x.kind]||x.kind}),x.bias?el("span",{class:"tag",text:"biais "+BI[x.bias]}):null,x.at?el("span",{class:"k",text:x.at.slice(11,16)}):null),
-      x.summary?el("p",{text:x.summary}):null,
-      ...[["facts","Faits"],["liquidity","Liquidité"],["execution","Exécution"]].filter(([k])=>(x[k]||[]).length).map(([k,h])=>el("div",null,el("p",null,el("span",{class:"k",text:h})),el("ul",{class:"rules"},...x[k].map(t=>el("li",{text:t}))))),
-      (x.zones||[]).length?el("ul",{class:"rules"},...x.zones.map(z=>el("li",{class:z.side==="vente"?"sell":"buy",text:(z.type||"Zone")+" "+px(z.low)+" – "+px(z.high)+(z.note?" : "+z.note:"")}))):null,
-      x.invalid?el("p",null,el("span",{class:"k",text:"Annule le plan : "}),document.createTextNode(x.invalid)):null)))));}
   // 1. Prévision (absente d’une semaine qui n’a qu’un bilan)
   const hasPred=[pr.bull,pr.bear,pr.range].some(x=>x>0)||pr.summary;
   const pv=card("Prévision de la semaine",probBar(pr));
@@ -490,20 +491,12 @@ function renderPlanView(p){
     s.invalidation?el("div",{class:"k",text:"Invalidation : "+s.invalidation}):null)))));
   // 11. Règles
   if((c.rules||[]).length)out.push(card("Règles de la semaine",el("ul",{class:"rules"},...c.rules.map(r=>el("li",{text:r})))));
-  // Relectures quotidiennes (17 h New York)
   // Propositions d'amélioration de Claude : faille repérée, solution, et comment la tester.
   if((c.ideas||[]).length)out.push(card("Propositions de Claude",el("div",{class:"ideas"},...c.ideas.map(x=>el("div",{class:"idea"},
     el("div",{class:"row"},el("b",{text:x.title||"Proposition"}),x.area?el("span",{class:"tag",text:x.area}):null),
     x.flaw?el("p",null,el("span",{class:"k",text:"Faille : "}),document.createTextNode(x.flaw)):null,
     x.solution?el("p",null,el("span",{class:"k",text:"Solution : "}),document.createTextNode(x.solution)):null,
     x.test?el("p",null,el("span",{class:"k",text:"Test : "}),document.createTextNode(x.test)):null)))));
-  if(updates.length)out.push(card("Relectures quotidiennes",el("div",{class:"trades"},...updates.slice().reverse().map(u=>el("div",{class:"upd "+(u.status==="mis_a_jour"?"chg":"keep")},
-    el("div",{class:"row"},el("b",{text:new Date(u.date+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"short"})}),el("span",{class:"spacer"}),el("span",{class:"tag "+(u.status==="mis_a_jour"?"bad":""),text:u.status==="mis_a_jour"?"Mis à jour":"Maintenu"})),
-    u.reason?el("p",{class:"k",text:u.reason}):null,u.summary?el("p",{text:u.summary}):null,
-    (u.changes||[]).length?el("ul",{class:"rules"},...u.changes.map(x=>el("li",{text:x}))):null,
-    u.trades?el("p",null,el("b",{text:"Vos trades : "}),document.createTextNode(u.trades)):null,
-    u.tomorrow?el("p",null,el("b",{text:"Lendemain : "}),document.createTextNode(u.tomorrow)):null,
-    u.backtest?backtestView(u.backtest):null)))));
   // 12. Bilan et verdict
   const rv=c.review;
   if(rv&&(rv.verdict||rv.text||rv.score!=null)){
@@ -528,7 +521,24 @@ function renderPlanView(p){
   }
   if(c.sources)out.push(el("p",{class:"hint",text:"Sources : "+c.sources}));
   box.replaceChildren(...out);
-  const gen=box._g=(box._g||0)+1;eaParamsCard().then(c=>{if(c&&box._g===gen)box.append(c)});
+}
+/* ---------- suivi : séances, relectures et rejeu, réglages de l'EA ---------- */
+function renderSuivi(p){
+  const box=$("#suivi-view"),out=[];
+  $("#sv-label").textContent=weekLabel(PLAN_WEEK);
+  const c=(p&&p.content)||{},ses=c.sessions||[],updates=c.updates||[];
+  const dates=[...new Set(ses.map(x=>x.date))].sort().reverse();
+  dates.forEach(d=>out.push(sessionsCard(d,ses.filter(x=>x.date===d))));
+  if(updates.length)out.push(card("Relectures quotidiennes",el("div",{class:"trades"},...updates.slice().reverse().map(u=>el("div",{class:"upd "+(u.status==="mis_a_jour"?"chg":"keep")},
+    el("div",{class:"row"},el("b",{text:new Date(u.date+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"short"})}),el("span",{class:"spacer"}),el("span",{class:"tag "+(u.status==="mis_a_jour"?"bad":""),text:u.status==="mis_a_jour"?"Mis à jour":"Maintenu"})),
+    u.reason?el("p",{class:"k",text:u.reason}):null,u.summary?el("p",{text:u.summary}):null,
+    (u.changes||[]).length?el("ul",{class:"rules"},...u.changes.map(x=>el("li",{text:x}))):null,
+    u.trades?el("p",null,el("b",{text:"Vos trades : "}),document.createTextNode(u.trades)):null,
+    u.tomorrow?el("p",null,el("b",{text:"Lendemain : "}),document.createTextNode(u.tomorrow)):null,
+    u.backtest?backtestView(u.backtest):null)))));
+  if(!out.length)out.push(el("div",{class:"empty",text:p?"Pas encore d’analyse de séance ni de relecture cette semaine : Claude publie la session Asie à 06:45, le pré-marché et le plan US l’après-midi, la relecture et le rejeu à 23:20.":"Le plan de cette semaine n’a pas encore été publié par Claude."}));
+  box.replaceChildren(...out);
+  const gen=box._g=(box._g||0)+1;eaParamsCard().then(x=>{if(x&&box._g===gen)box.append(x)});
 }
 /* ---------- plan miniature (onglet Jour) ---------- */
 function renderPlanMini(){
@@ -596,13 +606,16 @@ setInterval(()=>{if(!document.hidden)loadCalendar()},1800000);
 $("#wk-prev").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()-7);loadPlan()});
 $("#wk-next").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()+7);loadPlan()});
 $("#wk-today").addEventListener("click",()=>{PLAN_WEEK=planWeek();loadPlan()});
+$("#sv-prev").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()-7);loadPlan()});
+$("#sv-next").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()+7);loadPlan()});
+$("#sv-today").addEventListener("click",()=>{PLAN_WEEK=planWeek();loadPlan()});
 async function loadPlan(){
   $("#wk-label").textContent=weekLabel(PLAN_WEEK);
   const wid=weekId(PLAN_WEEK);
   let p=null;try{p=await api("plans/"+wid)}catch(e){toast("Lecture du plan impossible : "+errMsg(e))}
   if(wid!==weekId(PLAN_WEEK))return; // semaine changée entre-temps
   await loadCandles();if(wid!==weekId(PLAN_WEEK))return;
-  CUR_PLAN=p;VIEW_INITIAL=false;renderPlanView(p);
+  CUR_PLAN=p;VIEW_INITIAL=false;renderPlanView(p);renderSuivi(p);
 }
 
 /* ---------- journal ---------- */

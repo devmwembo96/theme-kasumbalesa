@@ -16,6 +16,7 @@ defined( 'ABSPATH' ) || exit;
 		<nav class="cx-nav" role="tablist">
 			<button type="button" role="tab" data-tab="jour" aria-selected="true">Jour</button>
 			<button type="button" role="tab" data-tab="plan" aria-selected="false">Plan</button>
+			<button type="button" role="tab" data-tab="suivi" aria-selected="false">Suivi</button>
 			<button type="button" role="tab" data-tab="journal" aria-selected="false">Journal</button>
 			<button type="button" role="tab" data-tab="stats" aria-selected="false">Stats</button>
 			<button type="button" role="tab" data-tab="comptes" aria-selected="false">Comptes</button>
@@ -97,6 +98,18 @@ defined( 'ABSPATH' ) || exit;
 		<button type="button" class="btn ghost sm" id="wk-today">Cette semaine</button>
 	</div>
 	<div id="plan-view"></div>
+</section>
+
+<!-- ============ SUIVI ============ -->
+<section id="tab-suivi" hidden>
+	<div class="weeknav">
+		<button type="button" class="btn ghost sm" id="sv-prev" aria-label="Semaine précédente">‹</button>
+		<strong id="sv-label"></strong>
+		<button type="button" class="btn ghost sm" id="sv-next" aria-label="Semaine suivante">›</button>
+		<span class="spacer"></span>
+		<button type="button" class="btn ghost sm" id="sv-today">Cette semaine</button>
+	</div>
+	<div id="suivi-view"></div>
 </section>
 
 <!-- ============ JOURNAL ============ -->
