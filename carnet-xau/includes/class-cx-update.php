@@ -103,6 +103,10 @@ class CX_Update {
 	 */
 	public static function inject( $t ) {
 		$u = get_option( self::OPT );
+		// Liste vidée par WordPress juste après une mise à jour : on la recrée.
+		if ( false === $t || null === $t ) {
+			$t = new stdClass();
+		}
 		if ( ! is_object( $t ) || ! is_array( $u ) || version_compare( $u['version'], CX_VERSION, '<=' ) ) {
 			return $t;
 		}
