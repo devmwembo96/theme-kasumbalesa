@@ -6,6 +6,10 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## En cours
 
+- [ ] Installer l’EA 2.8.0 sur le PC (Comptes › Connexions › télécharger, compiler, garder la
+      clé) : bougies M15, M5 et M1 pour les analyses de séance et le rejeu du soir, réglages
+      ajustés par Claude reçus avec le plan, zones du plan US surveillées.
+
 - [ ] Accès durable de Claude au site : mot de passe d’application WordPress rangé
       dans les secrets de l’environnement cloud (variable `RN_WP_AUTH`,
       « identifiant:mot de passe »), au lieu du fichier temporaire de la séance.
@@ -20,6 +24,12 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
    (une clé MT5 par compte ; seul « Démo Deriv » est relié aujourd’hui).
 
 ## Fait
+
+- Analyses de séance et rejeu du soir (2.17.0, 20 octobre, installée automatiquement) : session
+  Asie à 06:45, pré-marché à 08:33 New York, plan US à 09:15 New York, rejeu de la journée à 17:20
+  New York avec occasions manquées et mauvais signaux ; réglages de l’EA ajustés par Claude, un
+  par jour au plus, dans des bornes (`GET /ea-params`). Règle d’objectivité dans toutes les tâches.
+  Le dimanche, une étude SSRN au plus, transformée en proposition testable.
 
 - Plage de stop portée à 1,50–8,00 $ (2.16.0, 20 octobre), installée par la mise à jour
   automatique : première mise à jour sans l’écran Extensions réussie.
@@ -42,6 +52,8 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## À valider sur le compte démo
 
+- Réglages de l’EA ajustés par Claude : vérifier après deux semaines que chaque changement a
+  amélioré le total en R (historique dans `GET /ea-params`, retour arrière sinon).
 - EA 2.7 : setup 3 (iFVG), cassure sur le dernier sommet ou creux pivot, entrée « retour FVG »
   suivie en parallèle de l’entrée au marché. Toutes sessions, sans note ni filtre ajouté (choix
   de l’utilisateur : refuser un mauvais trade plutôt qu’en chercher un). Décision après une
@@ -54,7 +66,11 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 ## Tâches Claude programmées
 
 - « Carnet XAU · plan de la semaine · revnefty.store » : dimanche 11:52 (Lubumbashi).
-- « Carnet XAU · relecture de 17 h (New York) · revnefty.store » : du lundi au
-  vendredi à 17:20 New York (23:20 Lubumbashi) ; le vendredi, verdict et coaching.
+- « Carnet XAU · session Asie (06:45) » : du lundi au vendredi à 06:45 (Lubumbashi).
+- « Carnet XAU · pré-marché US (08:33 New York) » : du lundi au vendredi (14:33 Lubumbashi
+  en heure d’été américaine).
+- « Carnet XAU · plan de la session US (09:15 New York) » : du lundi au vendredi (15:15).
+- « Carnet XAU · relecture et rejeu de 17 h (New York) » : du lundi au vendredi à 17:20
+  New York (23:20 Lubumbashi) ; rejeu, réglage de l’EA ; le vendredi, verdict et coaching.
 - Elles publient sur revnefty.store seulement, avec un jeton réservé aux plans. S’il est régénéré dans
-  Comptes › Connexions, il faut le remplacer dans les deux tâches.
+  Comptes › Connexions, il faut le remplacer dans les cinq tâches.
