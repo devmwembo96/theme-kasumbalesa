@@ -278,3 +278,7 @@
 .cx-app .idea .tag{font-size:.75rem;padding:1px 8px;border-radius:999px;background:var(--gold-soft);color:var(--gold-ink)}
 .cx-app .idea p{margin:4px 0 0;font-size:.9rem}
 .cx-app .idea .k{color:var(--muted);font-weight:600}
+.cx-app .idea.sess.asia{border-left-color:#8b5cf6}.cx-app .idea.sess.premarket{border-left-color:var(--warn)}.cx-app .idea.sess.us{border-left-color:var(--win)}
+.cx-app .idea .rules li.buy,.cx-app .bt li.buy{color:var(--win)}.cx-app .idea .rules li.sell,.cx-app .bt li.sell{color:var(--loss)}
+.cx-app .bt{margin-top:8px;padding:10px;border-radius:var(--radius);background:var(--sunk)}
+.cx-app .bt li span{color:var(--muted)}

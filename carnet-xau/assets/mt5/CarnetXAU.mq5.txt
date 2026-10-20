@@ -1,8 +1,9 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.7.1                                    |
+//| CarnetXAU.mq5 — version 2.8.0                                    |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
-//|    la perte du jour et les bougies du courtier (D1, H4, H1).     |
+//|    la perte du jour et les bougies du courtier (D1 à M1), toutes |
+//|    les 15 minutes (analyses de séance et rejeu du soir).         |
 //| 2. Lit le plan de Claude et le trace sur le graphique : zones,   |
 //|    niveaux, invalidation, range attendu. Redessine dès que le    |
 //|    plan change (relecture de 17 h New York, zone cassée…).       |
@@ -63,7 +64,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.71"
+#property version   "2.80"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 input string InpUrl         = "https://revnefty.store/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
@@ -111,6 +112,10 @@ bool     g_invalidated = false;
 double   g_risk = 50, g_riskRed = 35, g_redAt = 300, g_contract = 100, g_spreadMax = 15;
 double   g_stopMin = 1.5, g_stopMax = 8.0, g_dailyLim = 300, g_size = 6000, g_floor = 5400;
 int      g_maxTrades = 4, g_maxLoss = 3;
+//--- Réglages des signaux : valeurs des paramètres d'entrée, remplacées par celles que Claude
+//    ajuste dans le carnet après le rejeu du soir (ligne « S| » du plan).
+int      g_touch = 30, g_swing = 20, g_limitMin = 30, g_cooldown = 60;
+double   g_fvg = 0.30, g_slbuf = 0.30;
 bool     g_planOk = false;
 
 //--- Trade virtuel « Signal Claude » : chaque signal est suivi jusqu'à sa clôture, pris ou non,
@@ -159,6 +164,7 @@ int OnInit()
       return(INIT_PARAMETERS_INCORRECT);
      }
    EventSetTimer((int)MathMax(15, InpSnapshotSec));
+   g_touch = InpTouchBars; g_swing = InpSwingBars; g_fvg = InpFvgMin; g_slbuf = InpSLBuffer; g_limitMin = InpLimitMin; g_cooldown = InpCooldownMin;
    g_hash = "";                 // changement d'unité de temps : les variables restent, les objets non → tout redessiner
    g_lastM1 = 0;
    LoadTracks();
@@ -193,7 +199,7 @@ void OnTimer()
      }
    Sync();
    FetchPlan();
-   if(TimeCurrent() - g_lastCandles >= 3600)
+   if(TimeCurrent() - g_lastCandles >= 900)
       SendCandles();
    DrawPanel();
   }
@@ -339,10 +345,10 @@ void ProcessBar(double hi, double lo, double cl, datetime t, bool late)
             string names[] = {"_TP", "_SL", "_2R", "_T"};
             for(int n = 0; n < ArraySize(names); n++)
                ObjectSetInteger(0, g_tracks[i].id + names[n], OBJPROP_COLOR, C'225,225,225');
-            ObjectSetString(0, g_tracks[i].id + "_T", OBJPROP_TEXT, g_tracks[i].label + " annulé (prix non atteint en " + IntegerToString(InpLimitMin) + " min)");
+            ObjectSetString(0, g_tracks[i].id + "_T", OBJPROP_TEXT, g_tracks[i].label + " annulé (prix non atteint en " + IntegerToString(g_limitMin) + " min)");
             bool variant = StringFind(g_tracks[i].label, "RETOUR") >= 0;   // variante suivie sans alerte
             if(!late && !variant)
-               Notify("Carnet XAU : " + g_tracks[i].label + " " + Fr(e, 2) + " annulé, prix non atteint en " + IntegerToString(InpLimitMin) + " min.");
+               Notify("Carnet XAU : " + g_tracks[i].label + " " + Fr(e, 2) + " annulé, prix non atteint en " + IntegerToString(g_limitMin) + " min.");
             TrackEvent(i, "annule", "", t);
             g_status = g_tracks[i].label + " annulé (délai écoulé).";
             ChartRedraw();
@@ -650,6 +656,9 @@ void SendCandles()
    AddCandles(body, PERIOD_D1, "D1", 120, offset);
    AddCandles(body, PERIOD_H4, "H4", 300, offset);
    AddCandles(body, PERIOD_H1, "H1", 500, offset);
+   AddCandles(body, PERIOD_M15, "M15", 400, offset);
+   AddCandles(body, PERIOD_M5, "M5", 600, offset);
+   AddCandles(body, PERIOD_M1, "M1", 1500, offset);
    string resp;
    if(body != "" && Http("POST", InpUrl + "/candles", body, "text/plain", resp) == 200)
       g_lastCandles = TimeCurrent();
@@ -758,6 +767,16 @@ void FetchPlan()
          g_dailyLim  = StringToDouble(f[10]);
          g_size      = StringToDouble(f[11]);
          g_floor     = StringToDouble(f[12]);
+        }
+      else if(f[0] == "S" && c >= 7)
+        {
+         // Réglages ajustés par Claude (bornés par le carnet).
+         g_touch    = (int)StringToInteger(f[1]);
+         g_swing    = (int)StringToInteger(f[2]);
+         g_fvg      = StringToDouble(f[3]);
+         g_slbuf    = StringToDouble(f[4]);
+         g_limitMin = (int)StringToInteger(f[5]);
+         g_cooldown = (int)StringToInteger(f[6]);
         }
      }
    g_hash   = head[1];
@@ -1079,7 +1098,7 @@ bool Swept(bool buy, double extreme, double closeAtExtreme, double zoneEdge)
 
 void CheckSignals()
   {
-   int need = InpTouchBars + InpSwingBars + 4;
+   int need = g_touch + g_swing + 4;
    MqlRates r[];
    ArraySetAsSeries(r, true);
    if(CopyRates(_Symbol, PERIOD_M1, 1, need, r) < need)
@@ -1093,7 +1112,7 @@ void CheckSignals()
       CxZone z = g_zones[i];
       if(z.state == "cassee")
          continue;
-      if(TimeCurrent() - z.lastSignal < InpCooldownMin * 60)
+      if(TimeCurrent() - z.lastSignal < g_cooldown * 60)
          continue;
       bool buy = z.buy;
       int  dir = buy ? 1 : -1;
@@ -1102,7 +1121,7 @@ void CheckSignals()
 
       // Extrême de la touche : plus bas (achat) ou plus haut (vente) des bougies qui ont touché la zone.
       int e = -1;
-      for(int k = 1; k <= InpTouchBars; k++)
+      for(int k = 1; k <= g_touch; k++)
         {
          bool touched = (r[k].low <= z.hi && r[k].high >= z.lo);
          if(!touched)
@@ -1123,11 +1142,11 @@ void CheckSignals()
 
       // Setup 3, iFVG : le FVG contraire le plus récent de la jambe vers la zone (bougies e…e+N),
       // jamais clôturé au-delà jusqu'ici, est franchi en clôture par la dernière bougie.
-      for(int k = e; k <= e + InpSwingBars && k + 2 < need; k++)
+      for(int k = e; k <= e + g_swing && k + 2 < need; k++)
         {
          double top = buy ? r[k + 2].low : r[k].low;    // achat : FVG baissier entre le bas de A et le haut de C
          double bot = buy ? r[k].high : r[k + 2].high;  // vente : FVG haussier entre le haut de A et le bas de C
-         if(top - bot < InpFvgMin)
+         if(top - bot < g_fvg)
             continue;
          bool used = false;
          for(int j = 1; j < k; j++)
@@ -1147,7 +1166,7 @@ void CheckSignals()
          // à défaut le plus haut (plus bas) des N bougies.
          double swing = buy ? 0 : DBL_MAX;
          bool   piv   = false;
-         for(int k = e + 2; k <= e + InpSwingBars && k + 2 < need; k++)
+         for(int k = e + 2; k <= e + g_swing && k + 2 < need; k++)
            {
             if(buy ? (r[k].high > r[k - 1].high && r[k].high > r[k - 2].high && r[k].high >= r[k + 1].high && r[k].high >= r[k + 2].high)
                    : (r[k].low < r[k - 1].low && r[k].low < r[k - 2].low && r[k].low <= r[k + 1].low && r[k].low <= r[k + 2].low))
@@ -1158,7 +1177,7 @@ void CheckSignals()
               }
            }
          if(!piv)
-            for(int k = e + 1; k <= e + InpSwingBars && k < need; k++)
+            for(int k = e + 1; k <= e + g_swing && k < need; k++)
                swing = buy ? MathMax(swing, r[k].high) : MathMin(swing, r[k].low);
          // Cassure fraîche : la dernière bougie clôture au-delà, la précédente non.
          bool brk = buy ? (r[0].close > swing && r[1].close <= swing) : (r[0].close < swing && r[1].close >= swing);
@@ -1169,7 +1188,7 @@ void CheckSignals()
             continue;                             // setup 2 : seulement avec le biais
          // Retour : bord du FVG le plus récent laissé par la cassure (bougies 0…e).
          for(int k = 0; k + 2 <= e; k++)
-            if(buy ? (r[k].low - r[k + 2].high >= InpFvgMin) : (r[k + 2].low - r[k].high >= InpFvgMin))
+            if(buy ? (r[k].low - r[k + 2].high >= g_fvg) : (r[k + 2].low - r[k].high >= g_fvg))
               {
                retest = buy ? r[k].low : r[k].high;
                break;
@@ -1180,7 +1199,7 @@ void CheckSignals()
       double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
       double spread = ask - bid;
       double entry = buy ? ask : bid;
-      double sl    = buy ? extreme - InpSLBuffer - spread : extreme + InpSLBuffer + spread;
+      double sl    = buy ? extreme - g_slbuf - spread : extreme + g_slbuf + spread;
       double stop  = MathAbs(entry - sl);
       string kind  = "NOW";
       if(stop > g_stopMax && InpUseLimit)
@@ -1268,7 +1287,7 @@ void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, do
    g_tracks[k].hit2r   = false;
    g_tracks[k].mfe     = 0;
    g_tracks[k].mae     = 0;
-   g_tracks[k].expires = TimeCurrent() + InpLimitMin * 60;
+   g_tracks[k].expires = TimeCurrent() + g_limitMin * 60;
    g_tracks[k].opened  = (kind == "LIMIT") ? (datetime)0 : TimeCurrent();
    SaveTracks();
 
@@ -1290,7 +1309,7 @@ void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, do
 
    string msg = "Carnet XAU : " + label + " " + _Symbol + " — " + z.type + " " + z.tf + ", entrée " + Fr(entry, 2) + ", stop " + Fr(sl, 2)
                 + ", objectif " + Fr(tp, 2) + " (" + Fr(rr, 1) + "R), lot " + Fr(lot, 2)
-                + (kind == "LIMIT" ? ", valable " + IntegerToString(InpLimitMin) + " min" : "") + ". Signal seulement : à vous de décider.";
+                + (kind == "LIMIT" ? ", valable " + IntegerToString(g_limitMin) + " min" : "") + ". Signal seulement : à vous de décider.";
    Notify(msg);
    g_status = label + " " + TimeToString(TimeCurrent(), TIME_MINUTES) + " sur " + z.type + " " + z.tf + ".";
    SendEvent("{\"type\":\"signal\",\"ref\":" + JsonText(ref) + ",\"kind\":\"" + (kind == "LIMIT" ? "limit" : "now") + "\",\"side\":\"" + (buy ? "buy" : "sell") + "\",\"setup\":\"" + setup + "\",\"zone\":"
@@ -1320,7 +1339,7 @@ void ShowRetest(bool buy, string setup, CxZone &z, double entry, double sl, doub
    g_tracks[k].hit2r   = false;
    g_tracks[k].mfe     = 0;
    g_tracks[k].mae     = 0;
-   g_tracks[k].expires = TimeCurrent() + InpLimitMin * 60;
+   g_tracks[k].expires = TimeCurrent() + g_limitMin * 60;
    g_tracks[k].opened  = 0;
    SaveTracks();
    ObjectCreate(0, id + "_E", OBJ_TREND, 0, t, entry, t + 30 * 60, entry);

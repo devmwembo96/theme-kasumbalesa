@@ -391,6 +391,22 @@ function chartCard(c,wid){
 let VIEW_INITIAL=false;
 const zoneKey=z=>Number(z.low).toFixed(2)+"-"+Number(z.high).toFixed(2)+"-"+(z.side==="vente"?"s":"b");
 function liveState(p,z){const l=((p.content||{}).live||{}).zones||{};return (l[zoneKey(z)]||{}).state||z.state||"vierge"}
+// Rejeu de la journée par Claude : opportunités manquées par l'EA et signaux à éviter.
+function backtestView(bt){
+  const line=x=>(x.time||"")+" · "+(x.side==="vente"?"vente":"achat")+(x.setup?" · S"+x.setup:"")+" · "+px(x.entry)+" / "+px(x.sl)+" / "+px(x.tp)+(x.r!=null?" → "+(x.r>0?"+":"")+fmt(x.r,1)+"R":"");
+  const lst=(arr,cls,h)=>(arr||[]).length?el("div",null,el("p",null,el("span",{class:"k",text:h})),el("ul",{class:"rules"},...arr.map(x=>el("li",{class:cls},el("b",{text:line(x)}),x.why?el("span",{text:" — "+x.why}):null)))):null;
+  return el("div",{class:"bt"},el("p",null,el("b",{text:"Rejeu de la journée : "}),document.createTextNode(bt.summary||"")),
+    bt.ea_check?el("p",{class:"k",text:"Contrôle de l’EA : "+bt.ea_check}):null,
+    lst(bt.missed,"buy","Opportunités manquées"),lst(bt.wrong,"sell","Signaux à éviter"),
+    bt.tuning?el("p",null,el("span",{class:"k",text:"Réglage : "}),document.createTextNode(bt.tuning)):null);
+}
+// Réglages de l'EA ajustés par Claude (bornes fixes ; risque et plage de stop exclus).
+async function eaParamsCard(){
+  let d;try{d=await api("ea-params")}catch(e){return null}
+  const rows=Object.keys(d.params).map(k=>{const p=d.params[k],v=d.values[k];return [p.label,fmt(v,k==="fvg"||k==="slbuf"?2:0)+(v!==p.default?" (défaut "+fmt(p.default,k==="fvg"||k==="slbuf"?2:0)+")":""),fmt(p.min,k==="fvg"||k==="slbuf"?2:0)+" – "+fmt(p.max,k==="fvg"||k==="slbuf"?2:0)]});
+  return card("Réglages de l’EA",table(["Réglage","Valeur","Bornes"],rows),
+    (d.history||[]).length?el("div",null,el("h4",{class:"sub",text:"Ajustements de Claude"}),table(["Date","Réglage","Changement","Raison"],d.history.slice(0,10).map(h=>[new Date(h.at.replace(" ","T")).toLocaleDateString("fr-FR",{day:"numeric",month:"short"}),(d.params[h.key]||{}).label||h.key,fmt(h.from,2)+" → "+fmt(h.to,2)+(h.revert?" (retour)":""),h.reason]))):el("p",{class:"hint",text:"Aucun ajustement pour l’instant : Claude en propose au plus un par jour, après le rejeu de 23:20."}));
+}
 function renderPlanView(p){
   const box=$("#plan-view");
   if(!p){box.replaceChildren(el("div",{class:"empty",text:"Le plan de cette semaine n’a pas encore été publié par Claude."}));return}
@@ -414,6 +430,15 @@ function renderPlanView(p){
   const live=p.content.live||{};
   if(live.invalidated)out.push(el("div",{class:"alert stop",style:"margin-bottom:12px",text:"Invalidation touchée (EA MT5) le "+new Date(live.invalidated.at.replace(" ","T")).toLocaleString("fr-FR",{weekday:"long",hour:"2-digit",minute:"2-digit"})+(live.invalidated.price!=null?" à "+px(live.invalidated.price):"")+" : plus de signal dans le sens du biais jusqu’à la prochaine relecture de Claude."}));
   out.push(el("p",{class:"hint byline",text:(p.publishedAt?"Rédigé par Claude":"Bilan rédigé par Claude")+(p.publishedAt?" le "+new Date(p.publishedAt.replace(" ","T")).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+" à "+p.publishedAt.slice(11,16):"")+"."}));
+  // Séances : Asie (06:45), pré-marché (14:30) et plan US (15:15) de la dernière journée analysée.
+  const ses=(p.content.sessions||[]);
+  if(ses.length){const last=ses[ses.length-1].date,K={asia:"Session Asie",premarket:"Pré-marché US (Asie et Londres)",us:"Plan de la session US"},O={asia:0,premarket:1,us:2},BI={h:"haussier",b:"baissier",n:"neutre"};
+    out.push(card("Séances du "+new Date(last+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}),el("div",{class:"ideas"},...ses.filter(x=>x.date===last).sort((a,b)=>O[a.kind]-O[b.kind]).map(x=>el("div",{class:"idea sess "+x.kind},
+      el("div",{class:"row"},el("b",{text:K[x.kind]||x.kind}),x.bias?el("span",{class:"tag",text:"biais "+BI[x.bias]}):null,x.at?el("span",{class:"k",text:x.at.slice(11,16)}):null),
+      x.summary?el("p",{text:x.summary}):null,
+      ...[["facts","Faits"],["liquidity","Liquidité"],["execution","Exécution"]].filter(([k])=>(x[k]||[]).length).map(([k,h])=>el("div",null,el("p",null,el("span",{class:"k",text:h})),el("ul",{class:"rules"},...x[k].map(t=>el("li",{text:t}))))),
+      (x.zones||[]).length?el("ul",{class:"rules"},...x.zones.map(z=>el("li",{class:z.side==="vente"?"sell":"buy",text:(z.type||"Zone")+" "+px(z.low)+" – "+px(z.high)+(z.note?" : "+z.note:"")}))):null,
+      x.invalid?el("p",null,el("span",{class:"k",text:"Annule le plan : "}),document.createTextNode(x.invalid)):null)))));}
   // 1. Prévision (absente d’une semaine qui n’a qu’un bilan)
   const hasPred=[pr.bull,pr.bear,pr.range].some(x=>x>0)||pr.summary;
   const pv=card("Prévision de la semaine",probBar(pr));
@@ -477,7 +502,8 @@ function renderPlanView(p){
     u.reason?el("p",{class:"k",text:u.reason}):null,u.summary?el("p",{text:u.summary}):null,
     (u.changes||[]).length?el("ul",{class:"rules"},...u.changes.map(x=>el("li",{text:x}))):null,
     u.trades?el("p",null,el("b",{text:"Vos trades : "}),document.createTextNode(u.trades)):null,
-    u.tomorrow?el("p",null,el("b",{text:"Lendemain : "}),document.createTextNode(u.tomorrow)):null)))));
+    u.tomorrow?el("p",null,el("b",{text:"Lendemain : "}),document.createTextNode(u.tomorrow)):null,
+    u.backtest?backtestView(u.backtest):null)))));
   // 12. Bilan et verdict
   const rv=c.review;
   if(rv&&(rv.verdict||rv.text||rv.score!=null)){
@@ -502,6 +528,7 @@ function renderPlanView(p){
   }
   if(c.sources)out.push(el("p",{class:"hint",text:"Sources : "+c.sources}));
   box.replaceChildren(...out);
+  const gen=box._g=(box._g||0)+1;eaParamsCard().then(c=>{if(c&&box._g===gen)box.append(c)});
 }
 /* ---------- plan miniature (onglet Jour) ---------- */
 function renderPlanMini(){

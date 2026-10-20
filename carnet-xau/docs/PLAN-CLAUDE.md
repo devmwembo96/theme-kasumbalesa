@@ -202,3 +202,31 @@ concrète et testable, sans contredire ce qui existe. Liste complète renvoyée 
 
 `area` : entrée, zones, horaires, sorties, discipline, outil. Affichage : carte « Propositions de
 Claude » de l’onglet Plan ; les deux premières partent aussi sur Telegram.
+
+## Analyses de séance (`session`)
+
+Publiées dans le plan de la semaine, envoyées sur Telegram dès réception. `kind` : `asia` (06:45,
+Lubumbashi), `premarket` (08:33 à New York), `us` (09:15 à New York). Une analyse par séance et par
+jour ; les zones du plan US du jour sont surveillées par l’EA comme les zones du plan.
+
+```json
+"session": { "date": "2026-10-20", "kind": "us", "bias": "b",
+  "summary": "Faits chiffrés en 2 à 4 phrases.",
+  "facts": ["Plus bas de l’Asie 4 136,59 à 04:40, sous l’EQL 4 146,9"],
+  "liquidity": ["EQL 4 146,9 pris", "PDL 4 136,6 intact"],
+  "execution": ["Vente sur retour 4 158–4 162, stop 4 166, objectif 4 140"],
+  "zones": [ { "type": "FVG M15", "low": 4158, "high": 4162, "side": "vente", "note": "…" } ],
+  "invalid": "Clôture M15 au-dessus de 4 166" }
+```
+
+## Rejeu du soir (`update.backtest`) et réglages de l’EA
+
+```json
+"backtest": { "summary": "…", "ea_check": "…",
+  "missed": [ { "time": "16:42", "side": "vente", "setup": "3", "entry": 4171.2, "sl": 4180.3, "tp": 4141, "r": 3.3, "why": "…" } ],
+  "wrong": [], "tuning": "…" }
+```
+
+`PUT /claude/ea-params` (jeton du plan) : `{ "key": "fvg", "value": 0.5, "reason": "faits" }` ou
+`{ "key": "fvg", "revert": true, "reason": "…" }`. Réglages : touch (10–60), swing (10–40),
+fvg (0,10–1,50 $), slbuf (0,10–1,00 $), limitmin (15–120), cooldown (15–180). Un changement par jour.

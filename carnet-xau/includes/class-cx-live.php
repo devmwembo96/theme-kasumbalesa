@@ -32,6 +32,16 @@ class CX_Live {
 	const STOP_MIN = 1.5;
 	const STOP_MAX = 8.0;
 
+	/** Unités de temps reçues de l'EA et nombre de bougies gardées (M1 à M15 : analyses de séance et rejeu du soir). */
+	const CANDLE_MAX = array(
+		'D1'  => 150,
+		'H4'  => 300,
+		'H1'  => 500,
+		'M15' => 400,
+		'M5'  => 600,
+		'M1'  => 1500,
+	);
+
 	/**
 	 * Accroches.
 	 */
@@ -164,6 +174,23 @@ class CX_Live {
 			$state = $live['zones'][ $key ]['state'] ?? ( $z['state'] ? $z['state'] : 'vierge' );
 			$out[] = 'Z|' . $key . '|' . self::t( $z['type'] ) . '|' . self::t( $z['tf'] ) . '|' . self::n( min( $z['low'], $z['high'] ) ) . '|' . self::n( max( $z['low'], $z['high'] ) ) . '|' . ( 'vente' === $z['side'] ? 'vente' : 'achat' ) . '|' . (int) $z['strength'] . '|' . $state;
 		}
+		// Zones du plan de séance US du jour (15:15), surveillées par l'EA comme les zones du plan.
+		$today = CX_Repo::clock( 'Y-m-d' );
+		foreach ( (array) ( $c['sessions'] ?? array() ) as $se ) {
+			if ( 'us' !== $se['kind'] || $se['date'] !== $today ) {
+				continue;
+			}
+			foreach ( (array) $se['zones'] as $z ) {
+				if ( null === $z['low'] || null === $z['high'] ) {
+					continue;
+				}
+				$key   = 'us-' . self::zone_key( $z );
+				$state = $live['zones'][ $key ]['state'] ?? 'vierge';
+				$out[] = 'Z|' . $key . '|' . self::t( $z['type'] ? $z['type'] : 'Zone' ) . '|US|' . self::n( min( $z['low'], $z['high'] ) ) . '|' . self::n( max( $z['low'], $z['high'] ) ) . '|' . ( 'vente' === $z['side'] ? 'vente' : 'achat' ) . '|2|' . $state;
+			}
+		}
+		$t     = CX_Tuning::values();
+		$out[] = 'S|' . (int) $t['touch'] . '|' . (int) $t['swing'] . '|' . self::n( $t['fvg'] ) . '|' . self::n( $t['slbuf'] ) . '|' . (int) $t['limitmin'] . '|' . (int) $t['cooldown'];
 		foreach ( (array) ( $c['levels'] ?? array() ) as $l ) {
 			if ( null !== $l['price'] ) {
 				$out[] = 'L|' . self::n( $l['price'] ) . '|' . self::t( $l['type'] );
@@ -323,7 +350,7 @@ class CX_Live {
 			);
 			$msg = sprintf( "⚠️ <b>Invalidation touchée</b> à %s (%s)\nLe plan de Claude ne tient plus dans ce sens : pas de signal tant que Claude n’a pas relu le plan (17 h à New York).", $at->format( 'H:i' ), $usd( $num( 'price' ) ) );
 		} elseif ( 'zone' === $type ) {
-			$key   = preg_replace( '/[^0-9.\-bs]/', '', (string) ( $in['key'] ?? '' ) );
+			$key   = preg_replace( '/[^0-9.\-bsu]/', '', (string) ( $in['key'] ?? '' ) );
 			$state = CX_Repo::pick( $in['state'] ?? '', array( 'cassee', 'testee' ), '' );
 			if ( $key && $state && ( $live['zones'][ $key ]['state'] ?? '' ) !== $state ) {
 				$live['zones'][ $key ] = array(
@@ -463,7 +490,7 @@ class CX_Live {
 		$out = array();
 		foreach ( preg_split( '/\R/', mb_substr( (string) $req->get_body(), 0, 400000 ) ) as $line ) {
 			$f = explode( '|', trim( $line ) );
-			if ( 6 !== count( $f ) || ! in_array( $f[0], array( 'D1', 'H4', 'H1' ), true ) ) {
+			if ( 6 !== count( $f ) || ! isset( self::CANDLE_MAX[ $f[0] ] ) ) {
 				continue;
 			}
 			$v = array_map( fn( $x ) => CX_Repo::num( $x, 0, 1e6 ), array_slice( $f, 2 ) );
@@ -475,7 +502,7 @@ class CX_Live {
 		}
 		foreach ( $out as $tf => $rows ) {
 			usort( $rows, fn( $a, $b ) => $a[0] <=> $b[0] );
-			$out[ $tf ] = array_slice( $rows, -600 );
+			$out[ $tf ] = array_slice( $rows, -self::CANDLE_MAX[ $tf ] );
 		}
 		update_option(
 			'cx_candles',

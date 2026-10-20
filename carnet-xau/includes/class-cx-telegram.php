@@ -628,9 +628,81 @@ class CX_Telegram {
 				}
 			}
 		}
+		$bt = (array) ( $u['backtest'] ?? array() );
+		if ( ! empty( $bt['summary'] ) || ! empty( $bt['missed'] ) || ! empty( $bt['wrong'] ) ) {
+			$lines[] = '';
+			$lines[] = '🔁 <b>Rejeu de la journée</b>' . ( empty( $bt['summary'] ) ? '' : ' : ' . $e( $bt['summary'] ) );
+			foreach ( (array) ( $bt['missed'] ?? array() ) as $x ) {
+				$lines[] = '➕ Manqué ' . self::trade_line( $x, $e );
+			}
+			foreach ( (array) ( $bt['wrong'] ?? array() ) as $x ) {
+				$lines[] = '➖ À éviter ' . self::trade_line( $x, $e );
+			}
+			if ( ! empty( $bt['tuning'] ) ) {
+				$lines[] = '🛠 ' . $e( $bt['tuning'] );
+			}
+		}
 		$lines   = array_merge( $lines, self::ideas_lines( $c, $e ) );
 		$lines[] = '';
 		$lines[] = 'Plan : ' . get_permalink( CX_Front::page_id() );
+		return implode( "\n", $lines );
+	}
+
+	/**
+	 * Une opportunité du rejeu, en une ligne.
+	 *
+	 * @param array    $x Opportunité.
+	 * @param callable $e Échappement.
+	 * @return string
+	 */
+	private static function trade_line( $x, $e ) {
+		$p = static fn( $v ) => null === $v ? '?' : number_format( (float) $v, 2, ',', ' ' );
+		$r = null === ( $x['r'] ?? null ) ? '' : ' → ' . ( $x['r'] > 0 ? '+' : '' ) . number_format( (float) $x['r'], 1, ',', '' ) . 'R';
+		return $e( trim( ( $x['time'] ?? '' ) . ' ' . ( 'vente' === ( $x['side'] ?? '' ) ? 'vente' : 'achat' ) . ( empty( $x['setup'] ) ? '' : ' S' . $x['setup'] ) ) )
+			. ' : ' . $p( $x['entry'] ?? null ) . ' / stop ' . $p( $x['sl'] ?? null ) . ' / objectif ' . $p( $x['tp'] ?? null ) . $r
+			. ( empty( $x['why'] ) ? '' : ' — ' . $e( $x['why'] ) );
+	}
+
+	/**
+	 * Analyse de séance (Asie, pré-marché, plan US), envoyée dès sa publication.
+	 *
+	 * @param array $s Séance.
+	 * @return string
+	 */
+	public static function session_summary( $s ) {
+		$e     = fn( $v ) => esc_html( (string) $v );
+		$title = array(
+			'asia'      => '🌏 <b>Session Asie</b>',
+			'premarket' => '🧭 <b>Pré-marché US</b> (Asie et Londres)',
+			'us'        => '🇺🇸 <b>Plan de la session US</b>',
+		)[ $s['kind'] ] ?? '<b>Séance</b>';
+		$bias  = array(
+			'h' => 'haussier',
+			'b' => 'baissier',
+			'n' => 'neutre',
+		)[ $s['bias'] ] ?? '';
+		$lines = array( $title . ' — ' . $e( wp_date( 'l j F', strtotime( $s['date'] . ' 12:00 UTC' ), CX_Repo::tz() ) ) . ( $bias ? ' · biais ' . $bias : '' ) );
+		if ( $s['summary'] ) {
+			$lines[] = $e( $s['summary'] );
+		}
+		foreach ( array( 'facts' => '<b>Faits</b>', 'liquidity' => '<b>Liquidité</b>', 'execution' => '<b>Exécution</b>' ) as $k => $h ) {
+			if ( ! empty( $s[ $k ] ) ) {
+				$lines[] = '';
+				$lines[] = $h;
+				foreach ( $s[ $k ] as $x ) {
+					$lines[] = '• ' . $e( $x );
+				}
+			}
+		}
+		foreach ( (array) $s['zones'] as $z ) {
+			$lines[] = ( 'vente' === $z['side'] ? '🔴 ' : '🟢 ' ) . $e( ( $z['type'] ? $z['type'] : 'Zone' ) . ' ' . number_format( (float) $z['low'], 2, ',', ' ' ) . '–' . number_format( (float) $z['high'], 2, ',', ' ' ) . ( $z['note'] ? ' : ' . $z['note'] : '' ) );
+		}
+		if ( $s['invalid'] ) {
+			$lines[] = '';
+			$lines[] = '⛔ <b>Annule le plan</b> : ' . $e( $s['invalid'] );
+		}
+		$lines[] = '';
+		$lines[] = 'Carnet : ' . get_permalink( CX_Front::page_id() );
 		return implode( "\n", $lines );
 	}
 

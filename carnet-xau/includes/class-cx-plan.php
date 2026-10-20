@@ -93,6 +93,7 @@ class CX_Plan {
 			'day'    => self::DAYS,
 			'verdict' => array( 'bonne', 'partielle', 'mauvaise' ),
 			'status'  => array( 'maintenu', 'mis_a_jour' ),
+			'kind'    => array( 'asia', 'premarket', 'us' ),
 		);
 		switch ( $type ) {
 			case 'bool':
@@ -101,6 +102,9 @@ class CX_Plan {
 				return (string) CX_Repo::date( is_scalar( $v ) ? (string) $v : '' );
 			case 'num':
 				return CX_Repo::num( $v, 0, 1e6 );
+			case 'r':
+				$n = CX_Repo::num( $v, -10, 50 );
+				return null === $n ? null : round( $n, 2 );
 			case 'pct':
 				$n = CX_Repo::num( $v, 0, 100 );
 				return null === $n ? null : (int) round( $n );
@@ -302,6 +306,61 @@ class CX_Plan {
 			'changes'  => array( 'list', 'text', 10 ),
 			'trades'   => 'long',
 			'tomorrow' => 'long',
+			// Rejeu de la journée sur les bougies de l'EA (relecture de 23:20).
+			'backtest' => array(
+				'summary'  => 'long',
+				'ea_check' => 'long',
+				'missed'   => array( 'list', self::trade_spec(), 6 ),
+				'wrong'    => array( 'list', self::trade_spec(), 6 ),
+				'tuning'   => 'long',
+			),
+		);
+	}
+
+	/**
+	 * Opportunité rejouée (backtest du soir).
+	 *
+	 * @return array
+	 */
+	private static function trade_spec() {
+		return array(
+			'time'  => 'time',
+			'side'  => 'side',
+			'setup' => 'setup',
+			'entry' => 'num',
+			'sl'    => 'num',
+			'tp'    => 'num',
+			'r'     => 'r',
+			'why'   => 'long',
+		);
+	}
+
+	/**
+	 * Analyse de séance (clé « session ») : Asie à 06:45, pré-marché à 14:30, plan US à 15:15.
+	 *
+	 * @return array
+	 */
+	public static function session_spec() {
+		return array(
+			'date'      => 'date',
+			'kind'      => 'kind',
+			'bias'      => 'bias',
+			'summary'   => 'long',
+			'facts'     => array( 'list', 'text', 10 ),
+			'liquidity' => array( 'list', 'text', 8 ),
+			'execution' => array( 'list', 'text', 8 ),
+			'invalid'   => 'long',
+			'zones'     => array(
+				'list',
+				array(
+					'type' => 'text',
+					'low'  => 'num',
+					'high' => 'num',
+					'side' => 'side',
+					'note' => 'text',
+				),
+				4,
+			),
 		);
 	}
 
@@ -337,8 +396,12 @@ class CX_Plan {
 		}
 		// Nouveau plan (ni relecture ni simple bilan) : résumé sur Telegram tout de suite.
 		// Les relectures du soir partent le lendemain à 7 h (CX_Telegram::morning).
-		if ( isset( $in['prediction'] ) && ! isset( $in['update'] ) && empty( $req->get_param( 'silent' ) ) ) {
+		if ( isset( $in['prediction'] ) && ! isset( $in['update'] ) && ! isset( $in['session'] ) && empty( $req->get_param( 'silent' ) ) ) {
 			CX_Telegram::send( CX_Telegram::plan_summary( $week ) );
+		}
+		// Analyse de séance : envoyée dès sa publication (elle sert à l'exécution).
+		if ( isset( $in['session'] ) && empty( $req->get_param( 'silent' ) ) ) {
+			CX_Telegram::send( CX_Telegram::session_summary( self::clean( $in['session'], self::session_spec() ) ) );
 		}
 		return new WP_REST_Response(
 			array(
@@ -365,6 +428,18 @@ class CX_Plan {
 		$update  = isset( $in['update'] ) ? self::clean( $in['update'], self::update_spec() ) : null;
 		if ( isset( $in['update'] ) && ( '' === $update['date'] || '' === $update['status'] ) ) {
 			return CX_Repo::invalid( 'Relecture : « date » (AAAA-MM-JJ) et « status » (maintenu ou mis_a_jour) obligatoires.' );
+		}
+		$session = isset( $in['session'] ) ? self::clean( $in['session'], self::session_spec() ) : null;
+		if ( isset( $in['session'] ) && ( '' === $session['date'] || '' === $session['kind'] ) ) {
+			return CX_Repo::invalid( 'Séance : « date » (AAAA-MM-JJ) et « kind » (asia, premarket ou us) obligatoires.' );
+		}
+		if ( $session ) {
+			// Une analyse par séance et par jour ; les 15 dernières journées sont gardées.
+			$all   = array_values( array_filter( (array) ( $content['sessions'] ?? array() ), fn( $x ) => ! ( $x['date'] === $session['date'] && $x['kind'] === $session['kind'] ) ) );
+			$all[] = $session + array( 'at' => CX_Repo::clock() );
+			usort( $all, fn( $a, $b ) => strcmp( $a['date'] . $a['kind'], $b['date'] . $b['kind'] ) );
+			$days               = array_slice( array_unique( array_column( $all, 'date' ) ), -15 );
+			$content['sessions'] = array_values( array_filter( $all, fn( $x ) => in_array( $x['date'], $days, true ) ) );
 		}
 		if ( $update ) {
 			// Relecture : la version publiée le dimanche est gardée avant la première mise à jour.
