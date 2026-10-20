@@ -6,9 +6,6 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## En cours
 
-- [ ] Installer l’EA 2.8.0 sur le PC (Comptes › Connexions › télécharger, compiler, garder la
-      clé) : bougies M15, M5 et M1 pour les analyses de séance et le rejeu du soir, réglages
-      ajustés par Claude reçus avec le plan, zones du plan US surveillées.
 
 - [ ] Accès durable de Claude au site : mot de passe d’application WordPress rangé
       dans les secrets de l’environnement cloud (variable `RN_WP_AUTH`,
@@ -24,6 +21,9 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
    (une clé MT5 par compte ; seul « Démo Deriv » est relié aujourd’hui).
 
 ## Fait
+
+- EA 2.8.0 installé sur le PC (20 octobre) : bougies M15, M5 et M1 reçues par le site.
+- Onglet Suivi (2.18.0) : séances du jour, relectures et rejeu, réglages de l’EA.
 
 - Analyses de séance et rejeu du soir (2.17.0, 20 octobre, installée automatiquement) : session
   Asie à 06:45, pré-marché à 08:33 New York, plan US à 09:15 New York, rejeu de la journée à 17:20
