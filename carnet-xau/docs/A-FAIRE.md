@@ -6,8 +6,6 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## En cours
 
-- [ ] Vérifier la première relecture de Claude publiée sur revnefty.store
-      (lundi 19 octobre 2026, 23:20 heure de Lubumbashi) et le résumé Telegram de 7 h.
 - [ ] Accès durable de Claude au site : mot de passe d’application WordPress rangé
       dans les secrets de l’environnement cloud (variable `RN_WP_AUTH`,
       « identifiant:mot de passe »), au lieu du fichier temporaire de la séance.
@@ -22,6 +20,8 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
    (une clé MT5 par compte ; seul « Démo Deriv » est relié aujourd’hui).
 
 ## Fait
+
+- Première relecture de Claude sur revnefty.store (19 octobre) et résumé Telegram de 7 h reçu.
 
 - Cron serveur LWS activé sur revnefty.store (19 octobre 2026) : le carnet passe
   toutes les 5 minutes sans attendre les visites.
