@@ -21,6 +21,9 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## Fait
 
+- Plage de stop portée à 1,50–8,00 $ (2.16.0, 20 octobre), installée par la mise à jour
+  automatique : première mise à jour sans l’écran Extensions réussie.
+
 - Première relecture de Claude sur revnefty.store (19 octobre) et résumé Telegram de 7 h reçu.
 
 - Cron serveur LWS activé sur revnefty.store (19 octobre 2026) : le carnet passe
