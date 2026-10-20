@@ -166,13 +166,20 @@ class CX_Ingest {
 			CX_Repo::num( $t['tp'] ?? null, 0, 1e6 ) ? ', TP ' . CX_Repo::num( $t['tp'], 0, 1e6 ) : ''
 		);
 
+		$sens = in_array( $side, array( 'sell', 'vente', '1' ), true ) ? 'vente' : 'achat';
+		// Setup, zone, niveau et biais repris du signal Claude et du plan (CX_Score::fill).
+		list( $fill, $why ) = CX_Score::fill( $sens, $entry, $stop, $open );
+		if ( $why ) {
+			$notes .= ' Rempli par le carnet : ' . implode( ' ; ', $why ) . '.';
+		}
+
 		$ok = $wpdb->insert(
 			$table,
-			array(
+			$fill + array(
 				'account_id'        => (int) $acc['id'],
 				'date'              => $open->format( 'Y-m-d' ),
 				'heure'             => $open->format( 'H:i' ),
-				'sens'              => in_array( $side, array( 'sell', 'vente', '1' ), true ) ? 'vente' : 'achat',
+				'sens'              => $sens,
 				'setup'             => 'hors',
 				'niveau'            => 'Autre',
 				'stop_usd'          => $stop,

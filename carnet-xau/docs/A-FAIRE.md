@@ -22,6 +22,11 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## Fait
 
+- Fiabilité de Claude (2.19.0) : chaque analyse de séance est notée par le carnet sur les
+  bougies (biais annoncé contre mouvement réel, seuil ± 0,2 × ATR), bilan dans l’onglet Suivi
+  (`GET /claude-score`). Trades MT5 remplis seuls : setup du signal Claude correspondant, zone et
+  niveau du plan, biais de la dernière analyse ; restent les règles et l’émotion.
+
 - EA 2.8.0 installé sur le PC (20 octobre) : bougies M15, M5 et M1 reçues par le site.
 - Onglet Suivi (2.18.0) : séances du jour, relectures et rejeu, réglages de l’EA.
 

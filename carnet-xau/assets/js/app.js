@@ -415,7 +415,25 @@ function sessionsCard(date,list){
     x.summary?el("p",{text:x.summary}):null,
     ...[["facts","Faits"],["liquidity","Liquidité"],["execution","Exécution"]].filter(([k])=>(x[k]||[]).length).map(([k,h])=>el("div",null,el("p",null,el("span",{class:"k",text:h})),el("ul",{class:"rules"},...x[k].map(t=>el("li",{text:t}))))),
     (x.zones||[]).length?el("ul",{class:"rules"},...x.zones.map(z=>el("li",{class:z.side==="vente"?"sell":"buy",text:(z.type||"Zone")+" "+px(z.low)+" – "+px(z.high)+(z.note?" : "+z.note:"")}))):null,
-    x.invalid?el("p",null,el("span",{class:"k",text:"Annule le plan : "}),document.createTextNode(x.invalid)):null))));
+    x.invalid?el("p",null,el("span",{class:"k",text:"Annule le plan : "}),document.createTextNode(x.invalid)):null,
+    scoreLine(x.score)))));
+}
+// Note d'une analyse par le carnet : biais annoncé contre mouvement réel jusqu'à la fin de la séance visée.
+function scoreLine(sc){
+  if(!sc)return null;
+  const BI={h:"haussier",b:"baissier",n:"neutre"};
+  if(sc.ok==null)return el("p",{class:"score na",text:"Non notée : "+(sc.why||"données manquantes")+"."});
+  return el("p",{class:"score "+(sc.ok?"ok":"ko")},el("b",{text:sc.ok?"✔ Biais juste":"✘ Biais faux"}),
+    document.createTextNode(" — jusqu’à "+sc.until+" : "+(sc.move>0?"+":"")+fmt(sc.move,2)+" $ ("+BI[sc.real]+", seuil ± "+fmt(sc.thr,2)+" $), de "+px(sc.from)+" à "+px(sc.to)+"."));
+}
+// Fiabilité de Claude : part des biais justes par séance, sur 12 semaines.
+async function scoreCard(){
+  let d;try{d=await api("claude-score")}catch(e){return null}
+  const K={asia:"Session Asie",premarket:"Pré-marché US",us:"Plan de la session US"},rows=[];let n=0,ok=0;
+  for(const k of ["asia","premarket","us"]){const v=(d.kinds||{})[k];if(!v)continue;n+=v.n;ok+=v.ok;rows.push([K[k],String(v.n),String(v.ok),Math.round(100*v.ok/v.n)+" %"])}
+  if(n)rows.push([el("b",{text:"Total"}),String(n),String(ok),el("b",{text:Math.round(100*ok/n)+" %"})]);
+  return card("Fiabilité de Claude",n?table(["Analyse","Notées","Biais justes","Réussite"],rows):el("p",{class:"hint",text:"Pas encore d’analyse notée : chaque séance est notée par le carnet après sa fin (Asie à 14:30, pré-marché et plan US à 22:00, heure de Lubumbashi)."}),
+    el("p",{class:"hint",style:"margin-top:8px",text:"Noté par le carnet sur les bougies, sans avis de Claude : mouvement entre la publication et la fin de la séance visée. Au-delà de ± "+fmt(100*d.neutral,0)+" % de l’ATR journalier il est haussier ou baissier, sinon neutre."}));
 }
 function renderPlanView(p){
   const box=$("#plan-view");
@@ -538,7 +556,8 @@ function renderSuivi(p){
     u.backtest?backtestView(u.backtest):null)))));
   if(!out.length)out.push(el("div",{class:"empty",text:p?"Pas encore d’analyse de séance ni de relecture cette semaine : Claude publie la session Asie à 06:45, le pré-marché et le plan US l’après-midi, la relecture et le rejeu à 23:20.":"Le plan de cette semaine n’a pas encore été publié par Claude."}));
   box.replaceChildren(...out);
-  const gen=box._g=(box._g||0)+1;eaParamsCard().then(x=>{if(x&&box._g===gen)box.append(x)});
+  const gen=box._g=(box._g||0)+1;
+  Promise.all([scoreCard(),eaParamsCard()]).then(([a,b])=>{if(box._g!==gen)return;if(a)box.prepend(a);if(b)box.append(b)});
 }
 /* ---------- plan miniature (onglet Jour) ---------- */
 function renderPlanMini(){

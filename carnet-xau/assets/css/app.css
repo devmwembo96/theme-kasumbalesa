@@ -282,3 +282,8 @@
 .cx-app .idea .rules li.buy,.cx-app .bt li.buy{color:var(--win)}.cx-app .idea .rules li.sell,.cx-app .bt li.sell{color:var(--loss)}
 .cx-app .bt{margin-top:8px;padding:10px;border-radius:var(--radius);background:var(--sunk)}
 .cx-app .bt li span{color:var(--muted)}
+
+.cx-app .score{margin:8px 0 0;padding:6px 10px;border-radius:8px;font-size:14px}
+.cx-app .score.ok{background:var(--win-soft)}
+.cx-app .score.ko{background:var(--loss-soft)}
+.cx-app .score.na{color:var(--muted)}
