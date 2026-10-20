@@ -28,6 +28,10 @@ defined( 'ABSPATH' ) || exit;
  */
 class CX_Live {
 
+	/** Plage du stop (écart entrée → stop, en $) envoyée à l'EA : jusqu'à 8 $, le lot baisse et le risque reste le même. */
+	const STOP_MIN = 1.5;
+	const STOP_MAX = 8.0;
+
 	/**
 	 * Accroches.
 	 */
@@ -172,7 +176,7 @@ class CX_Live {
 			$out[] = 'N|' . $e['t'] . '|' . $e['impact'] . '|' . self::t( $e['name'] );
 		}
 		$pa    = $acc['params'];
-		$out[] = 'R|' . self::n( $pa['risk'] ) . '|' . self::n( $pa['riskred'] ) . '|' . self::n( $pa['redat'] ) . '|' . self::n( $pa['contract'] ) . '|' . (int) $pa['maxtrades'] . '|' . (int) $pa['maxloss'] . '|' . self::n( $pa['spreadmax'] ) . '|1.5|4|' . self::n( $acc['size'] * $pa['daily'] / 100 ) . '|' . self::n( $acc['size'] ) . '|' . self::n( $acc['size'] * ( 1 - $pa['max'] / 100 ) );
+		$out[] = 'R|' . self::n( $pa['risk'] ) . '|' . self::n( $pa['riskred'] ) . '|' . self::n( $pa['redat'] ) . '|' . self::n( $pa['contract'] ) . '|' . (int) $pa['maxtrades'] . '|' . (int) $pa['maxloss'] . '|' . self::n( $pa['spreadmax'] ) . '|' . self::n( self::STOP_MIN ) . '|' . self::n( self::STOP_MAX ) . '|' . self::n( $acc['size'] * $pa['daily'] / 100 ) . '|' . self::n( $acc['size'] ) . '|' . self::n( $acc['size'] * ( 1 - $pa['max'] / 100 ) );
 		$today = CX_Repo::clock( 'Y-m-d' );
 		$tt    = array_filter( CX_Repo::trades( $acc['id'] ), fn( $t ) => $t['date'] === $today );
 		$out[] = 'D|' . count( $tt ) . '|' . count( array_filter( $tt, fn( $t ) => $t['r'] < 0 ) ) . '|' . self::n( array_sum( array_map( fn( $t ) => (float) $t['pnl'], $tt ) ) );

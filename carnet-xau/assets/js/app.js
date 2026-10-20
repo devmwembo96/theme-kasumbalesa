@@ -215,7 +215,7 @@ function calc(){
     else{$("#o-tp").textContent="—";$("#o-tp-s").textContent=""}
     $("#o-2r").textContent=fmt(stop*2,2)+" $";$("#o-2r-s").textContent="Fermez 50 % (+"+money(realRisk)+") puis stop au prix d’entrée";
     if(lot<0.01)alerts.push(["stop","Stop trop large pour ce risque : le lot tombe sous 0,01."]);
-    if(stop<1.5||stop>4)alerts.push(["warn","Stop hors de la plage 1,50 – 4,00 $ : passez votre tour ou revoyez le placement."]);
+    if(stop<1.5||stop>8)alerts.push(["warn","Stop hors de la plage 1,50 – 8,00 $ : passez votre tour ou revoyez le placement."]);
     if(Number.isFinite(spread)&&spread>0){const p=spread/stop*100;if(p>S.spreadmax)alerts.push(["warn","Le spread fait "+fmt(p,0)+" % du stop (max "+S.spreadmax+" %) : attendez un spread plus bas."])}
   }else if(Number.isFinite(bal)){$("#o-lot").textContent="—";$("#o-lot-s").textContent="Entrez la distance du stop";$("#o-tp").textContent="—";$("#o-tp-s").textContent="";$("#o-2r").textContent="—";$("#o-2r-s").textContent=""}
   if(lossesToday>=S.maxloss)alerts.push(["stop","Arrêt pour aujourd’hui : "+lossesToday+" pertes."]);
@@ -228,7 +228,7 @@ function calc(){
 }
 
 /* ---------- check-list ---------- */
-const CHECKS=["Setup 1 (liquidité), 2 (continuation) ou 3 (iFVG) clairement identifié","Niveau fixe touché (EQH/EQL, 2 Liq, PDH/PDL, session fermée) ou BoS confirmé","Gros triangle de signal dans le bon sens","Aucun filtre : pas de news, pas de signal opposé depuis 15 min, pas de range serré","Stop entre 1,50 $ et 4,00 $","Au moins 2R de place jusqu’à la prochaine liquidité"];
+const CHECKS=["Setup 1 (liquidité), 2 (continuation) ou 3 (iFVG) clairement identifié","Niveau fixe touché (EQH/EQL, 2 Liq, PDH/PDL, session fermée) ou BoS confirmé","Gros triangle de signal dans le bon sens","Aucun filtre : pas de news, pas de signal opposé depuis 15 min, pas de range serré","Stop entre 1,50 $ et 8,00 $","Au moins 2R de place jusqu’à la prochaine liquidité"];
 function buildChecklist(){
   $("#checklist").replaceChildren(...CHECKS.map((t,i)=>{const cb=el("input",{type:"checkbox",id:"cx-ck"+i});cb.addEventListener("change",updateVerdict);return el("label",{class:"check"},cb,el("span",{text:t}))}));
 }

@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.7.0                                    |
+//| CarnetXAU.mq5 — version 2.7.1                                    |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1, H4, H1).     |
@@ -48,9 +48,9 @@
 //|   setup 1 si l'extrême a balayé un niveau de liquidité de Claude |
 //|   (ou le bord de la zone), sinon setup 2, seulement dans le sens |
 //|   du biais dominant ;                                            |
-//| - stop derrière l'extrême + marge, entre 1,50 et 4,00 $ ; s'il  |
+//| - stop derrière l'extrême + marge, entre 1,50 et 8,00 $ ; s'il  |
 //|   est plus large : BUY LIMIT / SELL LIMIT au prix où le stop     |
-//|   revient à 4,00 $ (repli attendu, valable 30 minutes) ;         |
+//|   revient à 8,00 $ (repli attendu, valable 30 minutes) ;         |
 //| - au moins 2R de place jusqu'à la prochaine zone ou niveau       |
 //|   opposé (objectif = ce niveau, sinon 3R) ;                      |
 //| - entrée « retour FVG » suivie en parallèle (trade virtuel, sans |
@@ -63,7 +63,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.70"
+#property version   "2.71"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 input string InpUrl         = "https://revnefty.store/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
@@ -109,7 +109,7 @@ int      g_bull = 0, g_bear = 0, g_range = 0;
 double   g_inval = 0, g_rlo = 0, g_rhi = 0, g_ref = 0;
 bool     g_invalidated = false;
 double   g_risk = 50, g_riskRed = 35, g_redAt = 300, g_contract = 100, g_spreadMax = 15;
-double   g_stopMin = 1.5, g_stopMax = 4.0, g_dailyLim = 300, g_size = 6000, g_floor = 5400;
+double   g_stopMin = 1.5, g_stopMax = 8.0, g_dailyLim = 300, g_size = 6000, g_floor = 5400;
 int      g_maxTrades = 4, g_maxLoss = 3;
 bool     g_planOk = false;
 
