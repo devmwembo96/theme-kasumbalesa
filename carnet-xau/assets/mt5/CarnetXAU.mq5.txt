@@ -197,6 +197,8 @@ int OnInit()
 void OnDeinit(const int reason)
   {
    EventKillTimer();
+   if(reason == REASON_REMOVE)
+      RestoreStyle();
    ObjectsDeleteAll(0, PFX_PLAN);
    ObjectsDeleteAll(0, PFX_UI);
   }
@@ -219,12 +221,14 @@ void OnTimer()
 //--- Zoom ou défilement : les noms au milieu des lignes et les prix du bord droit se recalent.
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
   {
-   static uint last = 0;
-   if(id == CHARTEVENT_CHART_CHANGE && InpDrawPlan && g_hash != "" && GetTickCount() - last > 300)
-     {
-      last = GetTickCount();
-      DrawPlan();
-     }
+   static long scale = -1, first = -1, width = -1;
+   if(id != CHARTEVENT_CHART_CHANGE || !InpDrawPlan || g_hash == "")
+      return;
+   long s = ChartGetInteger(0, CHART_SCALE), f = ChartGetInteger(0, CHART_FIRST_VISIBLE_BAR), w = ChartGetInteger(0, CHART_WIDTH_IN_BARS);
+   if(s == scale && f == first && w == width)
+      return;
+   scale = s; first = f; width = w;
+   DrawPlan();
   }
 
 void OnTick()
@@ -233,8 +237,13 @@ void OnTick()
    if(m1 == g_lastM1)
       return;
    g_lastM1 = m1;               // nouvelle bougie M1 : la précédente vient de clôturer
-   if(InpDrawPlan && g_hash != "")
+   static datetime lastBar = 0;
+   datetime bar = iTime(_Symbol, PERIOD_CURRENT, 0);
+   if(InpDrawPlan && g_hash != "" && bar != lastBar)
+     {
+      lastBar = bar;
       DrawPlan();               // le scénario et les étiquettes suivent la dernière bougie
+     }
    Monitor();                   // invalidation et zones sur clôture M15 (et rattrapage après un arrêt)
    ProcessTracks();             // signaux en cours, bougie par bougie depuis la dernière traitée
    DrawPanel();                 // zones les plus proches du prix
@@ -874,10 +883,34 @@ void Rect(string name, datetime t1, double p1, datetime t2, double p2, color clr
   }
 
 //--- Style TradingView clair : fond blanc, sans grille, bougies vert 089981 et rouge F23645.
+//    Les réglages d'origine du graphique sont gardés et rétablis quand l'EA est retiré.
+ENUM_CHART_PROPERTY_INTEGER g_styleKeys[] = { CHART_MODE, CHART_SHOW_GRID, CHART_COLOR_BACKGROUND, CHART_COLOR_FOREGROUND,
+   CHART_COLOR_CANDLE_BULL, CHART_COLOR_CANDLE_BEAR, CHART_COLOR_CHART_UP, CHART_COLOR_CHART_DOWN, CHART_COLOR_CHART_LINE,
+   CHART_COLOR_BID, CHART_COLOR_ASK, CHART_COLOR_LAST, CHART_COLOR_STOP_LEVEL, CHART_SHOW_VOLUMES, CHART_SHIFT };
+long   g_styleOld[];
+double g_shiftOld = 0;
+
+void RestoreStyle()
+  {
+   if(ArraySize(g_styleOld) != ArraySize(g_styleKeys))
+      return;
+   for(int i = 0; i < ArraySize(g_styleKeys); i++)
+      ChartSetInteger(0, g_styleKeys[i], g_styleOld[i]);
+   ChartSetDouble(0, CHART_SHIFT_SIZE, g_shiftOld);
+   ChartRedraw();
+  }
+
 void ApplyTVStyle()
   {
    if(!InpTVStyle)
       return;
+   if(ArraySize(g_styleOld) != ArraySize(g_styleKeys))
+     {
+      ArrayResize(g_styleOld, ArraySize(g_styleKeys));
+      for(int i = 0; i < ArraySize(g_styleKeys); i++)
+         g_styleOld[i] = ChartGetInteger(0, g_styleKeys[i]);
+      g_shiftOld = ChartGetDouble(0, CHART_SHIFT_SIZE);
+     }
    ChartSetInteger(0, CHART_MODE, CHART_CANDLES);
    ChartSetInteger(0, CHART_SHOW_GRID, false);
    ChartSetInteger(0, CHART_COLOR_BACKGROUND, clrWhite);
@@ -937,7 +970,7 @@ datetime RightTime()
    int vis   = (int)ChartGetInteger(0, CHART_WIDTH_IN_BARS);
    int first = (int)ChartGetInteger(0, CHART_FIRST_VISIBLE_BAR);
    double fut = vis - first - 1 - 80.0 / BarPx();
-   return FutureTime(MathMax(1, fut));
+   return FutureTime(MathMax(31, fut));
   }
 
 void Seg(string name, datetime t1, datetime t2, double price, color clr, ENUM_LINE_STYLE style, bool ray)
@@ -975,17 +1008,22 @@ void PriceTag(string name, double price, color clr)
 //--- Ligne de l'origine au bord droit, nom au milieu, trait interrompu sous le texte.
 void NamedLine(string id, datetime t1, double price, string txt, color clr, ENUM_LINE_STYLE style)
   {
-   datetime t0  = iTime(_Symbol, PERIOD_CURRENT, 0);
-   int      per = PeriodSeconds(PERIOD_CURRENT);
-   datetime tm  = t1 + (t0 - t1) / 2;
-   datetime gap = (datetime)(MathCeil((StringLen(txt) * 5.5 + 10) / BarPx() / 2.0) * per);
-   if(tm - gap > t1)
+   //--- En bougies (les nuits et week-ends n'en ont pas) et dans la partie visible du graphique.
+   int sh  = iBarShift(_Symbol, PERIOD_CURRENT, t1);
+   int vis = (int)ChartGetInteger(0, CHART_FIRST_VISIBLE_BAR);
+   if(sh < 0 || sh > vis)
+      sh = vis;
+   t1 = iTime(_Symbol, PERIOD_CURRENT, sh);
+   datetime tEnd = RightTime();
+   int m = sh / 2, g = (int)MathCeil((StringLen(txt) * 5.5 + 10) / BarPx() / 2.0);
+   datetime tm = iTime(_Symbol, PERIOD_CURRENT, m);
+   if(sh - m > g + 1 && m - g > 0)
      {
-      Seg(id + "a", t1, tm - gap, price, clr, style, false);
-      Seg(id + "b", tm + gap, t0 + per, price, clr, style, true);
+      Seg(id + "a", t1, iTime(_Symbol, PERIOD_CURRENT, m + g), price, clr, style, false);
+      Seg(id + "b", iTime(_Symbol, PERIOD_CURRENT, m - g), tEnd, price, clr, style, false);
      }
    else
-      Seg(id + "a", t1, t0 + per, price, clr, style, true);
+      Seg(id + "a", t1, tEnd, price, clr, style, false);
    Tag(id + "t", tm, price, txt, clr, ANCHOR_CENTER);
   }
 
@@ -1038,7 +1076,7 @@ void DrawPlan()
       double stop = MathAbs(p.entry - p.sl);
       if(stop <= 0)
          continue;
-      datetime xa = FutureTime(3 + 30 * k), xb = FutureTime(29 + 30 * k), xm = xa + (xb - xa) / 2;
+      datetime xa = FutureTime(3), xb = FutureTime(29), xm = xa + (xb - xa) / 2;
       Rect(id + "tp", xa, p.entry, xb, p.tp, C'204,235,226', "Objectif " + Fr(p.tp, 2));
       Rect(id + "sl", xa, p.entry, xb, p.sl, C'252,211,215', "Stop " + Fr(p.sl, 2));
       Seg(id + "e", xa, xb, p.entry, C'120,123,134', STYLE_SOLID, false);
@@ -1098,7 +1136,7 @@ void DrawPanel()
       ObjectSetInteger(0, bg, OBJPROP_YSIZE, 120);
       ObjectSetInteger(0, bg, OBJPROP_BGCOLOR, (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND));
       ObjectSetInteger(0, bg, OBJPROP_BORDER_TYPE, BORDER_FLAT);
-      ObjectSetInteger(0, bg, OBJPROP_COLOR, clrSilver);
+      ObjectSetInteger(0, bg, OBJPROP_COLOR, C'224,227,235');
       ObjectSetInteger(0, bg, OBJPROP_BACK, false);
       ObjBase(bg);
      }
@@ -1107,9 +1145,9 @@ void DrawPanel()
       bias = "haussier";
    else if(g_bear > g_bull)
       bias = "baissier";
-   Label(PFX_UI + "1", 20, "Carnet XAU · plan de Claude" + (g_week == "" ? "" : " · semaine du " + g_week), clrGoldenrod);
+   Label(PFX_UI + "1", 20, "Carnet XAU · plan de Claude" + (g_week == "" ? "" : " · semaine du " + g_week), C'19,23,34');
    Label(PFX_UI + "2", 36, g_planOk ? "Biais " + bias + " · haussier " + IntegerToString(g_bull) + " % · baissier " + IntegerToString(g_bear)
-         + " % · range " + IntegerToString(g_range) + " %" : "Aucun plan publié pour la semaine", clrGoldenrod);
+         + " % · range " + IntegerToString(g_range) + " %" : "Aucun plan publié pour la semaine", C'19,23,34');
    Label(PFX_UI + "3", 52, g_inval > 0 ? "Invalidation " + Fr(g_inval, 2) + (g_invalidated ? " : TOUCHÉE, signaux bloqués dans ce sens" : " : intacte") : "Pas d'invalidation",
          g_invalidated ? clrRed : clrDimGray);
    Label(PFX_UI + "4", 68, NearestZones(), clrDimGray);
