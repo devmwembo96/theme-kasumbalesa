@@ -361,6 +361,27 @@ class CX_Plan {
 				),
 				4,
 			),
+			// Liquidité tracée sur le graphique : haut et bas de séance, PDH, EQL…
+			'levels'    => array(
+				'list',
+				array(
+					'price' => 'num',
+					'type'  => 'text',
+				),
+				6,
+			),
+			// Scénarios d'exécution dessinés avec l'outil position (graphique et Telegram).
+			'positions' => array(
+				'list',
+				array(
+					'side'  => 'side',
+					'entry' => 'num',
+					'sl'    => 'num',
+					'tp'    => 'num',
+					'label' => 'text',
+				),
+				3,
+			),
 		);
 	}
 

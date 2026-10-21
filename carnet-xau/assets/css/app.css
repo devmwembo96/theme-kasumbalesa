@@ -296,3 +296,5 @@
 .cx-app .feu.go{background:var(--win-soft);color:var(--win)}
 .cx-app .feu.warn{background:var(--warn-soft);color:var(--warn)}
 .cx-app .feu.stop{background:var(--loss-soft);color:var(--loss)}
+.cx-app .shot{display:block;margin:8px 0}
+.cx-app .shot img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:var(--radius)}

@@ -441,6 +441,7 @@ function sessionsCard(date,list){
   return card("Séances du "+new Date(date+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}),el("div",{class:"ideas"},...list.slice().sort((a,b)=>O[a.kind]-O[b.kind]).map(x=>el("div",{class:"idea sess "+x.kind},
     el("div",{class:"row"},el("b",{text:K[x.kind]||x.kind}),x.bias?el("span",{class:"tag",text:"biais "+BI[x.bias]}):null,x.at?el("span",{class:"k",text:x.at.slice(11,16)}):null),
     x.summary?el("p",{text:x.summary}):null,
+    x.chart?el("a",{href:x.chart,target:"_blank",rel:"noopener",class:"shot"},el("img",{src:x.chart,alt:"Graphique de la séance : zones et scénarios",loading:"lazy"})):null,
     ...[["facts","Faits"],["liquidity","Liquidité"],["execution","Exécution"]].filter(([k])=>(x[k]||[]).length).map(([k,h])=>el("div",null,el("p",null,el("span",{class:"k",text:h})),el("ul",{class:"rules"},...x[k].map(t=>el("li",{text:t}))))),
     (x.zones||[]).length?el("ul",{class:"rules"},...x.zones.map(z=>el("li",{class:z.side==="vente"?"sell":"buy",text:(z.type||"Zone")+" "+px(z.low)+" – "+px(z.high)+(z.note?" : "+z.note:"")}))):null,
     x.invalid?el("p",null,el("span",{class:"k",text:"Annule le plan : "}),document.createTextNode(x.invalid)):null,
@@ -485,6 +486,7 @@ function renderPlanView(p){
   }
   const live=p.content.live||{};
   if(live.invalidated)out.push(el("div",{class:"alert stop",style:"margin-bottom:12px",text:"Invalidation touchée (EA MT5) le "+new Date(live.invalidated.at.replace(" ","T")).toLocaleString("fr-FR",{weekday:"long",hour:"2-digit",minute:"2-digit"})+(live.invalidated.price!=null?" à "+px(live.invalidated.price):"")+" : plus de signal dans le sens du biais jusqu’à la prochaine relecture de Claude."}));
+  if(p.content.chart)out.push(el("a",{href:p.content.chart,target:"_blank",rel:"noopener",class:"shot",style:"margin-bottom:12px"},el("img",{src:p.content.chart,alt:"Graphique du plan de la semaine",loading:"lazy"})));
   out.push(el("p",{class:"hint byline",text:(p.publishedAt?"Rédigé par Claude":"Bilan rédigé par Claude")+(p.publishedAt?" le "+new Date(p.publishedAt.replace(" ","T")).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+" à "+p.publishedAt.slice(11,16):"")+"."}));
   // 1. Prévision (absente d’une semaine qui n’a qu’un bilan)
   const hasPred=[pr.bull,pr.bear,pr.range].some(x=>x>0)||pr.summary;

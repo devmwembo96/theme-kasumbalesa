@@ -151,6 +151,81 @@ class CX_Telegram {
 	}
 
 	/**
+	 * Envoie une image (graphique de Claude) au chat lié et à la chaîne.
+	 *
+	 * @param string $file    Chemin du fichier PNG.
+	 * @param string $caption Légende (HTML simple, 1 024 caractères au plus).
+	 * @return bool|WP_Error
+	 */
+	public static function photo( $file, $caption ) {
+		$c = self::cfg();
+		if ( empty( $c['token'] ) || empty( $c['chat'] ) ) {
+			return new WP_Error( 'cx_tg', 'Bot non relié à un chat.' );
+		}
+		$img = (string) file_get_contents( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		$err = null;
+		foreach ( array_filter( array( $c['chat'], $c['channel'] ?? '' ) ) as $chat ) {
+			$b    = 'cx' . wp_generate_password( 20, false );
+			$body = '';
+			foreach ( array(
+				'chat_id'    => (string) $chat,
+				'caption'    => mb_substr( $caption, 0, 1024 ),
+				'parse_mode' => 'HTML',
+			) as $k => $v ) {
+				$body .= "--$b\r\nContent-Disposition: form-data; name=\"$k\"\r\n\r\n$v\r\n";
+			}
+			$body .= "--$b\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"graphique.png\"\r\nContent-Type: image/png\r\n\r\n" . $img . "\r\n--$b--\r\n";
+			$res  = wp_remote_post(
+				'https://api.telegram.org/bot' . $c['token'] . '/sendPhoto',
+				array(
+					'timeout' => 30,
+					'headers' => array( 'Content-Type' => 'multipart/form-data; boundary=' . $b ),
+					'body'    => $body,
+				)
+			);
+			$j = is_wp_error( $res ) ? null : json_decode( wp_remote_retrieve_body( $res ), true );
+			if ( empty( $j['ok'] ) ) {
+				$err = new WP_Error( 'cx_tg', 'Telegram : ' . ( is_wp_error( $res ) ? $res->get_error_message() : ( $j['description'] ?? 'réponse invalide' ) ) );
+			}
+		}
+		return $err ?? true;
+	}
+
+	/**
+	 * Légende du graphique d'une séance : titre, biais, scénarios d'exécution.
+	 *
+	 * @param array $s Séance.
+	 * @return string
+	 */
+	public static function chart_caption( $s ) {
+		$t = array(
+			'asia'      => '🌏 <b>Session Asie</b>',
+			'premarket' => '🧭 <b>Pré-marché US</b>',
+			'us'        => '🇺🇸 <b>Plan de la session US</b>',
+		)[ $s['kind'] ] ?? '<b>Séance</b>';
+		$l = array( $t . ' — graphique' . ( empty( $s['bias'] ) ? '' : ' · biais ' . array( 'h' => 'haussier', 'b' => 'baissier', 'n' => 'neutre' )[ $s['bias'] ] ) );
+		foreach ( (array) ( $s['positions'] ?? array() ) as $p ) {
+			$stop = abs( (float) $p['entry'] - (float) $p['sl'] );
+			$l[]  = sprintf(
+				'%s %s : entrée %s, stop %s (%s $), objectif %s (%sR)%s',
+				'vente' === $p['side'] ? '🔴' : '🟢',
+				'vente' === $p['side'] ? 'Vente' : 'Achat',
+				self::usd( $p['entry'] ),
+				self::usd( $p['sl'] ),
+				number_format( $stop, 2, ',', ' ' ),
+				self::usd( $p['tp'] ),
+				$stop > 0 ? number_format( abs( (float) $p['tp'] - (float) $p['entry'] ) / $stop, 1, ',', '' ) : '?',
+				empty( $p['label'] ) ? '' : ' — ' . esc_html( $p['label'] )
+			);
+		}
+		if ( ! empty( $s['invalid'] ) ) {
+			$l[] = '⛔ Annule : ' . esc_html( $s['invalid'] );
+		}
+		$l[] = 'Scénario simulé : à exécuter seulement si le prix respecte la zone.';
+		return implode( "\n", $l );
+	}
+
+	/**
 	 * Un message vers un chat précis.
 	 *
 	 * @param string $chat Identifiant du chat ou de la chaîne.
