@@ -140,8 +140,23 @@ class CX_Chart {
 			$t          = trim( (string) ( $l['type'] ?? '' ) );
 			$levels[]   = array(
 				'price' => $v,
-				'label' => $t . ' ' . number_format( $v, 2, ',', ' ' ),
-				'color' => preg_match( '/H$|haut|high/i', $t ) ? '#f23645' : ( preg_match( '/L$|bas|low/i', $t ) ? '#089981' : '#787b86' ),
+				'label' => '' === $t ? 'Niveau' : ( preg_match( '/^EQ[HL]$/i', $t ) ? $t . ' liquidity' : $t ),
+				// Couleurs de TradingView : PDH, PDL, PWH, PWL en bleu ; EQH, EQL en gris foncé ; le reste en gris.
+				'color' => preg_match( '/^P[DWM][HL]/i', $t ) ? '#2962ff' : ( preg_match( '/^EQ[HL]/i', $t ) ? '#434651' : '#787b86' ),
+			);
+		}
+		// Invalidation : premier prix de la phrase « annule » (séance) ou invalidation du plan (semaine).
+		$inv = 0.0;
+		if ( $s && preg_match( '/\d[\d\s\x{202F}\x{00A0}]{2,}[.,]?\d*/u', (string) ( $s['invalid'] ?? '' ), $m ) ) {
+			$inv = (float) str_replace( array( ' ', "\u{202F}", "\u{00A0}", ',' ), array( '', '', '', '.' ), $m[0] );
+		} elseif ( 'week' === $kind ) {
+			$inv = (float) ( $c['prediction']['invalidation'] ?? 0 );
+		}
+		if ( $inv > 100 && $near( $inv, $inv ) ) {
+			$levels[] = array(
+				'price' => $inv,
+				'label' => 'Invalidation',
+				'color' => '#f23645',
 			);
 		}
 
@@ -239,10 +254,10 @@ class CX_Chart {
 			. 'html,body{margin:0;background:#fff;color:#131722;font-family:-apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,sans-serif}'
 			. '#shot{width:1600px;height:900px;position:relative;background:#fff;overflow:hidden}'
 			. '#chart{position:absolute;left:0;top:0;right:0;bottom:0}'
-			. '#legend{position:absolute;left:12px;top:8px;z-index:3;font-size:13px;line-height:18px;pointer-events:none}'
+			. '#legend{position:absolute;left:12px;top:6px;z-index:3;background:rgba(255,255,255,.88);padding:2px 6px;border-radius:4px;font-size:13px;line-height:18px;pointer-events:none}'
 			. '#legend b{font-weight:500}#sym{font-weight:600}#ohlc{font-size:12px;color:#787b86}'
-			. '#head{position:absolute;right:86px;top:8px;z-index:3;text-align:right;max-width:560px}'
-			. '#title{font-size:13px;font-weight:600}#sub{font-size:11px;color:#787b86;margin-top:2px}'
+			. '#head{position:absolute;right:86px;top:6px;z-index:3;text-align:right;max-width:720px;background:rgba(255,255,255,.88);padding:2px 6px;border-radius:4px}'
+			. '#title{font-size:13px;font-weight:600}#sub{font-size:11px;color:#787b86;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
 			. '#foot{position:absolute;left:64px;bottom:34px;z-index:3;font-size:10px;color:#b2b5be}'
 			. '#msg{position:absolute;left:0;right:0;top:45%;text-align:center;color:#787b86;font-size:14px}'
 			. '</style></head><body><div id="shot"><div id="chart"></div>'

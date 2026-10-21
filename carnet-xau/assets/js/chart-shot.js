@@ -31,7 +31,7 @@
     width: box.clientWidth, height: box.clientHeight,
     layout: { background: { type: "solid", color: C.bg }, textColor: C.text, fontFamily: C.font, fontSize: 11 },
     grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
-    rightPriceScale: { borderColor: "#e0e3eb", scaleMargins: { top: 0.06, bottom: 0.06 } },
+    rightPriceScale: { borderColor: "#e0e3eb", scaleMargins: { top: 0.12, bottom: 0.06 } },
     timeScale: { borderColor: "#e0e3eb", timeVisible: D.tf !== "D1", secondsVisible: false, rightOffset: D.rightOffset || 40, barSpacing: D.barSpacing || 7 },
     crosshair: { mode: LW.CrosshairMode.Hidden, vertLine: { visible: false }, horzLine: { visible: false } },
     localization: { locale: "fr-FR", priceFormatter: v => fr(v, 2) },
@@ -46,6 +46,17 @@
 
   // Bougie d'origine : la dernière qui touche une des bornes, sinon le début du graphique.
   const origin = prices => { for (let i = bars.length - 2; i >= 0; i--) { const b = bars[i]; if (prices.some(p => p >= b.low - 0.15 && p <= b.high + 0.15)) return i; } return 0; };
+  // Couleurs : order block en ocre (orange sur l'échelle), FVG et autres zones en bleu (achat) ou rouge (vente).
+  zones.forEach(z => {
+    const ob = /OB|order/i.test(z.label), buy = z.side !== "vente";
+    z.fill = ob ? "rgba(201,160,90,0.26)" : buy ? C.demand : C.supply;
+    z.solid = ob ? "#efe3cd" : buy ? "#dfe7fd" : "#fde0e3";
+    z.mid = ob ? "rgba(19,23,34,0.55)" : buy ? "rgba(41,98,255,0.55)" : "rgba(242,54,69,0.55)";
+    z.axis = ob ? "#f59f00" : buy ? C.blue : C.down;
+    z.text = ob ? C.text : buy ? C.blue : C.down;
+    z.label = String(z.label || "Zone").toUpperCase();
+  });
+  levels.forEach(l => { l.label = String(l.label || "").toUpperCase(); });
   zones.forEach(z => { z.from = isFinite(z.from) ? Math.max(0, bars.findIndex(b => b.time >= z.from + OFF)) : origin([z.low, z.high]); });
   levels.forEach(l => { l.from = origin([l.price]); });
 
@@ -81,25 +92,20 @@
         const n = bars.length;
         ctx.save();
         if (layer === "back") {
-          // Zones : rectangle plein de l'origine au bord droit, nom en petit au centre.
+          // Zones : rectangle plein de l'origine au bord droit, ligne médiane en tirets.
           zones.forEach(z => {
             const x = Math.max(0, X(z.from) || 0), y1 = Y(z.high), y2 = Y(z.low); if (y1 == null || y2 == null) return;
-            const buy = z.side !== "vente";
-            ctx.fillStyle = buy ? C.demand : C.supply; ctx.fillRect(x, Math.min(y1, y2), sz.width - x, Math.max(2 * vr, Math.abs(y2 - y1)));
-            if (Math.abs(y2 - y1) >= 11 * vr) {
-              ctx.font = Math.round(10 * vr) + "px " + C.font; ctx.fillStyle = buy ? C.blue : C.down; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-              // Au milieu de la partie passée de la zone : jamais sous l'outil position.
-              const xe = Math.max(x + 40 * hr, X(n - 1) || sz.width);
-              ctx.fillText(z.label, (x + xe) / 2, (y1 + y2) / 2);
-            }
+            ctx.fillStyle = z.fill; ctx.fillRect(x, Math.min(y1, y2), sz.width - x, Math.max(2 * vr, Math.abs(y2 - y1)));
+            const ym = Math.round((y1 + y2) / 2) + 0.5;
+            ctx.strokeStyle = z.mid; ctx.lineWidth = hr; ctx.setLineDash([4 * hr, 3 * hr]);
+            ctx.beginPath(); ctx.moveTo(x, ym); ctx.lineTo(sz.width, ym); ctx.stroke(); ctx.setLineDash([]);
           });
-          // Niveaux de liquidité : trait pointillé fin de l'origine au bord droit.
+          // Niveaux de liquidité : trait plein et fin, de la bougie d'origine au bord droit.
           levels.forEach(l => {
             const x = Math.max(0, X(l.from) || 0), y = Y(l.price); if (y == null) return;
-            ctx.strokeStyle = l.color; ctx.lineWidth = hr; ctx.setLineDash([2 * hr, 3 * hr]);
+            ctx.strokeStyle = l.color; ctx.lineWidth = hr;
             ctx.beginPath(); ctx.moveTo(x, Math.round(y) + 0.5); ctx.lineTo(sz.width, Math.round(y) + 0.5); ctx.stroke();
           });
-          ctx.setLineDash([]);
           // Outil position : zone objectif (vert) et zone stop (rouge), comme « position longue / courte ».
           pos.forEach(p => {
             const xa = X(n - 1 + p.at), xb = X(n - 1 + p.at + p.len); if (xa == null || xb == null) return;
@@ -125,10 +131,24 @@
             tag(ctx, xm, buy ? Y(p.sl) + gap : Y(p.sl) - gap, "Stop " + fr(p.sl, 2) + " · " + fr(p.stop, 2) + " $", C.down, "#fff", vr);
             tag(ctx, xm, ye, (buy ? "Achat " : "Vente ") + fr(p.entry, 2) + (p.lot ? " · " + fr(p.lot, 2) + " lot" : ""), "#ffffff", C.text, vr);
           });
-          // Noms des niveaux au bord droit, écartés pour ne jamais se chevaucher.
-          const right = levels.map(l => ({ y: Y(l.price), t: l.label, c: l.color })).filter(r => r.y != null).sort((a, b) => a.y - b.y);
-          let ly = -1e9; ctx.font = Math.round(10 * vr) + "px " + C.font; ctx.textAlign = "right"; ctx.textBaseline = "bottom";
-          right.forEach(r => { const y = Math.max(r.y - 2 * vr, ly + 13 * vr); ly = y; ctx.fillStyle = r.c; ctx.fillText(r.t, sz.width - 6 * hr, y); });
+          // Noms en petites capitales au milieu du trait (le trait s'interrompt sous le texte), comme
+          // les outils de TradingView ; deux noms trop proches en hauteur sont décalés en largeur.
+          const xEnd = X(n - 1) || sz.width * 0.7, items = [];
+          zones.forEach(z => { const y1 = Y(z.high), y2 = Y(z.low); if (y1 != null && y2 != null) items.push({ y: (y1 + y2) / 2, x0: Math.max(0, X(z.from) || 0), t: z.label, c: z.text, bg: z.solid, at: 0.62 }); });
+          levels.forEach(l => { const y = Y(l.price); if (y != null) items.push({ y: y, x0: Math.max(0, X(l.from) || 0), t: l.label, c: l.color, bg: C.bg, at: 0.5 }); });
+          items.sort((a, b) => a.y - b.y);
+          ctx.font = "600 " + Math.round(9.5 * vr) + "px " + C.font; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+          const placed = [];
+          items.forEach(it => {
+            const w = ctx.measureText(it.t).width + 10 * hr, span = Math.max(w + 10 * hr, xEnd - it.x0);
+            let x = it.x0 + span * it.at;
+            for (let k = 0; k < 4 && placed.some(p => Math.abs(p.y - it.y) < 12 * vr && Math.abs(p.x - x) < (p.w + w) / 2 + 6 * hr); k++)
+              x = it.x0 + span * [0.25, 0.78, 0.12, 0.9][k];
+            x = Math.min(Math.max(x, w / 2 + 2 * hr), sz.width - w / 2 - 2 * hr);
+            ctx.fillStyle = it.bg; ctx.fillRect(x - w / 2, it.y - 6.5 * vr, w, 13 * vr);
+            ctx.fillStyle = it.c; ctx.fillText(it.t, x, it.y + 0.5 * vr);
+            placed.push({ x: x, y: it.y, w: w });
+          });
         }
         ctx.restore();
       });
@@ -136,7 +156,11 @@
   };
   ser.attachPrimitive(prim);
 
-  // Prix du scénario principal sur l'échelle de droite, comme TradingView (un seul : rien ne se chevauche).
+  // Prix sur l'échelle de droite, sur fond de la couleur du tracé, comme TradingView : plus haut et plus
+  // bas de chaque zone, chaque niveau, et le scénario principal.
+  const axis = (price, color) => ser.createPriceLine({ price: price, color: color, lineVisible: false, axisLabelVisible: true, axisLabelColor: color, axisLabelTextColor: "#ffffff", title: "" });
+  zones.forEach(z => { axis(z.high, z.axis); axis(z.low, z.axis); });
+  levels.forEach(l => axis(l.price, l.color));
   pos.slice(0, 1).forEach(p => {
     ser.createPriceLine({ price: p.tp, color: C.up, lineVisible: false, axisLabelVisible: true, title: "" });
     ser.createPriceLine({ price: p.sl, color: C.down, lineVisible: false, axisLabelVisible: true, title: "" });
