@@ -1,0 +1,2661 @@
+//+------------------------------------------------------------------+
+//|                                              CalculateurNano.mq5 |
+//|              Calculateur de lots et prise de position            |
+//+------------------------------------------------------------------+
+//| Mode d'emploi                                                    |
+//|  1. Attacher l'EA au graphique du symbole à trader (ex. XAUUSD). |
+//|  2. Saisir le prix du SL, ou appuyer sur « Bougie ACHAT » ou     |
+//|     « Bougie VENTE » : le SL se place derrière la dernière       |
+//|     bougie M5 clôturée (boutons < et > pour changer de bougie).  |
+//|  3. Facultatif : saisir le POC visé et ajuster le R cible.       |
+//|  4. Vérifier le panneau, puis appuyer sur ACHETER ou VENDRE.     |
+//|  5. Position ouverte : « SL au BE », puis « Trailing » qui monte |
+//|     le stop de BE vers R1, puis R2, puis R3, un appui par palier.|
+//|                                                                  |
+//|  Clavier (graphique au premier plan) :                           |
+//|     W / S   armer un achat / une vente sur la dernière bougie    |
+//|     Espace  envoyer l'ordre armé      Q  désarmer et effacer     |
+//|     A  BE     D  trailing, palier suivant     E E  fermer        |
+//|  L'armement fige le SL de SA bougie : il ne périme jamais, seul  |
+//|  le lot se recalcule pendant que le prix s'éloigne.              |
+//|  Les boutons ne s'activent que si tous les contrôles passent.    |
+//|  Les boutons et le calendrier économique ne fonctionnent pas     |
+//|  dans le testeur de stratégie : tester l'outil sur compte démo.  |
+//+------------------------------------------------------------------+
+#property version     "2.20"
+#property description "Calculateur de lots, TP en R, contrôles de risque (paliers, journalier, news) et exécution."
+
+#include <Trade\Trade.mqh>
+
+//=== Préfixes et couleurs ===========================================
+#define PFX          "CN_"
+#define PFXM         "CNmk_"
+#define GV_PREFIX    "CN"
+#define TAG          "[CalculateurNano] "
+#define CLR_BG       C'18,21,28'
+#define CLR_HDR      C'28,33,43'
+#define CLR_ACCENT   C'64,124,208'
+#define CLR_BORDER   C'48,54,66'
+#define CLR_TEXT     C'222,226,233'
+#define CLR_MUTED    C'118,125,139'
+#define CLR_GREEN    C'42,176,98'
+#define CLR_RED      C'226,78,74'
+#define CLR_ORANGE   C'238,164,52'
+#define CLR_EDIT_BG  C'30,35,45'
+#define CLR_BTN      C'44,50,62'
+#define CLR_DISABLED C'34,38,48'
+#define CLR_TINT_G   C'20,46,36'
+#define CLR_TINT_R   C'56,26,28'
+#define CLR_TINT_O   C'56,44,22'
+#define CLR_TINT_N   C'26,30,39'
+
+//=== Modes de TP ====================================================
+enum ENUM_TP_MODE
+  {
+   TP_POC_SI_SAISI = 0, // POC comme TP s'il est saisi, sinon R cible
+   TP_R_CIBLE      = 1  // Toujours le R cible (le POC sert seulement de filtre)
+  };
+
+//=== Tes règles personnelles : bloquer le bouton ou seulement avertir ===
+enum ENUM_RULE_MODE
+  {
+   RULE_AVERTIR = 0, // Avertir seulement (le bouton reste actif)
+   RULE_BLOQUER = 1  // Bloquer le bouton
+  };
+
+//=== Comportement du TP une fois le trade en cours ===
+enum ENUM_TPMODE
+  {
+   TPM_FIXE    = 0, // Fixe : le TP ne bouge pas
+   TPM_PALIERS = 1, // Paliers : le TP recule d'un R quand le prix s'en approche avec élan
+   TPM_LIBERE  = 2  // Libéré : le TP est retiré, la sortie se fait par le trailing
+  };
+
+//=== Entrées ========================================================
+input group "=== Compte et risque ==="
+input double InpInitialBalance   = 50000.0; // Capital initial du compte ($)
+input double InpRiskPct          = 0.40;    // Risque de base par trade (% du capital initial)
+input double InpTier1DDPct       = 3.0;     // Palier 1 : équité sous -X % du capital initial
+input double InpTier1Mult        = 0.50;    // Palier 1 : multiplicateur du risque
+input double InpTier2DDPct       = 6.0;     // Palier 2 : équité sous -X % du capital initial
+input double InpTier2Mult        = 0.25;    // Palier 2 : multiplicateur du risque
+
+input group "=== Objectif ==="
+input double       InpRTarget    = 2.0;             // R cible par défaut
+input double       InpMinRPoc    = 3.0;             // R minimum exigé au POC
+input ENUM_TP_MODE InpTPMode     = TP_POC_SI_SAISI; // Mode de TP
+
+input group "=== Règles journalières ==="
+input int    InpMaxTradesDay     = 3;    // Trades maximum par jour
+input int    InpMaxLossesDay     = 2;    // Pertes maximum par jour
+input double InpLossThresholdR   = 0.5;  // Une perte = résultat net inférieur à -X R
+input double InpDailyStopPct     = 1.5;  // Stop journalier de secours (% du capital initial)
+input int    InpResetHourServer  = 0;    // Heure de remise à zéro, heure serveur (= 17 h New York)
+input int    InpMaxOpenPositions = 1;    // Positions ouvertes simultanées (tout le compte)
+input ENUM_RULE_MODE InpSelfRules = RULE_AVERTIR; // Tes règles perso : bloquer ou seulement avertir
+
+input group "=== Limites de la prop firm ==="
+input double InpFirmDailyPct     = 3.0;  // Perte journalière max de la firme (% du capital initial)
+input double InpFirmMaxPct       = 10.0; // Perte totale max de la firme (% du capital initial)
+
+input group "=== Exécution ==="
+input double InpMaxCostPct       = 35.0;     // Coûts max (spread + commission) en % du stop
+input double InpCommissionPerLot = 6.0;      // Commission aller-retour par lot ($)
+input double InpMaxMarginPct     = 80.0;     // Marge max utilisée après le trade (% de l'équité)
+input bool   InpSellSpreadAdjust = true;     // Ventes : ajouter le spread au SL et au TP POC
+input ENUM_TIMEFRAMES InpCandleTF = PERIOD_M1; // Bouton Bougie : unité de la bougie utilisée
+input int    InpCandleBufferPts  = 0;        // Bouton Bougie : marge au-delà de la mèche (points)
+input bool   InpBEIncludeCosts   = true;     // BE : décaler le stop des coûts pour sortir vraiment à zéro
+input bool   InpOneClick         = false;    // Mode un seul appui (Bougie = exécution immédiate)
+input int    InpMaxSlippagePts   = 30;       // Glissement maximum accepté (points)
+input long   InpMagic            = 20260916; // Numéro magique
+
+input group "=== Automatique après l'entrée ==="
+input bool          InpAutoOn      = true;       // Gestion automatique active au démarrage
+input ENUM_TIMEFRAMES InpAutoTF    = PERIOD_M1;  // Unité des clôtures surveillées
+input double        InpBETriggerR  = 1.0;        // BE déclenché par une clôture au-delà de X R
+input bool          InpAutoTrail   = true;       // Trailing structurel après le BE
+input int           InpSwingLen    = 2;          // Creux/sommet confirmé par X bougies de chaque côté
+input int           InpAtrPeriod   = 14;         // Période de l'ATR (garde-fou anti-bruit)
+input double        InpMinAtrDist  = 1.0;        // Stop jamais à moins de X ATR du prix
+input ENUM_TPMODE   InpTPMode2     = TPM_PALIERS; // Comportement du TP
+input double        InpTPStepR     = 1.0;        // Paliers : extension du TP par pas de X R
+input int           InpTPMaxSteps  = 3;          // Paliers : nombre maximum d'extensions
+input double        InpTPBufferR   = 0.25;       // Paliers : extension déclenchée à X R du TP
+input double        InpTPFreeR     = 1.5;        // Libéré : TP retiré au-delà de X R
+
+input group "=== Clavier ==="
+input bool   InpKeysOn           = true;  // Raccourcis clavier (W S Espace Q A D E E)
+
+input group "=== Filtre news ==="
+input bool   InpNewsFilter       = true;  // Activer le filtre news
+input int    InpNewsWindowMin    = 5;     // Fenêtre avant et après l'annonce (minutes)
+input string InpNewsCurrencies   = "USD"; // Devises surveillées (séparées par des virgules)
+
+input group "=== Flèches sur le graphique ==="
+input bool   InpShowMarks        = true;          // Afficher les flèches
+input int    InpMarkSize         = 8;             // Taille des flèches (points de police)
+input color  InpMarkArmClr       = C'226,78,74';  // Flèche d'armement
+input color  InpMarkBuyClr       = C'42,176,98';  // Flèche d'entrée en achat
+input color  InpMarkSellClr      = C'226,78,74';  // Flèche d'entrée en vente
+input int    InpMarkDays         = 7;             // Historique des flèches d'entrée (jours)
+
+input group "=== Journal et affichage ==="
+input bool   InpWriteJournal     = true;                          // Écrire le journal CSV
+input string InpJournalFile      = "CalculateurNano_journal.csv"; // Fichier du journal (dossier Common\Files)
+input int    InpPanelX           = 10;   // Position X du panneau (pixels)
+input int    InpPanelY           = 30;   // Position Y du panneau (pixels)
+input int    InpPanelWidth       = 340;  // Largeur du panneau (pixels)
+input double InpPanelScale       = 1.0;  // Échelle du panneau (1.0 = normal)
+
+//=== Structures =====================================================
+// Résultat complet d'un calcul
+struct SCalc
+  {
+   bool     valid;          // les chiffres du trade sont calculés
+   bool     allowed;        // tous les contrôles sont passés
+   bool     hint;           // reason est une simple indication (pas de SL saisi)
+   string   reason;         // première raison de blocage ou indication
+   string   warn;           // avertissement : tes règles perso en mode Avertir
+   int      dir;            // +1 achat, -1 vente, 0 indéterminé
+   int      tier;           // 0, 1 ou 2
+   double   tierMult;       // multiplicateur du palier
+   double   budget;         // budget de risque du palier ($)
+   double   bid;
+   double   ask;
+   double   spread;         // ask - bid (prix)
+   double   entry;          // prix d'entrée : ask en achat, bid en vente
+   double   slEff;          // SL réellement envoyé
+   double   stopDist;       // distance entrée -> SL (prix)
+   double   valuePerPrice;  // valeur d'une unité de prix pour 1 lot ($)
+   double   lossPerLot;     // perte d'un lot au SL, commission incluse ($)
+   double   costPct;        // spread + commission en % du stop
+   double   lots;
+   double   risk;           // risque réel après arrondi des lots ($)
+   double   tp;
+   double   tpR;            // R net au TP
+   double   tpGain;         // gain net au TP ($)
+   bool     pocGiven;
+   bool     pocWrongSide;
+   bool     usePoc;         // le TP est placé au POC
+   double   pocTP;          // prix du TP au POC (décalé du spread en vente)
+   double   pocR;           // R net au POC
+   double   marginPct;      // marge utilisée après le trade (% de l'équité)
+
+   void Reset()
+     {
+      valid = false; allowed = false; hint = false; reason = ""; warn = "";
+      dir = 0; tier = 0; tierMult = 1.0; budget = 0.0;
+      bid = 0.0; ask = 0.0; spread = 0.0; entry = 0.0; slEff = 0.0; stopDist = 0.0;
+      valuePerPrice = 0.0; lossPerLot = 0.0; costPct = 0.0; lots = 0.0; risk = 0.0;
+      tp = 0.0; tpR = 0.0; tpGain = 0.0;
+      pocGiven = false; pocWrongSide = false; usePoc = false; pocTP = 0.0; pocR = 0.0;
+      marginPct = 0.0;
+     }
+  };
+
+// Ordre envoyé en attente de confirmation d'exécution
+struct SPending
+  {
+   bool     active;
+   ulong    order;
+   datetime sent;
+   int      dir;
+   double   slEff;
+   double   rCfg;
+   bool     usePoc;
+   double   riskPlanned;
+   double   spread;
+   double   tierMult;
+   double   poc;
+  };
+
+//=== Variables globales =============================================
+CTrade   g_trade;
+SCalc    g_calc;
+SPending g_pending;
+
+double   g_slInput         = 0.0;
+double   g_pocInput        = 0.0;
+double   g_rTarget         = 0.0;
+int      g_lockDir         = 0;   // sens imposé par un bouton Bougie
+int      g_candleSide      = 0;
+int      g_candleShift     = 1;
+datetime g_candleTime      = 0;
+string   g_lastSymbol      = "";
+bool     g_loaded          = false;
+
+datetime g_dayStart        = 0;
+double   g_dayRef          = 0.0; // max(balance, équité) à la remise à zéro
+bool     g_dayRefEstimated = false;
+int      g_tradesToday     = 0;
+int      g_lossesToday     = 0;
+int      g_openPositions   = 0;
+bool     g_openWithoutSL   = false;
+double   g_openRiskToSL    = 0.0; // perte supplémentaire si les positions touchent leur SL (<= 0)
+bool     g_statsDirty      = true;
+uint     g_lastStatsTick   = 0;
+
+datetime g_newsTimes[];
+string   g_newsNames[];
+bool     g_calendarOk      = false;
+uint     g_lastNewsTick    = 0;
+
+uint     g_lastRenderTick  = 0;
+string   g_flashText       = "";
+uint     g_flashUntil      = 0;
+uint     g_lastExecTick    = 0;
+
+// Armement : le SL et la bougie sont figés, seul le lot se recalcule
+bool     g_armed           = false;
+int      g_armDir          = 0;
+datetime g_armCandle       = 0;
+datetime g_armTime         = 0;
+double   g_armDist0        = 0.0;
+
+// Gestion automatique et statistiques
+bool     g_autoOn          = true;
+int      g_atrHandle       = INVALID_HANDLE;
+datetime g_lastAutoBar     = 0;
+uint     g_lastKeyE        = 0;
+string   g_statsTxt        = "Stats : -";
+uint     g_lastStatsCalc   = 0;
+
+// Mise en page : largeur d'un caractère mesurée, pour ne jamais déborder du cadre
+int      g_charPx          = 7;
+int      g_panInner        = 300;
+int      g_colL            = 170;
+int      g_colR            = 130;
+
+//+------------------------------------------------------------------+
+//| Outils : prix, lots, texte                                       |
+//+------------------------------------------------------------------+
+double TickSize()
+  {
+   double ts = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   if(ts <= 0.0)
+      ts = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   return ts;
+  }
+
+// Arrondi au tick : mode +1 vers le haut, -1 vers le bas, 0 au plus proche
+double RoundToTick(const double price, const int mode)
+  {
+   double ts = TickSize();
+   if(ts <= 0.0)
+      return NormalizeDouble(price, _Digits);
+   double n = price / ts;
+   double k = MathRound(n);
+   if(mode > 0)
+      k = MathCeil(n - 1e-7);
+   else if(mode < 0)
+      k = MathFloor(n + 1e-7);
+   return NormalizeDouble(k * ts, _Digits);
+  }
+
+int LotDigits()
+  {
+   double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   if(step <= 0.0)
+      return 2;
+   return (int)MathMax(0.0, MathCeil(-MathLog10(step) - 1e-9));
+  }
+
+// Lots arrondis vers le bas au pas du symbole, plafonnés au maximum
+double NormalizeLotsDown(const double lots)
+  {
+   double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   double vmax = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+   if(step <= 0.0)
+      step = 0.01;
+   double v = MathFloor(lots / step + 1e-7) * step;
+   if(vmax > 0.0 && v > vmax)
+      v = MathFloor(vmax / step + 1e-7) * step;
+   if(v < 0.0)
+      v = 0.0;
+   return NormalizeDouble(v, LotDigits());
+  }
+
+string Px(const double price)       { return DoubleToString(price, _Digits); }
+string Usd(const double v)          { return DoubleToString(v, 2) + " $"; }
+string SignedUsd(const double v)    { return (v >= 0.0 ? "+" : "") + DoubleToString(v, 2) + " $"; }
+string LotsStr(const double v)      { return DoubleToString(v, LotDigits()); }
+
+// Nombre au format français pour le CSV (virgule décimale)
+string Num(const double v, const int digits)
+  {
+   string s = DoubleToString(v, digits);
+   StringReplace(s, ".", ",");
+   return s;
+  }
+
+string Truncate(const string s, const int maxLen)
+  {
+   if(StringLen(s) <= maxLen)
+      return s;
+   return StringSubstr(s, 0, maxLen - 3) + "...";
+  }
+
+// Lit un nombre saisi (accepte la virgule), 0 si vide ou invalide
+double ParseNumber(string text)
+  {
+   StringReplace(text, ",", ".");
+   StringReplace(text, " ", "");
+   StringTrimLeft(text);
+   StringTrimRight(text);
+   if(StringLen(text) == 0)
+      return 0.0;
+   double v = StringToDouble(text);
+   return (v > 0.0) ? v : 0.0;
+  }
+
+void Block(string &block, const string msg)
+  {
+   if(block == "")
+      block = msg;
+  }
+
+void Flash(const string text, const uint ms = 4000)
+  {
+   g_flashText  = text;
+   g_flashUntil = GetTickCount() + ms;
+   Print(TAG, text);
+  }
+
+void AddUnique(ulong &arr[], const ulong v)
+  {
+   int n = ArraySize(arr);
+   for(int i = 0; i < n; i++)
+      if(arr[i] == v)
+         return;
+   ArrayResize(arr, n + 1);
+   arr[n] = v;
+  }
+
+ENUM_ORDER_TYPE_FILLING SymbolFilling()
+  {
+   int mode = (int)SymbolInfoInteger(_Symbol, SYMBOL_FILLING_MODE);
+   if((mode & SYMBOL_FILLING_FOK) == SYMBOL_FILLING_FOK)
+      return ORDER_FILLING_FOK;
+   if((mode & SYMBOL_FILLING_IOC) == SYMBOL_FILLING_IOC)
+      return ORDER_FILLING_IOC;
+   return ORDER_FILLING_RETURN;
+  }
+
+bool IsHedging()
+  {
+   return (AccountInfoInteger(ACCOUNT_MARGIN_MODE) == ACCOUNT_MARGIN_MODE_RETAIL_HEDGING);
+  }
+
+// Sélectionne la position d'identifiant posId et renvoie son ticket (0 si fermée)
+ulong SelectPositionById(const ulong posId)
+  {
+   int total = PositionsTotal();
+   for(int i = 0; i < total; i++)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      if((ulong)PositionGetInteger(POSITION_IDENTIFIER) == posId)
+         return ticket;
+     }
+   return 0;
+  }
+
+//+------------------------------------------------------------------+
+//| Registre des trades (variables globales du terminal)             |
+//+------------------------------------------------------------------+
+string GvBase()                                   { return GV_PREFIX + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "_"; }
+string GvName(const ulong posId, const string key) { return GvBase() + IntegerToString((long)posId) + "_" + key; }
+bool   GvHas(const ulong posId, const string key)  { return GlobalVariableCheck(GvName(posId, key)); }
+
+void GvSet(const ulong posId, const string key, const double v)
+  {
+   GlobalVariableSet(GvName(posId, key), v);
+  }
+
+double GvGet(const ulong posId, const string key, const double def = 0.0)
+  {
+   string n = GvName(posId, key);
+   if(GlobalVariableCheck(n))
+      return GlobalVariableGet(n);
+   return def;
+  }
+
+// Journalise les trades du registre fermés mais pas encore écrits
+void ScanRegistry()
+  {
+   string base  = GvBase();
+   int    bLen  = StringLen(base);
+   int    total = GlobalVariablesTotal();
+   ulong  ids[];
+   ArrayResize(ids, 0);
+   for(int i = 0; i < total; i++)
+     {
+      string name = GlobalVariableName(i);
+      if(StringFind(name, base) != 0)
+         continue;
+      int n = StringLen(name);
+      if(n <= bLen + 5 || StringSubstr(name, n - 5) != "_risk")
+         continue;
+      ulong id = (ulong)StringToInteger(StringSubstr(name, bLen, n - bLen - 5));
+      if(id > 0)
+         AddUnique(ids, id);
+     }
+   for(int k = 0; k < ArraySize(ids); k++)
+     {
+      if(GvHas(ids[k], "done"))
+         continue;
+      if(SelectPositionById(ids[k]) != 0)
+         continue;
+      JournalClosed(ids[k]);
+     }
+  }
+
+// Supprime les entrées journalisées depuis plus de 30 jours
+void CleanupRegistry()
+  {
+   string   base  = GvBase();
+   datetime limit = TimeCurrent() - 30 * 86400;
+   int      total = GlobalVariablesTotal();
+   string   prefixes[];
+   ArrayResize(prefixes, 0);
+   for(int i = 0; i < total; i++)
+     {
+      string name = GlobalVariableName(i);
+      if(StringFind(name, base) != 0)
+         continue;
+      int n = StringLen(name);
+      if(n > 5 && StringSubstr(name, n - 5) == "_done" && GlobalVariableTime(name) < limit)
+        {
+         int m = ArraySize(prefixes);
+         ArrayResize(prefixes, m + 1);
+         prefixes[m] = StringSubstr(name, 0, n - 4); // garde "CNlogin_position_"
+        }
+     }
+   for(int k = 0; k < ArraySize(prefixes); k++)
+      GlobalVariablesDeleteAll(prefixes[k]);
+  }
+
+//+------------------------------------------------------------------+
+//| Statistiques du jour                                             |
+//+------------------------------------------------------------------+
+datetime DayStartFor(const datetime now)
+  {
+   MqlDateTime dt;
+   TimeToStruct(now, dt);
+   dt.hour = InpResetHourServer;
+   dt.min  = 0;
+   dt.sec  = 0;
+   datetime t = StructToTime(dt);
+   if(t > now)
+      t -= 86400;
+   return t;
+  }
+
+void SaveDayRef()
+  {
+   GlobalVariableSet(GvBase() + "daykey", (double)g_dayStart);
+   GlobalVariableSet(GvBase() + "dayref", g_dayRef);
+   GlobalVariableSet(GvBase() + "dayest", g_dayRefEstimated ? 1.0 : 0.0);
+  }
+
+// Balance au début de la journée = balance actuelle - opérations depuis
+double EstimateBalanceAt(const datetime fromTime, bool &hadDeals)
+  {
+   hadDeals = false;
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   if(!HistorySelect(fromTime, TimeTradeServer() + 86400))
+      return balance;
+   double sum   = 0.0;
+   int    total = HistoryDealsTotal();
+   for(int i = 0; i < total; i++)
+     {
+      ulong d = HistoryDealGetTicket(i);
+      if(d == 0)
+         continue;
+      if((datetime)HistoryDealGetInteger(d, DEAL_TIME) < fromTime)
+         continue;
+      sum += HistoryDealGetDouble(d, DEAL_PROFIT) + HistoryDealGetDouble(d, DEAL_COMMISSION)
+           + HistoryDealGetDouble(d, DEAL_SWAP)   + HistoryDealGetDouble(d, DEAL_FEE);
+      hadDeals = true;
+     }
+   return balance - sum;
+  }
+
+double PositionNetFromHistory(const ulong posId)
+  {
+   if(!HistorySelectByPosition(posId))
+      return 0.0;
+   double net   = 0.0;
+   int    total = HistoryDealsTotal();
+   for(int i = 0; i < total; i++)
+     {
+      ulong d = HistoryDealGetTicket(i);
+      if(d == 0)
+         continue;
+      net += HistoryDealGetDouble(d, DEAL_PROFIT) + HistoryDealGetDouble(d, DEAL_COMMISSION)
+           + HistoryDealGetDouble(d, DEAL_SWAP)   + HistoryDealGetDouble(d, DEAL_FEE);
+     }
+   return net;
+  }
+
+void RefreshDayStats()
+  {
+   datetime now      = TimeTradeServer();
+   datetime dayStart = DayStartFor(now);
+
+   //--- Référence du jour, comme la firme : max(balance, équité) à la remise à zéro
+   if(dayStart != g_dayStart)
+     {
+      bool liveCross = (g_dayStart != 0);
+      g_dayStart = dayStart;
+      string keyName = GvBase() + "daykey";
+      string refName = GvBase() + "dayref";
+      string estName = GvBase() + "dayest";
+
+      if(GlobalVariableCheck(keyName) && GlobalVariableCheck(refName) &&
+         (datetime)GlobalVariableGet(keyName) == dayStart)
+        {
+         g_dayRef          = GlobalVariableGet(refName);
+         g_dayRefEstimated = (GlobalVariableCheck(estName) && GlobalVariableGet(estName) > 0.5);
+        }
+      else if(liveCross)
+        {
+         g_dayRef          = MathMax(AccountInfoDouble(ACCOUNT_BALANCE), AccountInfoDouble(ACCOUNT_EQUITY));
+         g_dayRefEstimated = false;
+         SaveDayRef();
+        }
+      else
+        {
+         bool   hadDeals = false;
+         double balStart = EstimateBalanceAt(dayStart, hadDeals);
+         g_dayRefEstimated = (hadDeals || PositionsTotal() > 0);
+         g_dayRef = g_dayRefEstimated ? balStart : MathMax(balStart, AccountInfoDouble(ACCOUNT_EQUITY));
+         SaveDayRef();
+        }
+     }
+
+   //--- Trades ouverts et positions fermées depuis la remise à zéro
+   ulong opened[];
+   ulong closed[];
+   ArrayResize(opened, 0);
+   ArrayResize(closed, 0);
+   if(HistorySelect(dayStart, now + 86400))
+     {
+      int total = HistoryDealsTotal();
+      for(int i = 0; i < total; i++)
+        {
+         ulong d = HistoryDealGetTicket(i);
+         if(d == 0)
+            continue;
+         long dtype = HistoryDealGetInteger(d, DEAL_TYPE);
+         if(dtype != DEAL_TYPE_BUY && dtype != DEAL_TYPE_SELL)
+            continue;
+         if((datetime)HistoryDealGetInteger(d, DEAL_TIME) < dayStart)
+            continue;
+         long  dentry = HistoryDealGetInteger(d, DEAL_ENTRY);
+         ulong pos    = (ulong)HistoryDealGetInteger(d, DEAL_POSITION_ID);
+         if(dentry == DEAL_ENTRY_IN)
+            AddUnique(opened, pos);
+         else if(dentry == DEAL_ENTRY_OUT || dentry == DEAL_ENTRY_OUT_BY || dentry == DEAL_ENTRY_INOUT)
+            AddUnique(closed, pos);
+        }
+     }
+   g_tradesToday = ArraySize(opened);
+
+   //--- Pertes : trades fermés sous -X R (un break-even ne compte pas)
+   int losses = 0;
+   for(int k = 0; k < ArraySize(closed); k++)
+     {
+      if(SelectPositionById(closed[k]) != 0)
+         continue; // encore partiellement ouverte
+      double net  = PositionNetFromHistory(closed[k]);
+      double risk = GvGet(closed[k], "risk", 0.0);
+      bool   loss = (risk > 0.0) ? (net < -InpLossThresholdR * risk) : (net < 0.0);
+      if(loss)
+         losses++;
+     }
+   g_lossesToday = losses;
+
+   g_statsDirty    = false;
+   g_lastStatsTick = GetTickCount();
+  }
+
+// Positions ouvertes : nombre, SL manquant, perte supplémentaire jusqu'aux SL
+void ScanOpenPositions()
+  {
+   g_openPositions = 0;
+   g_openWithoutSL = false;
+   g_openRiskToSL  = 0.0;
+   int total = PositionsTotal();
+   for(int i = 0; i < total; i++)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      g_openPositions++;
+      double sl = PositionGetDouble(POSITION_SL);
+      if(sl <= 0.0)
+        {
+         g_openWithoutSL = true;
+         continue;
+        }
+      string sym = PositionGetString(POSITION_SYMBOL);
+      double vol = PositionGetDouble(POSITION_VOLUME);
+      double cur = PositionGetDouble(POSITION_PRICE_CURRENT);
+      ENUM_ORDER_TYPE otype = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+      double p = 0.0;
+      if(OrderCalcProfit(otype, sym, vol, cur, sl, p))
+         g_openRiskToSL += MathMin(0.0, p);
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Filtre news (calendrier économique MT5, heure serveur)           |
+//+------------------------------------------------------------------+
+void RefreshNews()
+  {
+   ArrayResize(g_newsTimes, 0);
+   ArrayResize(g_newsNames, 0);
+   g_calendarOk   = false;
+   g_lastNewsTick = GetTickCount();
+   if(!InpNewsFilter || MQLInfoInteger(MQL_TESTER))
+      return;
+
+   datetime now = TimeTradeServer();
+   string   parts[];
+   int      n = StringSplit(InpNewsCurrencies, ',', parts);
+   for(int k = 0; k < n; k++)
+     {
+      string ccy = parts[k];
+      StringTrimLeft(ccy);
+      StringTrimRight(ccy);
+      StringToUpper(ccy);
+      if(StringLen(ccy) == 0)
+         continue;
+
+      MqlCalendarValue values[];
+      ResetLastError();
+      bool got = (bool)CalendarValueHistory(values, now - 3600, now + 86400, NULL, ccy);
+      int  cnt = ArraySize(values);
+      if(!got && cnt == 0 && GetLastError() != 0)
+         continue;
+      g_calendarOk = true;
+
+      for(int i = 0; i < cnt; i++)
+        {
+         MqlCalendarEvent ev;
+         if(!CalendarEventById(values[i].event_id, ev))
+            continue;
+         if(ev.importance != CALENDAR_IMPORTANCE_HIGH)
+            continue;
+         int m = ArraySize(g_newsTimes);
+         ArrayResize(g_newsTimes, m + 1);
+         ArrayResize(g_newsNames, m + 1);
+         g_newsTimes[m] = values[i].time;
+         g_newsNames[m] = ccy + " " + ev.name;
+        }
+     }
+  }
+
+// true si une annonce forte est dans la fenêtre ; sinon name/when = prochaine annonce
+bool NewsCheck(const datetime now, string &name, datetime &when, bool &inWindow)
+  {
+   inWindow = false;
+   name     = "";
+   when     = 0;
+   long win = (long)(InpNewsWindowMin > 0 ? InpNewsWindowMin : 0) * 60;
+   int  best = -1;
+   int  n = ArraySize(g_newsTimes);
+   for(int i = 0; i < n; i++)
+     {
+      long diff  = (long)g_newsTimes[i] - (long)now;
+      long adiff = (diff < 0) ? -diff : diff;
+      if(adiff <= win)
+        {
+         inWindow = true;
+         name     = g_newsNames[i];
+         when     = g_newsTimes[i];
+         return true;
+        }
+      if(diff > 0 && (best < 0 || g_newsTimes[i] < g_newsTimes[best]))
+         best = i;
+     }
+   if(best >= 0)
+     {
+      name = g_newsNames[best];
+      when = g_newsTimes[best];
+     }
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+//| Moteur de calcul                                                 |
+//+------------------------------------------------------------------+
+void ComputeCalc(SCalc &c)
+  {
+   c.Reset();
+   string block = "";   // blocage dur : firme, broker ou terminal
+   string soft  = "";   // avertissement : tes règles personnelles
+
+   double initial = InpInitialBalance;
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double equity  = AccountInfoDouble(ACCOUNT_EQUITY);
+
+   //--- 1. Palier de risque selon la plus basse valeur entre balance et équité
+   double lowest = MathMin(balance, equity);
+   double ddPct  = (initial - lowest) / initial * 100.0;
+   if(ddPct >= InpTier2DDPct)
+     {
+      c.tier     = 2;
+      c.tierMult = InpTier2Mult;
+     }
+   else if(ddPct >= InpTier1DDPct)
+     {
+      c.tier     = 1;
+      c.tierMult = InpTier1Mult;
+     }
+   c.budget = initial * InpRiskPct / 100.0 * c.tierMult;
+
+   //--- 2. Contrôles du compte, indépendants du SL
+   ScanOpenPositions();
+   double internalFloor = g_dayRef - InpDailyStopPct / 100.0 * initial;
+   double firmDayFloor  = g_dayRef - InpFirmDailyPct / 100.0 * initial;
+   double maxFloor      = initial * (1.0 - InpFirmMaxPct / 100.0);
+   long   symMode       = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_MODE);
+
+   string   newsName = "";
+   datetime newsTime = 0;
+   bool     inNews   = false;
+   if(InpNewsFilter)
+      NewsCheck(TimeTradeServer(), newsName, newsTime, inNews);
+
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) || !MQLInfoInteger(MQL_TRADE_ALLOWED))
+      Block(block, "Algo Trading désactivé");
+   if(!AccountInfoInteger(ACCOUNT_TRADE_ALLOWED) || !AccountInfoInteger(ACCOUNT_TRADE_EXPERT))
+      Block(block, "Trading refusé par le compte");
+   if(symMode == SYMBOL_TRADE_MODE_DISABLED || symMode == SYMBOL_TRADE_MODE_CLOSEONLY)
+      Block(block, "Symbole non négociable");
+   if(g_tradesToday >= InpMaxTradesDay)
+      Block(soft, StringFormat("%d trades aujourd'hui (max %d)", g_tradesToday, InpMaxTradesDay));
+   if(g_lossesToday >= InpMaxLossesDay)
+      Block(soft, StringFormat("%d pertes aujourd'hui (max %d)", g_lossesToday, InpMaxLossesDay));
+   if(g_openPositions >= InpMaxOpenPositions)
+      Block(soft, StringFormat("%d position(s) déjà ouverte(s)", g_openPositions));
+   if(g_openWithoutSL)
+      Block(soft, "Une position ouverte n'a pas de SL");
+   if(equity <= internalFloor)
+      Block(soft, "Stop journalier de secours atteint");
+   if(equity <= maxFloor)
+      Block(block, "Plancher de perte max atteint");
+   if(inNews)
+      Block(soft, "News " + newsName + " à " + TimeToString(newsTime, TIME_MINUTES));
+   c.warn = soft;
+
+   //--- 3. Cotation et SL
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol, tick) || tick.bid <= 0.0 || tick.ask <= 0.0)
+     {
+      c.reason = (block != "") ? block : "Pas de cotation";
+      return;
+     }
+   c.bid    = tick.bid;
+   c.ask    = tick.ask;
+   c.spread = tick.ask - tick.bid;
+
+   if(g_slInput <= 0.0)
+     {
+      c.hint   = (block == "");
+      c.reason = (block != "") ? block : "Saisis un SL ou appuie sur un bouton Bougie";
+      return;
+     }
+
+   if(g_slInput < c.bid)
+     {
+      //--- Achat : entrée au ask, stop déclenché sur le bid
+      c.dir   = 1;
+      c.entry = c.ask;
+      c.slEff = RoundToTick(g_slInput, -1);
+     }
+   else if(g_slInput > c.bid)
+     {
+      //--- Vente : entrée au bid, stop déclenché sur l'ask, d'où l'ajout du spread
+      c.dir   = -1;
+      c.entry = c.bid;
+      c.slEff = RoundToTick(InpSellSpreadAdjust ? g_slInput + c.spread : g_slInput, 1);
+      if(c.slEff <= c.ask)
+        {
+         c.dir    = 0;
+         c.reason = (block != "") ? block : "SL trop proche du prix";
+         return;
+        }
+     }
+   else
+     {
+      c.reason = (block != "") ? block : "SL égal au prix actuel";
+      return;
+     }
+
+   if(g_lockDir != 0 && c.dir != g_lockDir)
+     {
+      c.dir    = 0;
+      c.reason = (g_lockDir > 0) ? "Prix déjà passé sous le bas de la bougie"
+                                 : "Prix déjà passé au-dessus du haut de la bougie";
+      return;
+     }
+
+   c.stopDist = MathAbs(c.entry - c.slEff);
+   if(c.stopDist <= 0.0)
+     {
+      c.dir    = 0;
+      c.reason = (block != "") ? block : "Distance de stop nulle";
+      return;
+     }
+
+   ENUM_ORDER_TYPE otype = (c.dir > 0) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   double comm = MathMax(0.0, InpCommissionPerLot);
+
+   //--- 4. Perte d'un lot au SL, calculée par MT5 (aucune hypothèse sur le contrat)
+   double lossPrice = 0.0;
+   double pr        = 0.0;
+   if(OrderCalcProfit(otype, _Symbol, 1.0, c.entry, c.slEff, pr) && pr < 0.0)
+      lossPrice = -pr;
+   else
+     {
+      double tv = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE_LOSS);
+      if(tv <= 0.0)
+         tv = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+      double ts = TickSize();
+      if(tv > 0.0 && ts > 0.0)
+         lossPrice = c.stopDist / ts * tv;
+     }
+   if(lossPrice <= 0.0)
+     {
+      c.reason = (block != "") ? block : "Valeur du tick indisponible";
+      return;
+     }
+
+   c.valuePerPrice = lossPrice / c.stopDist;
+   c.lossPerLot    = lossPrice + comm;
+   c.costPct       = (c.spread + comm / c.valuePerPrice) / c.stopDist * 100.0;
+
+   //--- 5. Lots arrondis vers le bas : le risque réel ne dépasse jamais le budget
+   double vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   c.lots = NormalizeLotsDown(c.budget / c.lossPerLot);
+   c.risk = c.lots * c.lossPerLot;
+
+   //--- 6. TP au R cible : gain net de commission = R cible x risque
+   double distR = (g_rTarget * c.lossPerLot + comm) / c.valuePerPrice;
+   double tpR   = (c.dir > 0) ? RoundToTick(c.entry + distR, 1) : RoundToTick(c.entry - distR, -1);
+
+   //--- 7. POC facultatif (décalé du spread en vente pour être touché au niveau du graphique)
+   c.pocGiven = (g_pocInput > 0.0);
+   if(c.pocGiven)
+     {
+      double poc = (c.dir < 0 && InpSellSpreadAdjust) ? g_pocInput + c.spread : g_pocInput;
+      c.pocTP        = (c.dir > 0) ? RoundToTick(poc, -1) : RoundToTick(poc, 1);
+      c.pocWrongSide = ((c.dir > 0 && c.pocTP <= c.entry) || (c.dir < 0 && c.pocTP >= c.entry));
+      if(!c.pocWrongSide)
+        {
+         double g = 0.0;
+         if(OrderCalcProfit(otype, _Symbol, 1.0, c.entry, c.pocTP, g))
+            c.pocR = (g - comm) / c.lossPerLot;
+         else
+            c.pocR = (MathAbs(c.pocTP - c.entry) * c.valuePerPrice - comm) / c.lossPerLot;
+         c.usePoc = (InpTPMode == TP_POC_SI_SAISI);
+        }
+     }
+   c.tp = c.usePoc ? c.pocTP : tpR;
+
+   double gtp = 0.0;
+   if(OrderCalcProfit(otype, _Symbol, 1.0, c.entry, c.tp, gtp))
+      c.tpR = (gtp - comm) / c.lossPerLot;
+   else
+      c.tpR = (MathAbs(c.tp - c.entry) * c.valuePerPrice - comm) / c.lossPerLot;
+   c.tpGain = c.tpR * c.risk;
+
+   //--- 8. Marge utilisée après le trade
+   double marginNow = AccountInfoDouble(ACCOUNT_MARGIN);
+   double mReq      = 0.0;
+   if(equity > 0.0)
+     {
+      if(c.lots > 0.0 && OrderCalcMargin(otype, _Symbol, c.lots, c.entry, mReq))
+         c.marginPct = (marginNow + mReq) / equity * 100.0;
+      else
+         c.marginPct = marginNow / equity * 100.0;
+     }
+
+   c.valid = true;
+
+   //--- 9. Contrôles du trade
+   double stopsLvl = (double)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   double worstEq  = equity + g_openRiskToSL - c.risk;
+
+   if((c.dir > 0 && symMode == SYMBOL_TRADE_MODE_SHORTONLY) || (c.dir < 0 && symMode == SYMBOL_TRADE_MODE_LONGONLY))
+      Block(block, "Sens interdit sur ce symbole");
+   if(c.pocGiven && c.pocWrongSide)
+      Block(block, "POC du mauvais côté du prix");
+   if(c.pocGiven && !c.pocWrongSide && c.pocR < InpMinRPoc)
+      Block(soft, StringFormat("POC à %.1fR, minimum %.1fR", c.pocR, InpMinRPoc));
+   if(c.costPct > InpMaxCostPct)
+      Block(block, StringFormat("Coûts %.1f %% du stop (max %.1f %%)", c.costPct, InpMaxCostPct));
+   if(c.lots <= 0.0 || c.lots < vmin)
+      Block(block, "Lot calculé sous le minimum de " + LotsStr(vmin));
+   if(stopsLvl > 0.0 &&
+      ((c.dir > 0 && (c.bid - c.slEff < stopsLvl || c.tp - c.bid < stopsLvl)) ||
+       (c.dir < 0 && (c.slEff - c.ask < stopsLvl || c.ask - c.tp < stopsLvl))))
+      Block(block, "SL ou TP trop proche (minimum du broker)");
+   if(c.marginPct > InpMaxMarginPct)
+      Block(block, StringFormat("Marge %.0f %% après trade (max %.0f %%)", c.marginPct, InpMaxMarginPct));
+   if(worstEq < internalFloor)
+      Block(soft, StringFormat("SL touché = sous le stop journalier de %.1f %%", InpDailyStopPct));
+   if(worstEq <= firmDayFloor)
+      Block(block, "SL touché = limite journalière de la firme");
+   if(worstEq <= maxFloor)
+      Block(block, "SL touché = plancher de perte max");
+
+   c.warn = soft;
+   if(InpSelfRules == RULE_BLOQUER && block == "")
+      block = soft;
+   c.reason  = block;
+   c.allowed = (block == "");
+  }
+
+//+------------------------------------------------------------------+
+//| Panneau : création des objets                                    |
+//+------------------------------------------------------------------+
+void MkRect(const string name, const int x, const int y, const int w, const int h, const color bg, const color border)
+  {
+   ObjectCreate(0, name, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, w);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, h);
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bg);
+   ObjectSetInteger(0, name, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, border);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, 0);
+  }
+
+void MkLabel(const string name, const int x, const int y, const string text, const color clr, const int fs,
+             const string font = "Consolas")
+  {
+   ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetString(0, name, OBJPROP_TEXT, (text == "") ? " " : text);
+   ObjectSetString(0, name, OBJPROP_FONT, font);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fs);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, 5);
+  }
+
+void MkEdit(const string name, const int x, const int y, const int w, const int h, const string text, const int fs)
+  {
+   ObjectCreate(0, name, OBJ_EDIT, 0, 0, 0);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, w);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, h);
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetString(0, name, OBJPROP_FONT, "Consolas");
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fs);
+   ObjectSetInteger(0, name, OBJPROP_ALIGN, ALIGN_RIGHT);
+   ObjectSetInteger(0, name, OBJPROP_READONLY, false);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clrWhite);
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, CLR_EDIT_BG);
+   ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, CLR_BORDER);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, 10);
+  }
+
+void MkButton(const string name, const int x, const int y, const int w, const int h, const string text,
+              const color bg, const color fg, const int fs, const string font = "Arial")
+  {
+   ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, w);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, h);
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetString(0, name, OBJPROP_FONT, font);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fs);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, fg);
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bg);
+   ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, CLR_BORDER);
+   ObjectSetInteger(0, name, OBJPROP_STATE, false);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, 10);
+  }
+
+void SetLabel(const string name, const string text, const color clr)
+  {
+   if(ObjectFind(0, name) < 0)
+      return;
+   string t = (text == "") ? " " : text;
+   if(ObjectGetString(0, name, OBJPROP_TEXT) != t)
+      ObjectSetString(0, name, OBJPROP_TEXT, t);
+   if((color)ObjectGetInteger(0, name, OBJPROP_COLOR) != clr)
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+  }
+
+void SetButton(const string name, const color bg, const color fg)
+  {
+   if(ObjectFind(0, name) < 0)
+      return;
+   if((color)ObjectGetInteger(0, name, OBJPROP_BGCOLOR) != bg)
+      ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bg);
+   if((color)ObjectGetInteger(0, name, OBJPROP_COLOR) != fg)
+      ObjectSetInteger(0, name, OBJPROP_COLOR, fg);
+  }
+
+void SetEditText(const string name, const string text)
+  {
+   if(ObjectFind(0, name) >= 0)
+      ObjectSetString(0, name, OBJPROP_TEXT, text);
+  }
+
+//+------------------------------------------------------------------+
+//| Position en cours : break-even et paliers R1, R2, R3             |
+//+------------------------------------------------------------------+
+string TFName(const ENUM_TIMEFRAMES tf)
+  {
+   string s = EnumToString(tf);
+   return (StringFind(s, "PERIOD_") == 0) ? StringSubstr(s, 7) : s;
+  }
+
+// Première position de l'EA sur le symbole (0 si aucune) ; elle reste sélectionnée
+ulong CurrentPosition()
+  {
+   int total = PositionsTotal();
+   for(int i = 0; i < total; i++)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      if(PositionGetInteger(POSITION_MAGIC) != InpMagic)
+         continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)
+         continue;
+      return ticket;
+     }
+   return 0;
+  }
+
+string LevelName(const int level)
+  {
+   if(level <= 0)
+      return "SL initial";
+   if(level == 1)
+      return "BE";
+   return "R" + IntegerToString(level - 1);
+  }
+
+// Prix d'un palier : 1 = break-even (coûts inclus), 2 = R1, 3 = R2, 4 = R3
+double LevelPrice(const int level, const int dir, const double entry, const double slInit)
+  {
+   double rDist = MathAbs(entry - slInit);
+   if(level <= 0 || rDist <= 0.0)
+      return slInit;
+   if(level == 1)
+     {
+      double offset = 0.0;
+      if(InpBEIncludeCosts)
+        {
+         double p = 0.0;
+         if(OrderCalcProfit((dir > 0) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, _Symbol, 1.0, entry, entry + rDist, p) && p != 0.0)
+           {
+            double valuePerPrice = MathAbs(p) / rDist;
+            if(valuePerPrice > 0.0)
+               offset = MathMax(0.0, InpCommissionPerLot) / valuePerPrice;
+           }
+        }
+      return RoundToTick((dir > 0) ? entry + offset : entry - offset, (dir > 0) ? 1 : -1);
+     }
+   double mult = (double)(level - 1);
+   return RoundToTick((dir > 0) ? entry + mult * rDist : entry - mult * rDist, (dir > 0) ? -1 : 1);
+  }
+
+// Déplace le stop de la position en cours vers le palier demandé, jamais en arrière
+bool MoveStop(const int level)
+  {
+   ulong ticket = CurrentPosition();
+   if(ticket == 0)
+     {
+      Flash("Aucune position ouverte");
+      return false;
+     }
+   ulong  posId  = (ulong)PositionGetInteger(POSITION_IDENTIFIER);
+   int    dir    = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? 1 : -1;
+   double entry  = PositionGetDouble(POSITION_PRICE_OPEN);
+   double curSL  = PositionGetDouble(POSITION_SL);
+   double tp     = PositionGetDouble(POSITION_TP);
+   double slInit = GvGet(posId, "sl", curSL);
+   if(slInit <= 0.0)
+      slInit = curSL;
+   if(slInit <= 0.0)
+     {
+      Flash("SL initial inconnu : impossible de calculer les paliers", 6000);
+      return false;
+     }
+
+   double target = LevelPrice(level, dir, entry, slInit);
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol, tick))
+     {
+      Flash("Pas de cotation");
+      return false;
+     }
+   double stopsLvl = (double)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   if((dir > 0 && target >= tick.bid - stopsLvl) || (dir < 0 && target <= tick.ask + stopsLvl))
+     {
+      Flash("Le prix n'a pas encore atteint " + LevelName(level));
+      return false;
+     }
+   if(curSL > 0.0 && ((dir > 0 && target <= curSL) || (dir < 0 && target >= curSL)))
+     {
+      Flash("Le stop est déjà à ce niveau ou plus loin");
+      return false;
+     }
+
+   bool ok = IsHedging() ? g_trade.PositionModify(ticket, target, tp) : g_trade.PositionModify(_Symbol, target, tp);
+   uint rc = g_trade.ResultRetcode();
+   if(!ok || (rc != TRADE_RETCODE_DONE && rc != TRADE_RETCODE_NO_CHANGES))
+     {
+      Flash("Stop non déplacé : " + g_trade.ResultRetcodeDescription(), 6000);
+      return false;
+     }
+   GvSet(posId, "lvl", (double)level);
+   GvSet(posId, "slwr", target);
+   Flash("Stop au " + LevelName(level) + " : " + Px(target), 3000);
+   return true;
+  }
+
+//+------------------------------------------------------------------+
+//| Armement : le SL de la bougie repérée est figé jusqu'à l'envoi   |
+//+------------------------------------------------------------------+
+void SaveArm()
+  {
+   GlobalVariableSet(GvBase() + "armdir", (double)g_armDir);
+   GlobalVariableSet(GvBase() + "armsl",  g_slInput);
+   GlobalVariableSet(GvBase() + "armct",  (double)g_armCandle);
+   GlobalVariableSet(GvBase() + "armt",   (double)g_armTime);
+   GlobalVariableSet(GvBase() + "armd0",  g_armDist0);
+  }
+
+void LoadArm()
+  {
+   if(!GlobalVariableCheck(GvBase() + "armdir"))
+      return;
+   int dir = (int)GlobalVariableGet(GvBase() + "armdir");
+   double sl = GlobalVariableCheck(GvBase() + "armsl") ? GlobalVariableGet(GvBase() + "armsl") : 0.0;
+   if(dir == 0 || sl <= 0.0)
+      return;
+   g_armed      = true;
+   g_armDir     = dir;
+   g_slInput    = sl;
+   g_lockDir    = dir;
+   g_candleSide = dir;
+   g_armCandle  = (datetime)GlobalVariableGet(GvBase() + "armct");
+   g_candleTime = g_armCandle;
+   g_armTime    = (datetime)GlobalVariableGet(GvBase() + "armt");
+   g_armDist0   = GlobalVariableCheck(GvBase() + "armd0") ? GlobalVariableGet(GvBase() + "armd0") : 0.0;
+  }
+
+void Disarm(const bool clearFields)
+  {
+   g_armed     = false;
+   g_armDir    = 0;
+   g_armCandle = 0;
+   g_armTime   = 0;
+   g_armDist0  = 0.0;
+   GlobalVariablesDeleteAll(GvBase() + "arm");
+   ObjectDelete(0, PFXM + "ARM");
+   ChartRedraw(0);
+   if(clearFields)
+      ClearInputs();
+  }
+
+// Arme sur la dernière bougie clôturée de l'unité des boutons Bougie
+void Arm(const int side)
+  {
+   SetCandleSL(side, true);
+   if(g_slInput <= 0.0)
+      return;
+   MqlTick tick;
+   double ref = 0.0;
+   if(SymbolInfoTick(_Symbol, tick))
+      ref = (side > 0) ? tick.ask : tick.bid;
+   g_armed     = true;
+   g_armDir    = side;
+   g_armCandle = g_candleTime;
+   g_armTime   = TimeTradeServer();
+   g_armDist0  = (ref > 0.0) ? MathAbs(ref - g_slInput) : 0.0;
+   SaveArm();
+   MarkArm();
+   Flash((side > 0) ? "ARMÉ ACHAT : Espace pour envoyer" : "ARMÉ VENTE : Espace pour envoyer", 3000);
+  }
+
+//+------------------------------------------------------------------+
+//| Gestion automatique : BE structurel, trailing, TP glissant       |
+//+------------------------------------------------------------------+
+double AutoAtr()
+  {
+   if(g_atrHandle == INVALID_HANDLE)
+      return 0.0;
+   double buf[];
+   if(CopyBuffer(g_atrHandle, 0, 1, 1, buf) != 1)
+      return 0.0;
+   return buf[0];
+  }
+
+// Dernier creux (dir > 0) ou sommet (dir < 0) confirmé sur l'unité surveillée
+double LastSwing(const int dir)
+  {
+   int len = (InpSwingLen > 0) ? InpSwingLen : 1;
+   for(int i = len + 1; i <= 60; i++)
+     {
+      double v = (dir > 0) ? iLow(_Symbol, InpAutoTF, i) : iHigh(_Symbol, InpAutoTF, i);
+      if(v <= 0.0)
+         break;
+      bool ok = true;
+      for(int k = 1; k <= len && ok; k++)
+        {
+         double a = (dir > 0) ? iLow(_Symbol, InpAutoTF, i - k) : iHigh(_Symbol, InpAutoTF, i - k);
+         double b = (dir > 0) ? iLow(_Symbol, InpAutoTF, i + k) : iHigh(_Symbol, InpAutoTF, i + k);
+         if(a <= 0.0 || b <= 0.0)
+           {
+            ok = false;
+            break;
+           }
+         if(dir > 0 && (a < v || b < v))
+            ok = false;
+         if(dir < 0 && (a > v || b > v))
+            ok = false;
+        }
+      if(ok)
+         return v;
+     }
+   return 0.0;
+  }
+
+bool WriteSL(const ulong ticket, const ulong posId, const double sl, const double tp, const string why)
+  {
+   bool ok = IsHedging() ? g_trade.PositionModify(ticket, sl, tp) : g_trade.PositionModify(_Symbol, sl, tp);
+   uint rc = g_trade.ResultRetcode();
+   if(!ok || (rc != TRADE_RETCODE_DONE && rc != TRADE_RETCODE_NO_CHANGES))
+     {
+      Print(TAG, "Stop non déplacé (", why, ") : ", g_trade.ResultRetcodeDescription());
+      return false;
+     }
+   GvSet(posId, "slwr", sl);
+   Flash(why + " : " + Px(sl), 3000);
+   return true;
+  }
+
+// Appelée une fois par bougie fermée de l'unité surveillée
+void AutoManage()
+  {
+   if(!g_autoOn)
+      return;
+   ulong ticket = CurrentPosition();
+   if(ticket == 0)
+      return;
+
+   ulong  posId  = (ulong)PositionGetInteger(POSITION_IDENTIFIER);
+   int    dir    = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? 1 : -1;
+   double entry  = PositionGetDouble(POSITION_PRICE_OPEN);
+   double curSL  = PositionGetDouble(POSITION_SL);
+   double curTP  = PositionGetDouble(POSITION_TP);
+   double slInit = GvGet(posId, "sl", curSL);
+   double rDist  = MathAbs(entry - slInit);
+   if(rDist <= 0.0)
+      return;
+
+   //--- Tes actions priment : un SL différent de celui écrit par l'EA fige l'automatique
+   double written = GvGet(posId, "slwr", slInit);
+   if(curSL > 0.0 && MathAbs(curSL - written) > TickSize() * 0.5 && GvGet(posId, "man", 0.0) < 0.5)
+     {
+      GvSet(posId, "man", 1.0);
+      Flash("Stop déplacé à la main : automatique arrêté sur ce trade", 6000);
+     }
+   if(GvGet(posId, "man", 0.0) > 0.5)
+      return;
+
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol, tick))
+      return;
+   double c1 = iClose(_Symbol, InpAutoTF, 1);
+   double o1 = iOpen(_Symbol, InpAutoTF, 1);
+   if(c1 <= 0.0 || o1 <= 0.0)
+      return;
+
+   double atr    = AutoAtr();
+   double guard  = MathMax(0.0, InpMinAtrDist * atr);
+   double spread = tick.ask - tick.bid;
+   double rNow   = (dir > 0) ? (c1 - entry) / rDist : (entry - c1) / rDist;
+   int    lvl    = (int)GvGet(posId, "lvl", 0.0);
+
+   //--- Coûts convertis en prix, pour un break-even réellement à zéro
+   double beOff = 0.0;
+   double pr    = 0.0;
+   if(OrderCalcProfit((dir > 0) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, _Symbol, 1.0, entry, entry + rDist, pr) && pr != 0.0)
+     {
+      double vpp = MathAbs(pr) / rDist;
+      if(vpp > 0.0)
+         beOff = MathMax(0.0, InpCommissionPerLot) / vpp;
+     }
+   double floorPrice = (dir > 0) ? entry + beOff : entry - beOff;
+
+   //--- 1. Break-even structurel, puis trailing structurel
+   double target = 0.0;
+   string why    = "";
+   if(lvl < 1 && rNow >= InpBETriggerR)
+     {
+      double sw = LastSwing(dir);
+      target = floorPrice;
+      if(sw > 0.0)
+        {
+         double cand = (dir > 0) ? sw - spread : sw + spread;
+         if((dir > 0 && cand > floorPrice) || (dir < 0 && cand < floorPrice))
+            target = cand;
+        }
+      why = "BE automatique";
+     }
+   else
+      if(lvl >= 1 && InpAutoTrail)
+        {
+         double sw = LastSwing(dir);
+         if(sw > 0.0)
+           {
+            double cand = RoundToTick((dir > 0) ? sw - spread : sw + spread, (dir > 0) ? -1 : 1);
+            bool better = (dir > 0) ? (cand > curSL + TickSize() * 0.5) : (cand < curSL - TickSize() * 0.5);
+            if(better)
+              {
+               target = cand;
+               why    = "Trailing automatique";
+              }
+           }
+        }
+
+   if(target > 0.0)
+     {
+      target = RoundToTick(target, (dir > 0) ? -1 : 1);
+      bool farEnough = (dir > 0) ? (tick.bid - target >= guard) : (target - tick.ask >= guard);
+      double stopsLvl = (double)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+      bool legal = (dir > 0) ? (target < tick.bid - stopsLvl) : (target > tick.ask + stopsLvl);
+      if(farEnough && legal)
+        {
+         if(WriteSL(ticket, posId, target, curTP, why))
+           {
+            if(lvl < 1)
+               GvSet(posId, "lvl", 1.0);
+            if(!PositionSelectByTicket(ticket))
+               return;
+            curSL = PositionGetDouble(POSITION_SL);
+           }
+        }
+     }
+
+   //--- 2. TP glissant
+   if(curTP <= 0.0)
+      return;
+   if(InpTPMode2 == TPM_PALIERS && lvl >= 1)
+     {
+      int steps = (int)GvGet(posId, "tpst", 0.0);
+      if(steps < InpTPMaxSteps)
+        {
+         double buffer = MathMax(InpTPBufferR * rDist, 0.5 * atr);
+         bool   proche = (dir > 0) ? (c1 >= curTP - buffer) : (c1 <= curTP + buffer);
+         bool   elan   = (dir > 0) ? (c1 > o1) : (c1 < o1);
+         if(proche && elan)
+           {
+            double newTP = RoundToTick((dir > 0) ? curTP + InpTPStepR * rDist : curTP - InpTPStepR * rDist, (dir > 0) ? 1 : -1);
+            bool ok = IsHedging() ? g_trade.PositionModify(ticket, curSL, newTP) : g_trade.PositionModify(_Symbol, curSL, newTP);
+            if(ok && g_trade.ResultRetcode() == TRADE_RETCODE_DONE)
+              {
+               GvSet(posId, "tpst", (double)(steps + 1));
+               Flash(StringFormat("TP repoussé à %.1fR : %s", (g_rTarget + InpTPStepR * (steps + 1)), Px(newTP)), 4000);
+              }
+           }
+        }
+     }
+   else
+      if(InpTPMode2 == TPM_LIBERE && rNow >= InpTPFreeR)
+        {
+         bool ok = IsHedging() ? g_trade.PositionModify(ticket, curSL, 0.0) : g_trade.PositionModify(_Symbol, curSL, 0.0);
+         if(ok && g_trade.ResultRetcode() == TRADE_RETCODE_DONE)
+            Flash("TP retiré : la sortie se fera au trailing", 4000);
+        }
+  }
+
+bool CloseCurrent()
+  {
+   ulong ticket = CurrentPosition();
+   if(ticket == 0)
+     {
+      Flash("Aucune position ouverte");
+      return false;
+     }
+   g_trade.SetDeviationInPoints((ulong)((InpMaxSlippagePts > 0) ? InpMaxSlippagePts : 0));
+   bool ok = g_trade.PositionClose(ticket);
+   uint rc = g_trade.ResultRetcode();
+   if(!ok || (rc != TRADE_RETCODE_DONE && rc != TRADE_RETCODE_PLACED))
+     {
+      Flash("Fermeture refusée : " + g_trade.ResultRetcodeDescription(), 6000);
+      return false;
+     }
+   Flash("Position fermée", 3000);
+   g_statsDirty = true;
+   return true;
+  }
+
+//+------------------------------------------------------------------+
+//| Statistiques : taux de réussite et R moyen des derniers trades   |
+//+------------------------------------------------------------------+
+string StatSlice(const double &rs[], const int take)
+  {
+   int total = ArraySize(rs);
+   int n     = (total < take) ? total : take;
+   if(n <= 0)
+      return StringFormat("%d tr", take) + " : -";
+   int    wins = 0;
+   double sum  = 0.0;
+   for(int i = total - n; i < total; i++)
+     {
+      sum += rs[i];
+      if(rs[i] > 0.0)
+         wins++;
+     }
+   return StringFormat("%d tr %.0f %% %+.2fR", n, 100.0 * wins / n, sum / n);
+  }
+
+void RefreshStats()
+  {
+   g_lastStatsCalc = GetTickCount();
+   g_statsTxt      = "Stats : -";
+   datetime from = TimeCurrent() - 60 * 86400;
+   if(!HistorySelect(from, TimeCurrent() + 86400))
+      return;
+
+   ulong  ids[];
+   double nets[];
+   bool   closed[];
+   ArrayResize(ids, 0);
+   ArrayResize(nets, 0);
+   ArrayResize(closed, 0);
+
+   int total = HistoryDealsTotal();
+   for(int i = 0; i < total; i++)
+     {
+      ulong d = HistoryDealGetTicket(i);
+      if(d == 0)
+         continue;
+      if(HistoryDealGetInteger(d, DEAL_MAGIC) != InpMagic)
+         continue;
+      long dtype = HistoryDealGetInteger(d, DEAL_TYPE);
+      if(dtype != DEAL_TYPE_BUY && dtype != DEAL_TYPE_SELL)
+         continue;
+      ulong pos = (ulong)HistoryDealGetInteger(d, DEAL_POSITION_ID);
+      double net = HistoryDealGetDouble(d, DEAL_PROFIT) + HistoryDealGetDouble(d, DEAL_COMMISSION)
+                 + HistoryDealGetDouble(d, DEAL_SWAP)   + HistoryDealGetDouble(d, DEAL_FEE);
+      long dentry = HistoryDealGetInteger(d, DEAL_ENTRY);
+      int idx = -1;
+      for(int k = 0; k < ArraySize(ids); k++)
+         if(ids[k] == pos)
+           {
+            idx = k;
+            break;
+           }
+      if(idx < 0)
+        {
+         idx = ArraySize(ids);
+         ArrayResize(ids, idx + 1);
+         ArrayResize(nets, idx + 1);
+         ArrayResize(closed, idx + 1);
+         ids[idx]    = pos;
+         nets[idx]   = 0.0;
+         closed[idx] = false;
+        }
+      nets[idx] += net;
+      if(dentry == DEAL_ENTRY_OUT || dentry == DEAL_ENTRY_OUT_BY || dentry == DEAL_ENTRY_INOUT)
+         closed[idx] = true;
+     }
+
+   double rs[];
+   ArrayResize(rs, 0);
+   for(int k = 0; k < ArraySize(ids); k++)
+     {
+      if(!closed[k])
+         continue;
+      double risk = GvGet(ids[k], "risk", 0.0);
+      if(risk <= 0.0)
+         continue;
+      int m = ArraySize(rs);
+      ArrayResize(rs, m + 1);
+      rs[m] = nets[k] / risk;
+     }
+   if(ArraySize(rs) == 0)
+      return;
+   g_statsTxt = StatSlice(rs, 20) + "   " + StatSlice(rs, 50);
+  }
+
+//+------------------------------------------------------------------+
+//| Flèches sur le graphique : armement et entrées                   |
+//+------------------------------------------------------------------+
+void MkArrow(const string name, const datetime t, const double price, const string glyph, const color clr,
+             const bool above)
+  {
+   if(ObjectFind(0, name) < 0)
+      ObjectCreate(0, name, OBJ_TEXT, 0, t, price);
+   else
+      ObjectMove(0, name, 0, t, price);
+   ObjectSetString(0, name, OBJPROP_TEXT, glyph);
+   ObjectSetString(0, name, OBJPROP_FONT, "Arial");
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, (InpMarkSize > 0) ? InpMarkSize : 8);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, above ? ANCHOR_LOWER : ANCHOR_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, 3);
+  }
+
+// Petit écart sous ou sur la bougie, proportionnel à sa taille
+double MarkOffset(const double hi, const double lo)
+  {
+   double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   return MathMax((hi - lo) * 0.25, 12.0 * point);
+  }
+
+// Flèche rouge posée sur la bougie armée, tant que l'ordre n'est pas envoyé
+void MarkArm()
+  {
+   if(!InpShowMarks || !g_armed || g_armCandle == 0 || g_armDir == 0)
+     {
+      ObjectDelete(0, PFXM + "ARM");
+      return;
+     }
+   int sh = iBarShift(_Symbol, InpCandleTF, g_armCandle, false);
+   if(sh < 0)
+      return;
+   double hi = iHigh(_Symbol, InpCandleTF, sh);
+   double lo = iLow(_Symbol, InpCandleTF, sh);
+   if(hi <= 0.0 || lo <= 0.0)
+      return;
+   double off = MarkOffset(hi, lo);
+   if(g_armDir > 0)
+      MkArrow(PFXM + "ARM", g_armCandle, lo - off, "▲", InpMarkArmClr, false);
+   else
+      MkArrow(PFXM + "ARM", g_armCandle, hi + off, "▼", InpMarkArmClr, true);
+   ChartRedraw(0);
+  }
+
+// Flèche du sens, posée sur la bougie d'entrée
+void MarkEntry(const ulong posId, const int dir, const datetime t, const double price)
+  {
+   if(!InpShowMarks || t == 0)
+      return;
+   int    sh = iBarShift(_Symbol, PERIOD_CURRENT, t, false);
+   double hi = (sh >= 0) ? iHigh(_Symbol, PERIOD_CURRENT, sh) : price;
+   double lo = (sh >= 0) ? iLow(_Symbol, PERIOD_CURRENT, sh) : price;
+   if(hi <= 0.0 || lo <= 0.0)
+     {
+      hi = price;
+      lo = price;
+     }
+   double off = MarkOffset(hi, lo);
+   string nm  = PFXM + "E" + IntegerToString((long)posId);
+   if(dir > 0)
+      MkArrow(nm, t, lo - off, "▲", InpMarkBuyClr, false);
+   else
+      MkArrow(nm, t, hi + off, "▼", InpMarkSellClr, true);
+   ChartRedraw(0);
+  }
+
+// Redessine les flèches d'entrée depuis l'historique (changement d'unité, redémarrage)
+void RedrawMarks()
+  {
+   if(!InpShowMarks)
+      return;
+   datetime from = TimeCurrent() - (datetime)((long)((InpMarkDays > 0) ? InpMarkDays : 1) * 86400);
+   if(!HistorySelect(from, TimeCurrent() + 86400))
+      return;
+   int total = HistoryDealsTotal();
+   for(int i = 0; i < total; i++)
+     {
+      ulong d = HistoryDealGetTicket(i);
+      if(d == 0)
+         continue;
+      if(HistoryDealGetInteger(d, DEAL_MAGIC) != InpMagic)
+         continue;
+      if(HistoryDealGetString(d, DEAL_SYMBOL) != _Symbol)
+         continue;
+      if(HistoryDealGetInteger(d, DEAL_ENTRY) != DEAL_ENTRY_IN)
+         continue;
+      long dt = HistoryDealGetInteger(d, DEAL_TYPE);
+      if(dt != DEAL_TYPE_BUY && dt != DEAL_TYPE_SELL)
+         continue;
+      MarkEntry((ulong)HistoryDealGetInteger(d, DEAL_POSITION_ID), (dt == DEAL_TYPE_BUY) ? 1 : -1,
+                (datetime)HistoryDealGetInteger(d, DEAL_TIME), HistoryDealGetDouble(d, DEAL_PRICE));
+     }
+  }
+
+// Efface les flèches plus anciennes que l'historique choisi
+void CleanMarks()
+  {
+   datetime limit = TimeCurrent() - (datetime)((long)((InpMarkDays > 0) ? InpMarkDays : 1) * 86400);
+   string names[];
+   ArrayResize(names, 0);
+   int total = ObjectsTotal(0, -1, OBJ_TEXT);
+   for(int i = total - 1; i >= 0; i--)
+     {
+      string nm = ObjectName(0, i, -1, OBJ_TEXT);
+      if(StringFind(nm, PFXM) != 0)
+         continue;
+      if((datetime)ObjectGetInteger(0, nm, OBJPROP_TIME) >= limit)
+         continue;
+      int k = ArraySize(names);
+      ArrayResize(names, k + 1);
+      names[k] = nm;
+     }
+   for(int k = 0; k < ArraySize(names); k++)
+      ObjectDelete(0, names[k]);
+  }
+
+// Mesure la largeur réelle d'un caractère, pour couper les textes au bon endroit
+void MeasureFont(const string font, const int fs)
+  {
+   uint w = 0, h = 0;
+   TextSetFont(font, -fs * 10);
+   if(TextGetSize("0123456789ABCDEFGHIJ", w, h) && w > 0)
+      g_charPx = (int)MathMax(4.0, MathCeil((double)w / 20.0));
+   else
+      g_charPx = (int)MathMax(4.0, MathRound(fs * 0.85));
+  }
+
+// Coupe un texte à la largeur disponible, en pixels
+string FitPx(const string text, const int px)
+  {
+   int maxc = (g_charPx > 0) ? px / g_charPx : 40;
+   if(maxc < 5)
+      maxc = 5;
+   if(StringLen(text) <= maxc)
+      return text;
+   return StringSubstr(text, 0, maxc - 3) + "...";
+  }
+
+// Étiquette alignée à droite
+void MkLabelR(const string name, const int x, const int y, const string text, const color clr, const int fs,
+              const string font = "Consolas")
+  {
+   MkLabel(name, x, y, text, clr, fs, font);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_RIGHT_UPPER);
+  }
+
+void SetRect(const string name, const color bg)
+  {
+   if(ObjectFind(0, name) < 0)
+      return;
+   if((color)ObjectGetInteger(0, name, OBJPROP_BGCOLOR) != bg)
+      ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bg);
+  }
+
+void SetL(const string name, const string text, const color clr) { SetLabel(name, FitPx(text, g_colL), clr); }
+void SetR(const string name, const string text, const color clr) { SetLabel(name, FitPx(text, g_colR), clr); }
+void SetF(const string name, const string text, const color clr) { SetLabel(name, FitPx(text, g_panInner), clr); }
+
+//+------------------------------------------------------------------+
+//| Panneau : création                                               |
+//+------------------------------------------------------------------+
+void CreatePanel()
+  {
+   ObjectsDeleteAll(0, PFX);
+
+   double s   = MathMax(0.6, MathMin(3.0, InpPanelScale));
+   int    fs  = (int)MathMax(7.0, MathRound(9.0 * s));
+   int    W   = (int)(MathMax(280.0, (double)InpPanelWidth) * s);
+   int    pad = (int)(9 * s);
+   int    rh  = (int)(17 * s);
+   int    eh  = rh + (int)(5 * s);
+   int    gap = (int)(5 * s);
+   int    x0  = InpPanelX;
+   int    y0  = InpPanelY;
+   int    xL  = x0 + pad;
+   int    xR  = x0 + W - pad;
+
+   MeasureFont("Consolas", fs);
+   g_panInner = W - 2 * pad;
+   g_colL     = (int)(g_panInner * 0.56);
+   g_colR     = (int)(g_panInner * 0.42);
+
+   //--- Bandeau
+   int hdrH = (int)(26 * s);
+   MkRect(PFX + "BG",  x0, y0, W, 100, CLR_BG, CLR_BORDER);
+   MkRect(PFX + "HDR", x0, y0, W, hdrH, CLR_HDR, CLR_HDR);
+   MkRect(PFX + "ACC", x0, y0, (int)MathMax(2.0, 3 * s), hdrH, CLR_ACCENT, CLR_ACCENT);
+   MkLabel (PFX + "TITLE", xL, y0 + (int)(6 * s), "CALCULATEUR NANO", clrWhite, fs, "Arial Bold");
+   MkLabelR(PFX + "SYM",   xR, y0 + (int)(6 * s), _Symbol, CLR_MUTED, fs);
+
+   int y = y0 + hdrH + (int)(7 * s);
+
+   //--- Compte
+   MkLabel (PFX + "L_TIER",   xL, y, " ", CLR_TEXT,  fs);
+   MkLabelR(PFX + "L_RISK",   xR, y, " ", CLR_TEXT,  fs);
+   y += rh;
+   MkLabel (PFX + "L_TRADES", xL, y, " ", CLR_TEXT,  fs);
+   MkLabelR(PFX + "L_DAY",    xR, y, " ", CLR_TEXT,  fs);
+   y += rh;
+   MkLabel (PFX + "L_LEFT",   xL, y, " ", CLR_MUTED, fs);
+   MkLabelR(PFX + "L_MAX",    xR, y, " ", CLR_MUTED, fs);
+   y += rh;
+   MkLabel (PFX + "L_NEWS",   xL, y, " ", CLR_MUTED, fs);
+   y += rh + (int)(4 * s);
+
+   MkRect(PFX + "SEP1", xL, y, g_panInner, 1, CLR_BORDER, CLR_BORDER);
+   y += (int)(8 * s);
+
+   //--- Saisie
+   int labW  = (int)(30 * s);
+   int clrW  = (int)(66 * s);
+   int slW   = g_panInner - labW - clrW - 2 * gap;
+   MkLabel(PFX + "T_SL", xL, y + (int)(3 * s), "SL", CLR_MUTED, fs);
+   MkEdit(PFX + "E_SL", xL + labW, y, slW, eh, "", fs);
+   MkButton(PFX + "B_CLEAR", xR - clrW, y, clrW, eh, "Effacer (Q)", CLR_BTN, CLR_MUTED, fs);
+   y += eh + gap;
+
+   int sw = (int)(30 * s);
+   int bw = (g_panInner - 2 * sw - 3 * gap) / 2;
+   MkButton(PFX + "B_CBUY",  xL,                           y, bw, eh, "ACHAT (W)", CLR_BTN, CLR_GREEN, fs);
+   MkButton(PFX + "B_CSELL", xL + bw + gap,                y, bw, eh, "VENTE (S)", CLR_BTN, CLR_RED,   fs);
+   MkButton(PFX + "B_PREV",  xL + 2 * (bw + gap),          y, sw, eh, "<",         CLR_BTN, CLR_MUTED, fs);
+   MkButton(PFX + "B_NEXT",  xL + 2 * (bw + gap) + sw + gap, y, sw, eh, ">",       CLR_BTN, CLR_MUTED, fs);
+   y += eh + gap;
+
+   int edW = (int)(58 * s);
+   MkLabel(PFX + "T_R", xL, y + (int)(3 * s), "R", CLR_MUTED, fs);
+   MkEdit(PFX + "E_R", xL + labW, y, edW, eh, DoubleToString(g_rTarget, 1), fs);
+   MkLabel(PFX + "T_POC", xL + labW + edW + (int)(14 * s), y + (int)(3 * s), "POC", CLR_MUTED, fs);
+   MkEdit(PFX + "E_POC", xR - (int)(96 * s), y, (int)(96 * s), eh, "", fs);
+   y += eh + (int)(3 * s);
+   MkLabel(PFX + "L_CANDLE", xL, y, " ", CLR_MUTED, fs);
+   y += rh + (int)(4 * s);
+
+   MkRect(PFX + "SEP2", xL, y, g_panInner, 1, CLR_BORDER, CLR_BORDER);
+   y += (int)(8 * s);
+
+   //--- Calcul, deux colonnes
+   MkLabel (PFX + "O_DIR",    xL, y, " ", CLR_MUTED, fs);
+   MkLabelR(PFX + "O_RISK",   xR, y, " ", CLR_MUTED, fs);
+   y += rh;
+   MkLabel (PFX + "O_ENTRY",  xL, y, " ", CLR_MUTED, fs);
+   MkLabelR(PFX + "O_SL",     xR, y, " ", CLR_MUTED, fs);
+   y += rh;
+   MkLabel (PFX + "O_STOP",   xL, y, " ", CLR_MUTED, fs);
+   MkLabelR(PFX + "O_MARGIN", xR, y, " ", CLR_MUTED, fs);
+   y += rh;
+   MkLabel (PFX + "O_TP",     xL, y, " ", CLR_MUTED, fs);
+   MkLabelR(PFX + "O_POC",    xR, y, " ", CLR_MUTED, fs);
+   y += rh;
+   MkLabel (PFX + "O_POS",    xL, y, " ", CLR_MUTED, fs);
+   MkLabelR(PFX + "O_PNL",    xR, y, " ", CLR_MUTED, fs);
+   y += rh;
+   MkLabel (PFX + "O_STATS",  xL, y, " ", CLR_MUTED, fs);
+   y += rh + (int)(2 * s);
+
+   //--- Armement et statut
+   MkLabel(PFX + "O_ARM", xL, y, " ", CLR_MUTED, fs);
+   y += rh + (int)(3 * s);
+   MkRect(PFX + "STBG", xL, y, g_panInner, eh, CLR_TINT_N, CLR_TINT_N);
+   MkLabel(PFX + "O_STATUS", xL + (int)(7 * s), y + (int)(4 * s), " ", CLR_MUTED, fs);
+   y += eh + (int)(7 * s);
+
+   //--- Boutons
+   int third = (g_panInner - 2 * gap) / 3;
+   MkButton(PFX + "B_BE",    xL,                     y, third, eh, "BE (A)",    CLR_DISABLED, CLR_MUTED, fs);
+   MkButton(PFX + "B_TRAIL", xL + third + gap,       y, third, eh, "Trail (D)", CLR_DISABLED, CLR_MUTED, fs);
+   MkButton(PFX + "B_AUTO",  xL + 2 * (third + gap), y, third, eh, "AUTO",      CLR_BTN,      CLR_TEXT,  fs);
+   y += eh + gap;
+
+   int bigH = (int)(30 * s);
+   MkButton(PFX + "B_BUY",   xL,                     y, third, bigH, "ACHETER", CLR_DISABLED, CLR_MUTED, fs + 1, "Arial Bold");
+   MkButton(PFX + "B_SELL",  xL + third + gap,       y, third, bigH, "VENDRE",  CLR_DISABLED, CLR_MUTED, fs + 1, "Arial Bold");
+   MkButton(PFX + "B_CLOSE", xL + 2 * (third + gap), y, third, bigH, "FERMER",  CLR_DISABLED, CLR_MUTED, fs + 1, "Arial Bold");
+   y += bigH + pad;
+
+   ObjectSetInteger(0, PFX + "BG", OBJPROP_YSIZE, y - y0);
+   SetEditText(PFX + "E_SL",  (g_slInput  > 0.0) ? Px(g_slInput)  : "");
+   SetEditText(PFX + "E_POC", (g_pocInput > 0.0) ? Px(g_pocInput) : "");
+   ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
+//| Panneau : affichage                                              |
+//+------------------------------------------------------------------+
+void RenderPanel()
+  {
+   double initial       = InpInitialBalance;
+   double equity        = AccountInfoDouble(ACCOUNT_EQUITY);
+   double internalFloor = g_dayRef - InpDailyStopPct / 100.0 * initial;
+   double maxFloor      = initial * (1.0 - InpFirmMaxPct / 100.0);
+   bool   v             = g_calc.valid;
+
+   //--- Compte
+   color tierClr = (g_calc.tier == 0) ? CLR_TEXT : ((g_calc.tier == 1) ? CLR_ORANGE : CLR_RED);
+   SetL(PFX + "L_TIER", StringFormat("Palier %.0f %%", g_calc.tierMult * 100.0), tierClr);
+   SetR(PFX + "L_RISK", "Risque " + Usd(g_calc.budget), CLR_TEXT);
+
+   bool dayFull  = (g_tradesToday >= InpMaxTradesDay || g_lossesToday >= InpMaxLossesDay);
+   SetL(PFX + "L_TRADES", StringFormat("%d/%d trades  %d/%d pertes", g_tradesToday, InpMaxTradesDay, g_lossesToday, InpMaxLossesDay),
+        dayFull ? CLR_ORANGE : CLR_TEXT);
+
+   double dayPnl  = equity - g_dayRef;
+   double dayLeft = equity - internalFloor;
+   double maxLeft = equity - maxFloor;
+   SetR(PFX + "L_DAY", (g_dayRefEstimated ? "Jour ~" : "Jour ") + SignedUsd(dayPnl), (dayPnl >= 0.0) ? CLR_GREEN : CLR_RED);
+   SetL(PFX + "L_LEFT", "Reste jour " + Usd(MathMax(0.0, dayLeft)), (dayLeft > 0.0) ? CLR_MUTED : CLR_RED);
+   SetR(PFX + "L_MAX",  "Max " + Usd(MathMax(0.0, maxLeft)), (maxLeft > 0.0) ? CLR_MUTED : CLR_RED);
+
+   //--- News
+   string newsTxt = "News : rien de fort sur 24 h";
+   color  newsClr = CLR_MUTED;
+   if(!InpNewsFilter)
+      newsTxt = "News : filtre désactivé";
+   else
+      if(MQLInfoInteger(MQL_TESTER))
+         newsTxt = "News : indisponible dans le testeur";
+      else
+         if(!g_calendarOk)
+           {
+            newsTxt = "News : calendrier indisponible";
+            newsClr = CLR_ORANGE;
+           }
+         else
+           {
+            string   nm = "";
+            datetime tm = 0;
+            bool     inWin = false;
+            NewsCheck(TimeTradeServer(), nm, tm, inWin);
+            if(inWin)
+              {
+               newsTxt = "NEWS " + TimeToString(tm, TIME_MINUTES) + " " + nm;
+               newsClr = CLR_RED;
+              }
+            else
+               if(tm > 0)
+                  newsTxt = "News " + TimeToString(tm, TIME_MINUTES) + " " + nm;
+           }
+   SetF(PFX + "L_NEWS", newsTxt, newsClr);
+
+   //--- Bougie de référence
+   if(g_candleSide != 0 && g_candleTime > 0)
+      SetF(PFX + "L_CANDLE", StringFormat("Bougie %s %s  %s  décalage %d", TFName(InpCandleTF),
+           TimeToString(g_candleTime, TIME_MINUTES), (g_candleSide > 0) ? "achat" : "vente", g_candleShift), CLR_MUTED);
+   else
+      SetF(PFX + "L_CANDLE", "Bougie " + TFName(InpCandleTF) + " : aucune", CLR_MUTED);
+
+   //--- Calcul
+   color dirClr = (g_calc.dir > 0) ? CLR_GREEN : ((g_calc.dir < 0) ? CLR_RED : CLR_MUTED);
+   SetL(PFX + "O_DIR", v ? (((g_calc.dir > 0) ? "ACHAT " : "VENTE ") + LotsStr(g_calc.lots) + " lot") : "Sens -", dirClr);
+   SetR(PFX + "O_RISK", v ? StringFormat("%s  %.2f %%", Usd(g_calc.risk), g_calc.risk / initial * 100.0) : "-", v ? CLR_TEXT : CLR_MUTED);
+   SetL(PFX + "O_ENTRY", v ? ("Entrée " + Px(g_calc.entry)) : "Entrée -", v ? CLR_TEXT : CLR_MUTED);
+   SetR(PFX + "O_SL", v ? ("SL " + Px(g_calc.slEff)) : "SL -", v ? CLR_TEXT : CLR_MUTED);
+   SetL(PFX + "O_STOP", v ? StringFormat("Stop %s  coûts %.0f %%", DoubleToString(g_calc.stopDist, _Digits), g_calc.costPct) : "Stop -",
+        (v && g_calc.costPct > InpMaxCostPct) ? CLR_RED : (v ? CLR_TEXT : CLR_MUTED));
+   SetR(PFX + "O_MARGIN", v ? StringFormat("Marge %.0f %%", g_calc.marginPct) : "Marge -",
+        (v && g_calc.marginPct > InpMaxMarginPct) ? CLR_RED : (v ? CLR_MUTED : CLR_MUTED));
+   SetL(PFX + "O_TP", v ? StringFormat("TP %s  %s", Px(g_calc.tp), SignedUsd(g_calc.tpGain)) : "TP -", v ? CLR_GREEN : CLR_MUTED);
+
+   string pocTxt = "POC -";
+   color  pocClr = CLR_MUTED;
+   if(v && g_calc.pocGiven)
+     {
+      if(g_calc.pocWrongSide)
+        {
+         pocTxt = "POC mauvais côté";
+         pocClr = CLR_RED;
+        }
+      else
+        {
+         bool okPoc = (g_calc.pocR >= InpMinRPoc);
+         pocTxt = StringFormat("POC %.1fR%s", g_calc.pocR, g_calc.usePoc ? " (TP)" : "");
+         pocClr = okPoc ? CLR_GREEN : CLR_ORANGE;
+        }
+     }
+   else
+      if(v)
+         pocTxt = StringFormat("%.1fR visé", g_calc.tpR);
+   SetR(PFX + "O_POC", pocTxt, pocClr);
+
+   //--- Position en cours
+   ulong  posTicket = CurrentPosition();
+   string posTxt    = "Aucune position";
+   string pnlTxt    = "";
+   color  posClr    = CLR_MUTED;
+   color  pnlClr    = CLR_MUTED;
+   int    posLvl    = 0;
+   if(posTicket > 0)
+     {
+      ulong  posId = (ulong)PositionGetInteger(POSITION_IDENTIFIER);
+      int    pdir  = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? 1 : -1;
+      double plots = PositionGetDouble(POSITION_VOLUME);
+      double pnet  = PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP) - plots * MathMax(0.0, InpCommissionPerLot);
+      double prisk = GvGet(posId, "risk", 0.0);
+      bool   manu  = (GvGet(posId, "man", 0.0) > 0.5);
+      posLvl       = (int)GvGet(posId, "lvl", 0.0);
+      posTxt       = StringFormat("%s %s  stop %s%s", (pdir > 0) ? "ACHAT" : "VENTE", LotsStr(plots), LevelName(posLvl), manu ? "  MANUEL" : "");
+      posClr       = manu ? CLR_ORANGE : CLR_TEXT;
+      pnlTxt       = (prisk > 0.0) ? StringFormat("%+.1fR  %s", pnet / prisk, SignedUsd(pnet)) : SignedUsd(pnet);
+      pnlClr       = (pnet >= 0.0) ? CLR_GREEN : CLR_RED;
+     }
+   SetL(PFX + "O_POS", posTxt, posClr);
+   SetR(PFX + "O_PNL", pnlTxt, pnlClr);
+   SetF(PFX + "O_STATS", g_statsTxt, CLR_MUTED);
+
+   //--- Armement : le SL est figé, seul le lot se recalcule
+   string armTxt = "Non armé   W achat · S vente · Espace envoie";
+   color  armClr = CLR_MUTED;
+   if(g_armed)
+     {
+      armClr = CLR_ORANGE;
+      if(v)
+        {
+         double ratio = (g_armDist0 > 0.0) ? g_calc.stopDist / g_armDist0 : 1.0;
+         armTxt = StringFormat("ARMÉ %s  SL %s (%s)  %s>%s  %s lot",
+                               (g_armDir > 0) ? "ACHAT" : "VENTE", Px(g_slInput),
+                               (g_armCandle > 0) ? TimeToString(g_armCandle, TIME_MINUTES) : "-",
+                               DoubleToString(g_armDist0, _Digits), DoubleToString(g_calc.stopDist, _Digits), LotsStr(g_calc.lots));
+         armClr = (ratio >= 2.0) ? CLR_RED : CLR_GREEN;
+        }
+      else
+         armTxt = StringFormat("ARMÉ %s  SL %s", (g_armDir > 0) ? "ACHAT" : "VENTE", Px(g_slInput));
+     }
+   SetF(PFX + "O_ARM", armTxt, armClr);
+
+   //--- Barre de statut
+   string st  = "";
+   color  stc = CLR_MUTED;
+   color  stb = CLR_TINT_N;
+   if(g_flashText != "" && GetTickCount() < g_flashUntil)
+     {
+      st  = g_flashText;
+      stc = CLR_ORANGE;
+      stb = CLR_TINT_O;
+     }
+   else
+      if(g_calc.allowed && g_calc.warn == "")
+        {
+         st  = StringFormat("PRÊT  %s %s lot", (g_calc.dir > 0) ? "ACHAT" : "VENTE", LotsStr(g_calc.lots));
+         stc = CLR_GREEN;
+         stb = CLR_TINT_G;
+        }
+      else
+         if(g_calc.allowed)
+           {
+            st  = "PRÊT (!)  " + g_calc.warn;
+            stc = CLR_ORANGE;
+            stb = CLR_TINT_O;
+           }
+         else
+            if(g_calc.hint)
+               st = g_calc.reason;
+            else
+              {
+               st  = "BLOQUÉ  " + g_calc.reason;
+               stc = CLR_RED;
+               stb = CLR_TINT_R;
+              }
+   SetRect(PFX + "STBG", stb);
+   SetLabel(PFX + "O_STATUS", FitPx(st, g_panInner - (int)(14 * MathMax(0.6, InpPanelScale))), stc);
+
+   //--- Boutons
+   bool canBE    = (posTicket > 0 && posLvl < 1);
+   bool canTrail = (posTicket > 0 && posLvl < 4);
+   int  nextLvl  = (posLvl + 1 > 4) ? 4 : posLvl + 1;
+   if(ObjectFind(0, PFX + "B_TRAIL") >= 0)
+      ObjectSetString(0, PFX + "B_TRAIL", OBJPROP_TEXT, LevelName(nextLvl) + " (D)");
+   if(ObjectFind(0, PFX + "B_AUTO") >= 0)
+      ObjectSetString(0, PFX + "B_AUTO", OBJPROP_TEXT, g_autoOn ? "AUTO ON" : "AUTO OFF");
+   SetButton(PFX + "B_BE",    canBE    ? CLR_BTN : CLR_DISABLED, canBE    ? CLR_TEXT : CLR_MUTED);
+   SetButton(PFX + "B_TRAIL", canTrail ? CLR_BTN : CLR_DISABLED, canTrail ? CLR_TEXT : CLR_MUTED);
+   SetButton(PFX + "B_AUTO",  g_autoOn ? CLR_GREEN : CLR_BTN, g_autoOn ? clrWhite : CLR_MUTED);
+   SetButton(PFX + "B_CLOSE", (posTicket > 0) ? CLR_RED : CLR_DISABLED, (posTicket > 0) ? clrWhite : CLR_MUTED);
+
+   bool canBuy  = (g_calc.allowed && g_calc.dir > 0);
+   bool canSell = (g_calc.allowed && g_calc.dir < 0);
+   SetButton(PFX + "B_BUY",  canBuy  ? CLR_GREEN : CLR_DISABLED, canBuy  ? clrWhite : CLR_MUTED);
+   SetButton(PFX + "B_SELL", canSell ? CLR_RED   : CLR_DISABLED, canSell ? clrWhite : CLR_MUTED);
+   ChartRedraw(0);
+  }
+
+void UpdateAll(const bool force)
+  {
+   uint now = GetTickCount();
+   if(!force && now - g_lastRenderTick < 200)
+      return;
+   g_lastRenderTick = now;
+   if(g_statsDirty || now - g_lastStatsTick > 5000)
+      RefreshDayStats();
+   if(InpNewsFilter && (g_lastNewsTick == 0 || now - g_lastNewsTick > (uint)(g_calendarOk ? 60000 : 15000)))
+      RefreshNews();
+   datetime autoBar = iTime(_Symbol, InpAutoTF, 0);
+   if(autoBar > 0 && autoBar != g_lastAutoBar)
+     {
+      bool first = (g_lastAutoBar == 0);
+      g_lastAutoBar = autoBar;
+      if(!first)
+         AutoManage();
+     }
+   if(g_lastStatsCalc == 0 || now - g_lastStatsCalc > 60000)
+      RefreshStats();
+   ComputeCalc(g_calc);
+   RenderPanel();
+  }
+
+//+------------------------------------------------------------------+
+//| Saisie : bougie M5 et remise à zéro                              |
+//+------------------------------------------------------------------+
+void SetCandleSL(const int side, const bool resetShift)
+  {
+   if(resetShift)
+      g_candleShift = 1;
+   datetime t  = iTime(_Symbol, InpCandleTF, g_candleShift);
+   double   hi = iHigh(_Symbol, InpCandleTF, g_candleShift);
+   double   lo = iLow(_Symbol, InpCandleTF, g_candleShift);
+   if(t == 0 || hi <= 0.0 || lo <= 0.0)
+     {
+      Flash("Données " + TFName(InpCandleTF) + " indisponibles, réessaie dans un instant");
+      return;
+     }
+   double buf = InpCandleBufferPts * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   g_slInput    = (side > 0) ? RoundToTick(lo - buf, -1) : RoundToTick(hi + buf, 1);
+   g_lockDir    = side;
+   g_candleSide = side;
+   g_candleTime = t;
+   SetEditText(PFX + "E_SL", Px(g_slInput));
+   if(g_armed)
+     {
+      g_armCandle = t;
+      SaveArm();
+      MarkArm();
+     }
+
+   if(InpOneClick && resetShift)
+     {
+      UpdateAll(true);
+      Execute(side);
+     }
+  }
+
+void ClearInputs()
+  {
+   g_slInput     = 0.0;
+   g_pocInput    = 0.0;
+   g_lockDir     = 0;
+   g_candleSide  = 0;
+   g_candleShift = 1;
+   g_candleTime  = 0;
+   SetEditText(PFX + "E_SL", "");
+   SetEditText(PFX + "E_POC", "");
+  }
+
+//+------------------------------------------------------------------+
+//| Exécution                                                        |
+//+------------------------------------------------------------------+
+void Execute(const int dir)
+  {
+   if(GetTickCount() - g_lastExecTick < 2000)
+     {
+      Flash("Patiente : un ordre vient d'être envoyé");
+      return;
+     }
+   if(g_pending.active)
+     {
+      Flash("Ordre précédent en cours de confirmation");
+      return;
+     }
+
+   RefreshDayStats();
+   for(int attempt = 1; attempt <= 2; attempt++)
+     {
+      //--- Recalcul complet au prix exact du clic
+      ComputeCalc(g_calc);
+      if(!g_calc.allowed)
+        {
+         Flash("Refusé : " + g_calc.reason);
+         return;
+        }
+      if(g_calc.dir != dir)
+        {
+         Flash((g_calc.dir > 0) ? "Ce SL correspond à un ACHAT" : "Ce SL correspond à une VENTE");
+         return;
+        }
+
+      g_lastExecTick = GetTickCount();
+      g_trade.SetExpertMagicNumber((ulong)InpMagic);
+      g_trade.SetDeviationInPoints((ulong)(InpMaxSlippagePts > 0 ? InpMaxSlippagePts : 0));
+      g_trade.SetTypeFilling(SymbolFilling());
+
+      string cmt  = StringFormat("CalcNano %.1fR", g_calc.tpR);
+      bool   sent = (dir > 0) ? g_trade.Buy(g_calc.lots, _Symbol, g_calc.entry, g_calc.slEff, g_calc.tp, cmt)
+                              : g_trade.Sell(g_calc.lots, _Symbol, g_calc.entry, g_calc.slEff, g_calc.tp, cmt);
+      uint   rc   = g_trade.ResultRetcode();
+
+      if(sent && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_PLACED || rc == TRADE_RETCODE_DONE_PARTIAL))
+        {
+         g_pending.active      = true;
+         g_pending.order       = g_trade.ResultOrder();
+         g_pending.sent        = TimeTradeServer();
+         g_pending.dir         = dir;
+         g_pending.slEff       = g_calc.slEff;
+         g_pending.rCfg        = g_rTarget;
+         g_pending.usePoc      = g_calc.usePoc;
+         g_pending.riskPlanned = g_calc.risk;
+         g_pending.spread      = g_calc.spread;
+         g_pending.tierMult    = g_calc.tierMult;
+         g_pending.poc         = (g_pocInput > 0.0) ? g_pocInput : 0.0;
+
+         Print(TAG, StringFormat("%s %s lot | entrée %s | SL %s | TP %s | risque %.2f $ | %.1fR | palier %.0f %%",
+                                 (dir > 0) ? "ACHAT" : "VENTE", LotsStr(g_calc.lots), Px(g_calc.entry), Px(g_calc.slEff),
+                                 Px(g_calc.tp), g_calc.risk, g_calc.tpR, g_calc.tierMult * 100.0));
+         Flash("Ordre envoyé", 2500);
+         Disarm(true);
+         g_statsDirty = true;
+
+         //--- Si l'exécution est déjà dans l'historique, on la traite tout de suite
+         ulong deal = g_trade.ResultDeal();
+         if(deal > 0 && HistoryDealSelect(deal))
+           {
+            ulong posId = (ulong)HistoryDealGetInteger(deal, DEAL_POSITION_ID);
+            if(posId > 0)
+               HandleFill(posId);
+           }
+         return;
+        }
+
+      bool retry = (rc == TRADE_RETCODE_REQUOTE || rc == TRADE_RETCODE_PRICE_CHANGED || rc == TRADE_RETCODE_PRICE_OFF);
+      if(!retry || attempt == 2)
+        {
+         Flash(StringFormat("Échec de l'ordre (%u) : %s", rc, g_trade.ResultRetcodeDescription()), 6000);
+         return;
+        }
+      Sleep(200);
+     }
+  }
+
+// Enregistre le trade exécuté et recale le TP sur le vrai prix d'entrée
+void HandleFill(const ulong posId)
+  {
+   if(!g_pending.active)
+      return;
+   if(GvHas(posId, "risk"))
+     {
+      g_pending.active = false;
+      return;
+     }
+   ulong ticket = SelectPositionById(posId);
+   if(ticket == 0)
+      return; // pas encore visible : le timer réessaiera
+
+   double   fill     = PositionGetDouble(POSITION_PRICE_OPEN);
+   double   vol      = PositionGetDouble(POSITION_VOLUME);
+   double   sl       = PositionGetDouble(POSITION_SL);
+   double   tp       = PositionGetDouble(POSITION_TP);
+   datetime openTime = (datetime)PositionGetInteger(POSITION_TIME);
+   if(sl <= 0.0)
+      sl = g_pending.slEff;
+
+   ENUM_ORDER_TYPE otype = (g_pending.dir > 0) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   double comm       = MathMax(0.0, InpCommissionPerLot);
+   double p          = 0.0;
+   double lossPrice  = 0.0;
+   if(OrderCalcProfit(otype, _Symbol, 1.0, fill, sl, p) && p < 0.0)
+      lossPrice = -p;
+   double lossPerLot = lossPrice + comm;
+   double realRisk   = vol * lossPerLot;
+
+   //--- En mode R cible, le TP suit le vrai prix d'entrée ; le SL reste sur le niveau choisi
+   double newTP = tp;
+   double dist  = MathAbs(fill - sl);
+   if(!g_pending.usePoc && lossPrice > 0.0 && dist > 0.0)
+     {
+      double vpp   = lossPrice / dist;
+      double gross = g_pending.rCfg * lossPerLot + comm;
+      double d2    = gross / vpp;
+      double calc  = (g_pending.dir > 0) ? RoundToTick(fill + d2, 1) : RoundToTick(fill - d2, -1);
+      if(MathAbs(calc - tp) >= TickSize() * 0.5)
+        {
+         bool ok = IsHedging() ? g_trade.PositionModify(ticket, sl, calc) : g_trade.PositionModify(_Symbol, sl, calc);
+         uint rc = g_trade.ResultRetcode();
+         if(ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_NO_CHANGES))
+            newTP = calc;
+         else
+            Flash("TP non recalé après glissement : " + g_trade.ResultRetcodeDescription(), 6000);
+        }
+     }
+
+   double g        = 0.0;
+   double rPlanned = 0.0;
+   if(lossPerLot > 0.0 && newTP > 0.0 && OrderCalcProfit(otype, _Symbol, 1.0, fill, newTP, g))
+      rPlanned = (g - comm) / lossPerLot;
+
+   GvSet(posId, "risk",   realRisk);
+   GvSet(posId, "rplan",  rPlanned);
+   GvSet(posId, "dir",    g_pending.dir);
+   GvSet(posId, "entry",  fill);
+   GvSet(posId, "sl",     sl);
+   GvSet(posId, "tp",     newTP);
+   GvSet(posId, "lots",   vol);
+   GvSet(posId, "spread", g_pending.spread);
+   GvSet(posId, "tier",   g_pending.tierMult);
+   GvSet(posId, "poc",    g_pending.poc);
+   GvSet(posId, "open",   (double)openTime);
+   GvSet(posId, "lvl",    0.0);
+   GvSet(posId, "slwr",   sl);
+   GvSet(posId, "man",    0.0);
+   GvSet(posId, "tpst",   0.0);
+
+   ObjectDelete(0, PFXM + "ARM");
+   MarkEntry(posId, g_pending.dir, openTime, fill);
+
+   if(g_pending.riskPlanned > 0.0 && realRisk > g_pending.riskPlanned * 1.10)
+      Flash(StringFormat("Glissement : risque réel %.2f $ au lieu de %.2f $", realRisk, g_pending.riskPlanned), 6000);
+
+   g_pending.active = false;
+   g_statsDirty     = true;
+  }
+
+// Filet de sécurité si la confirmation d'exécution n'est pas arrivée
+void CheckPending()
+  {
+   if(!g_pending.active)
+      return;
+   int total = PositionsTotal();
+   for(int i = 0; i < total; i++)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      if(PositionGetInteger(POSITION_MAGIC) != InpMagic)
+         continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)
+         continue;
+      if((long)PositionGetInteger(POSITION_TIME) < (long)g_pending.sent - 10)
+         continue;
+      ulong posId = (ulong)PositionGetInteger(POSITION_IDENTIFIER);
+      if(GvHas(posId, "risk"))
+         continue;
+      HandleFill(posId);
+      return;
+     }
+   if((long)TimeTradeServer() - (long)g_pending.sent > 60)
+     {
+      g_pending.active = false;
+      Flash("Exécution non confirmée : vérifie l'onglet Trade", 8000);
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Journal CSV                                                      |
+//+------------------------------------------------------------------+
+bool WriteJournalRow(const ulong posId, const string sym, const datetime closeTime, const double closePrice,
+                     const double net, const double r)
+  {
+   int flags = FILE_READ | FILE_WRITE | FILE_CSV | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ;
+   int h = FileOpen(InpJournalFile, flags, ';');
+   if(h == INVALID_HANDLE)
+     {
+      Print(TAG, "Journal inaccessible (fichier ouvert dans Excel ?), erreur ", GetLastError());
+      return false;
+     }
+   if(FileSize(h) == 0)
+      FileWrite(h, "Ouverture", "Clôture", "Symbole", "Sens", "Entrée", "SL", "TP", "Prix de sortie",
+                "Spread entrée", "Lots", "Risque $", "R visé", "POC", "Palier %", "Résultat $", "Résultat R",
+                "Durée min", "Position");
+   FileSeek(h, 0, SEEK_END);
+
+   int      dg       = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+   datetime openTime = (datetime)GvGet(posId, "open", 0.0);
+   long     durMin   = (openTime > 0 && closeTime > 0) ? ((long)closeTime - (long)openTime) / 60 : 0;
+
+   FileWrite(h,
+             TimeToString(openTime, TIME_DATE | TIME_MINUTES),
+             TimeToString(closeTime, TIME_DATE | TIME_MINUTES),
+             sym,
+             (GvGet(posId, "dir", 0.0) > 0.0) ? "ACHAT" : "VENTE",
+             Num(GvGet(posId, "entry"), dg),
+             Num(GvGet(posId, "sl"), dg),
+             Num(GvGet(posId, "tp"), dg),
+             Num(closePrice, dg),
+             Num(GvGet(posId, "spread"), dg),
+             Num(GvGet(posId, "lots"), 2),
+             Num(GvGet(posId, "risk"), 2),
+             Num(GvGet(posId, "rplan"), 2),
+             Num(GvGet(posId, "poc"), dg),
+             Num(GvGet(posId, "tier") * 100.0, 0),
+             Num(net, 2),
+             Num(r, 2),
+             IntegerToString(durMin),
+             IntegerToString((long)posId));
+   FileClose(h);
+   return true;
+  }
+
+void JournalClosed(const ulong posId)
+  {
+   if(GvHas(posId, "done"))
+      return;
+   if(!HistorySelectByPosition(posId))
+      return;
+   int total = HistoryDealsTotal();
+   if(total <= 0)
+      return;
+
+   double   net        = 0.0;
+   double   closePrice = 0.0;
+   datetime closeTime  = 0;
+   string   sym        = "";
+   bool     hasOut     = false;
+   for(int i = 0; i < total; i++)
+     {
+      ulong d = HistoryDealGetTicket(i);
+      if(d == 0)
+         continue;
+      net += HistoryDealGetDouble(d, DEAL_PROFIT) + HistoryDealGetDouble(d, DEAL_COMMISSION)
+           + HistoryDealGetDouble(d, DEAL_SWAP)   + HistoryDealGetDouble(d, DEAL_FEE);
+      if(sym == "")
+         sym = HistoryDealGetString(d, DEAL_SYMBOL);
+      long de = HistoryDealGetInteger(d, DEAL_ENTRY);
+      if(de == DEAL_ENTRY_OUT || de == DEAL_ENTRY_OUT_BY || de == DEAL_ENTRY_INOUT)
+        {
+         hasOut = true;
+         datetime t = (datetime)HistoryDealGetInteger(d, DEAL_TIME);
+         if(t >= closeTime)
+           {
+            closeTime  = t;
+            closePrice = HistoryDealGetDouble(d, DEAL_PRICE);
+           }
+        }
+     }
+   if(!hasOut)
+      return;
+
+   double risk = GvGet(posId, "risk", 0.0);
+   double r    = (risk > 0.0) ? net / risk : 0.0;
+   GvSet(posId, "res", r);
+
+   if(InpWriteJournal && !WriteJournalRow(posId, sym, closeTime, closePrice, net, r))
+      return; // nouvel essai au prochain passage du timer
+   GvSet(posId, "done", 1.0);
+   Print(TAG, "Position ", IntegerToString((long)posId), " fermée : ", SignedUsd(net), StringFormat(" (%.2fR)", r));
+  }
+
+//+------------------------------------------------------------------+
+//| Événements                                                       |
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+   if(InpInitialBalance <= 0.0 || InpRiskPct <= 0.0 || InpRiskPct > 5.0)
+     {
+      Print(TAG, "Paramètres invalides : capital initial > 0 et risque entre 0 et 5 %");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpTier1DDPct <= 0.0 || InpTier2DDPct <= InpTier1DDPct || InpTier1Mult <= 0.0 || InpTier2Mult <= 0.0)
+     {
+      Print(TAG, "Paliers invalides : le palier 2 doit être plus profond que le palier 1");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpMaxTradesDay < 1 || InpMaxLossesDay < 1 || InpMaxOpenPositions < 1 ||
+      InpResetHourServer < 0 || InpResetHourServer > 23 || InpRTarget < 0.5)
+     {
+      Print(TAG, "Paramètres invalides : limites journalières, heure de remise à zéro ou R cible");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+
+   int reason = UninitializeReason();
+   if(!g_loaded)
+     {
+      g_pending.active = false;
+      g_pending.order  = 0;
+     }
+   if(!g_loaded || reason == REASON_PARAMETERS)
+      g_rTarget = InpRTarget;
+   if(g_lastSymbol != _Symbol)
+     {
+      g_slInput     = 0.0;
+      g_pocInput    = 0.0;
+      g_lockDir     = 0;
+      g_candleSide  = 0;
+      g_candleShift = 1;
+      g_candleTime  = 0;
+     }
+   g_lastSymbol = _Symbol;
+   g_loaded     = true;
+
+   g_trade.SetExpertMagicNumber((ulong)InpMagic);
+   g_trade.LogLevel(LOG_LEVEL_ERRORS);
+   if(!IsHedging())
+      Print(TAG, "Compte en mode netting : l'outil fonctionne, mais il est conçu pour un compte hedging.");
+
+   g_autoOn     = InpAutoOn;
+   g_atrHandle  = iATR(_Symbol, InpAutoTF, (InpAtrPeriod > 0) ? InpAtrPeriod : 14);
+   if(g_atrHandle == INVALID_HANDLE)
+      Print(TAG, "ATR indisponible : le garde-fou anti-bruit sera ignoré.");
+   LoadArm();
+   CleanMarks();
+   RedrawMarks();
+   MarkArm();
+   g_dayStart   = 0;    // force la relecture de la référence du jour
+   g_statsDirty = true;
+   CleanupRegistry();
+   ScanRegistry();
+   RefreshDayStats();
+   RefreshNews();
+   CreatePanel();
+   UpdateAll(true);
+   EventSetMillisecondTimer(500);
+   return INIT_SUCCEEDED;
+  }
+
+void OnDeinit(const int reason)
+  {
+   EventKillTimer();
+   if(g_atrHandle != INVALID_HANDLE)
+      IndicatorRelease(g_atrHandle);
+   ObjectsDeleteAll(0, PFX);
+   if(reason == REASON_REMOVE || reason == REASON_PROGRAM)
+      ObjectsDeleteAll(0, PFXM);
+   ChartRedraw(0);
+  }
+
+void OnTick()
+  {
+   UpdateAll(false);
+  }
+
+void OnTimer()
+  {
+   CheckPending();
+   static uint lastScan = 0;
+   if(GetTickCount() - lastScan > 60000)
+     {
+      lastScan = GetTickCount();
+      ScanRegistry();
+     }
+   UpdateAll(false);
+  }
+
+void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest &request, const MqlTradeResult &result)
+  {
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
+      return;
+   g_statsDirty = true;
+
+   ulong deal = trans.deal;
+   if(deal == 0 || !HistoryDealSelect(deal))
+      return;
+   long  dentry = HistoryDealGetInteger(deal, DEAL_ENTRY);
+   ulong posId  = (ulong)HistoryDealGetInteger(deal, DEAL_POSITION_ID);
+   ulong order  = (ulong)HistoryDealGetInteger(deal, DEAL_ORDER);
+   long  magic  = HistoryDealGetInteger(deal, DEAL_MAGIC);
+
+   if(dentry == DEAL_ENTRY_IN)
+     {
+      if(g_pending.active && (order == g_pending.order || magic == InpMagic))
+         HandleFill(posId);
+     }
+   else if(dentry == DEAL_ENTRY_OUT || dentry == DEAL_ENTRY_OUT_BY || dentry == DEAL_ENTRY_INOUT)
+     {
+      if(GvHas(posId, "risk") && SelectPositionById(posId) == 0)
+         JournalClosed(posId);
+     }
+  }
+
+void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
+  {
+   //--- Clavier : main gauche sur W S Q A D E, pouce sur Espace
+   if(id == CHARTEVENT_KEYDOWN && InpKeysOn)
+     {
+      int key = (int)lparam;
+      if(key == 87)          // W : armer un achat
+         Arm(1);
+      else if(key == 83)     // S : armer une vente
+         Arm(-1);
+      else if(key == 32)     // Espace : envoyer l'ordre armé
+        {
+         if(g_armed && g_armDir != 0)
+            Execute(g_armDir);
+         else
+            Flash("Rien d'armé : W pour un achat, S pour une vente");
+        }
+      else if(key == 81)     // Q : désarmer et effacer
+        {
+         Disarm(true);
+         Flash("Désarmé", 2000);
+        }
+      else if(key == 65)     // A : break-even
+         MoveStop(1);
+      else if(key == 68)     // D : trailing, palier suivant
+        {
+         ulong tk = CurrentPosition();
+         int   lv = (tk > 0) ? (int)GvGet((ulong)PositionGetInteger(POSITION_IDENTIFIER), "lvl", 0.0) : 0;
+         MoveStop((lv + 1 > 4) ? 4 : lv + 1);
+        }
+      else if(key == 69)     // E E : fermer, deux appuis en moins de 1,5 s
+        {
+         if(GetTickCount() - g_lastKeyE < 1500)
+           {
+            g_lastKeyE = 0;
+            CloseCurrent();
+           }
+         else
+           {
+            g_lastKeyE = GetTickCount();
+            Flash("E encore une fois pour fermer", 1500);
+           }
+        }
+      UpdateAll(true);
+      return;
+     }
+
+   if(id == CHARTEVENT_OBJECT_ENDEDIT)
+     {
+      if(sparam == PFX + "E_SL")
+        {
+         g_slInput    = ParseNumber(ObjectGetString(0, sparam, OBJPROP_TEXT));
+         g_lockDir    = 0;
+         g_candleSide = 0;
+         g_candleTime = 0;
+         SetEditText(sparam, (g_slInput > 0.0) ? Px(g_slInput) : "");
+        }
+      else if(sparam == PFX + "E_R")
+        {
+         double r = ParseNumber(ObjectGetString(0, sparam, OBJPROP_TEXT));
+         if(r >= 0.5 && r <= 20.0)
+            g_rTarget = r;
+         else
+            Flash("R cible entre 0.5 et 20");
+         SetEditText(sparam, DoubleToString(g_rTarget, 1));
+        }
+      else if(sparam == PFX + "E_POC")
+        {
+         g_pocInput = ParseNumber(ObjectGetString(0, sparam, OBJPROP_TEXT));
+         SetEditText(sparam, (g_pocInput > 0.0) ? Px(g_pocInput) : "");
+        }
+      else
+         return;
+      UpdateAll(true);
+      return;
+     }
+
+   if(id == CHARTEVENT_OBJECT_CLICK)
+     {
+      if(StringFind(sparam, PFX) != 0)
+         return;
+      if(ObjectGetInteger(0, sparam, OBJPROP_TYPE) != OBJ_BUTTON)
+         return;
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+
+      if(sparam == PFX + "B_CBUY")
+         Arm(1);
+      else if(sparam == PFX + "B_CSELL")
+         Arm(-1);
+      else if(sparam == PFX + "B_PREV")
+        {
+         if(g_candleSide != 0 && g_candleShift < 100)
+           {
+            g_candleShift++;
+            SetCandleSL(g_candleSide, false);
+           }
+        }
+      else if(sparam == PFX + "B_NEXT")
+        {
+         if(g_candleSide != 0 && g_candleShift > 1)
+           {
+            g_candleShift--;
+            SetCandleSL(g_candleSide, false);
+           }
+        }
+      else if(sparam == PFX + "B_CLEAR")
+         Disarm(true);
+      else if(sparam == PFX + "B_CLOSE")
+         CloseCurrent();
+      else if(sparam == PFX + "B_AUTO")
+        {
+         g_autoOn = !g_autoOn;
+         Flash(g_autoOn ? "Gestion automatique activée" : "Gestion automatique désactivée", 3000);
+        }
+      else if(sparam == PFX + "B_BE")
+         MoveStop(1);
+      else if(sparam == PFX + "B_TRAIL")
+        {
+         ulong tk = CurrentPosition();
+         int   lv = (tk > 0) ? (int)GvGet((ulong)PositionGetInteger(POSITION_IDENTIFIER), "lvl", 0.0) : 0;
+         MoveStop((lv + 1 > 4) ? 4 : lv + 1);
+        }
+      else if(sparam == PFX + "B_BUY")
+         Execute(1);
+      else if(sparam == PFX + "B_SELL")
+         Execute(-1);
+      UpdateAll(true);
+     }
+  }
+//+------------------------------------------------------------------+
