@@ -340,6 +340,8 @@ struct SSignal
   };
 SSignal  g_sig;
 long     g_sigLoaded       = 0;     // référence du signal chargé (commentaire de l'ordre)
+int      g_sigSetup        = 0;     // setup du signal chargé
+datetime g_sigExp          = 0;     // fin de validité du signal chargé (heure locale)
 bool     g_slRaw           = false; // SL du signal : déjà décalé du spread par le Carnet
 uint     g_lastBridge      = 0;
 
@@ -602,7 +604,10 @@ datetime MonthStartFor(const datetime now)
    dt.hour = 0;
    dt.min  = 0;
    dt.sec  = 0;
-   return DayStartFor(StructToTime(dt) + InpResetHourServer * 3600);
+   datetime t = StructToTime(dt) + InpResetHourServer * 3600;
+   if(InpResetHourServer >= 12)
+      t -= 86400; // la journée du 1er commence la veille au soir
+   return t;
   }
 
 // Résultat net et nombre de pertes des positions fermées depuis « from »
@@ -941,6 +946,11 @@ bool ReadSignal()
    g_sig.limit   = (GlobalVariableGet(Bridge("sig_limit")) > 0.5);
    g_sig.setup   = (int)GlobalVariableGet(Bridge("sig_setup"));
    g_sig.expires = (datetime)(long)GlobalVariableGet(Bridge("sig_exp"));
+   if((long)GlobalVariableGet(n) != ref)
+     {
+      g_sig.ref = 0; // le Carnet publiait pendant la lecture : relu au prochain passage
+      return false;
+     }
    return true;
   }
 
@@ -998,6 +1008,8 @@ void LoadSignal()
    g_candleTime  = 0;
    g_candleShift = 1;
    g_sigLoaded   = g_sig.ref;
+   g_sigSetup    = g_sig.setup;
+   g_sigExp      = g_sig.expires;
    MqlTick tick;
    double ref = 0.0;
    if(SymbolInfoTick(_Symbol, tick))
@@ -1216,7 +1228,7 @@ void ComputeCalc(SCalc &c)
    c.pocGiven = (g_pocInput > 0.0);
    if(c.pocGiven)
      {
-      double poc = (c.dir < 0 && InpSellSpreadAdjust && !g_slRaw) ? g_pocInput + c.spread : g_pocInput;
+      double poc = (c.dir < 0 && InpSellSpreadAdjust) ? g_pocInput + c.spread : g_pocInput;
       c.pocTP        = (c.dir > 0) ? RoundToTick(poc, -1) : RoundToTick(poc, 1);
       c.pocWrongSide = ((c.dir > 0 && c.pocTP <= c.entry) || (c.dir < 0 && c.pocTP >= c.entry));
       if(!c.pocWrongSide)
@@ -1531,6 +1543,9 @@ void SaveArm()
    GlobalVariableSet(GvBase() + "armd0",  g_armDist0);
    GlobalVariableSet(GvBase() + "armraw", g_slRaw ? 1.0 : 0.0);
    GlobalVariableSet(GvBase() + "armsig", (double)g_sigLoaded);
+   GlobalVariableSet(GvBase() + "armset", (double)g_sigSetup);
+   GlobalVariableSet(GvBase() + "armexp", (double)g_sigExp);
+   GlobalVariableSet(GvBase() + "armpoc", g_pocInput);
   }
 
 void LoadArm()
@@ -1552,6 +1567,13 @@ void LoadArm()
    g_armDist0   = GlobalVariableCheck(GvBase() + "armd0") ? GlobalVariableGet(GvBase() + "armd0") : 0.0;
    g_slRaw      = GlobalVariableCheck(GvBase() + "armraw") && GlobalVariableGet(GvBase() + "armraw") > 0.5;
    g_sigLoaded  = GlobalVariableCheck(GvBase() + "armsig") ? (long)GlobalVariableGet(GvBase() + "armsig") : 0;
+   g_sigSetup   = GlobalVariableCheck(GvBase() + "armset") ? (int)GlobalVariableGet(GvBase() + "armset") : 0;
+   g_sigExp     = GlobalVariableCheck(GvBase() + "armexp") ? (datetime)(long)GlobalVariableGet(GvBase() + "armexp") : 0;
+   if(g_sigLoaded > 0)
+     {
+      g_candleSide = 0; // SL du signal : pas de bougie à faire défiler
+      g_pocInput   = GlobalVariableCheck(GvBase() + "armpoc") ? GlobalVariableGet(GvBase() + "armpoc") : 0.0;
+     }
   }
 
 void Disarm(const bool clearFields)
@@ -2443,7 +2465,7 @@ void UpdateAll(const bool force)
    if(g_lastStatsCalc == 0 || now - g_lastStatsCalc > 60000)
       RefreshStats();
    ComputeCalc(g_calc);
-   if(ReadSignal())
+   if(ReadSignal() && SignalValid())
       Flash(StringFormat("Signal Carnet S%d %s · SL %s · TP %s : C pour le charger", g_sig.setup,
                          (g_sig.dir > 0) ? "ACHAT" : "VENTE", Px(g_sig.sl), Px(g_sig.tp)), 8000);
    PublishBridge();
@@ -2497,6 +2519,8 @@ void ClearInputs()
    g_candleTime  = 0;
    g_slRaw       = false;
    g_sigLoaded   = 0;
+   g_sigSetup    = 0;
+   g_sigExp      = 0;
    SetEditText(PFX + "E_SL", "");
    SetEditText(PFX + "E_POC", "");
   }
@@ -2517,6 +2541,12 @@ void Execute(const int dir)
       return;
      }
 
+   if(g_sigLoaded > 0 && TimeLocal() >= g_sigExp)
+     {
+      Flash("Signal expiré : ordre non envoyé");
+      Disarm(true);
+      return;
+     }
    RefreshDayStats();
    for(int attempt = 1; attempt <= 2; attempt++)
      {
@@ -2538,7 +2568,7 @@ void Execute(const int dir)
       g_trade.SetDeviationInPoints((ulong)(InpMaxSlippagePts > 0 ? InpMaxSlippagePts : 0));
       g_trade.SetTypeFilling(SymbolFilling());
 
-      string cmt  = (g_sigLoaded > 0) ? StringFormat("CalcXAU %.1fR S%d #", g_calc.tpR, g_sig.setup) + IntegerToString(g_sigLoaded)
+      string cmt  = (g_sigLoaded > 0) ? StringFormat("CalcXAU %.1fR S%d #", g_calc.tpR, g_sigSetup) + IntegerToString(g_sigLoaded)
                                       : StringFormat("CalcXAU %.1fR", g_calc.tpR);
       if(g_calc.limit)
         {
@@ -2648,8 +2678,8 @@ void PlaceLimit(const int dir, const string cmt)
    datetime exp  = TimeTradeServer() + InpLimitMin * 60;
    bool     spec = ((SymbolInfoInteger(_Symbol, SYMBOL_EXPIRATION_MODE) & SYMBOL_EXPIRATION_SPECIFIED) != 0);
    ENUM_ORDER_TYPE_TIME tt = spec ? ORDER_TIME_SPECIFIED : ORDER_TIME_GTC;
-   bool ok = (dir > 0) ? g_trade.BuyLimit(g_calc.lots, g_calc.entry, _Symbol, g_calc.slEff, g_calc.tp, tt, spec ? exp : 0, cmt)
-                       : g_trade.SellLimit(g_calc.lots, g_calc.entry, _Symbol, g_calc.slEff, g_calc.tp, tt, spec ? exp : 0, cmt);
+   bool ok = (dir > 0) ? g_trade.BuyLimit(g_calc.lots, g_calc.entry, _Symbol, g_calc.slEff, g_calc.tp, tt, spec ? exp : (datetime)0, cmt)
+                       : g_trade.SellLimit(g_calc.lots, g_calc.entry, _Symbol, g_calc.slEff, g_calc.tp, tt, spec ? exp : (datetime)0, cmt);
    uint rc = g_trade.ResultRetcode();
    g_trade.SetTypeFilling(SymbolFilling());
    if(!ok || (rc != TRADE_RETCODE_DONE && rc != TRADE_RETCODE_PLACED))
@@ -2681,7 +2711,7 @@ void LimitFilled(const ulong posId)
   {
    g_pending.active      = true;
    g_pending.order       = g_limit.order;
-   g_pending.sent        = g_limit.placed;
+   g_pending.sent        = TimeTradeServer();
    g_pending.dir         = g_limit.dir;
    g_pending.slEff       = g_limit.slEff;
    g_pending.rCfg        = g_limit.rCfg;

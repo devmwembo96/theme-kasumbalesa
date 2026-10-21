@@ -6,6 +6,13 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## En cours
 
+- [ ] Compte en fonds propres (250 $) : choisir le courtier (Deriv, XM Global ou Exness), installer
+      les deux EA sur deux graphiques XAUUSD du même compte : EA Carnet 2.9.0 (signaux) et
+      Calculateur XAU 3.00 (exécution manuelle, touche C pour charger un signal). Compiler les deux
+      dans MetaEditor et signaler toute erreur.
+- [ ] Plus tard : copieur vers les comptes prop firm (lot recalculé avec le risque de la firme),
+      après vérification des règles de copie de chaque firme.
+
 
 - [ ] Accès durable de Claude au site : mot de passe d’application WordPress rangé
       dans les secrets de l’environnement cloud (variable `RN_WP_AUTH`,
