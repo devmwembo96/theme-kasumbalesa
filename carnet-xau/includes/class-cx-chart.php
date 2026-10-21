@@ -132,11 +132,11 @@ class CX_Chart {
 		$lv     = array_merge( (array) ( $s['levels'] ?? array() ), (array) ( $c['levels'] ?? array() ) );
 		foreach ( $lv as $l ) {
 			$v = (float) ( $l['price'] ?? 0 );
-			$k = (string) round( $v, 1 );
-			if ( ! $v || isset( $seen[ $k ] ) || ! $near( $v, $v ) ) {
+			// Deux niveaux à moins de 1 $ : un seul trait (le premier, celui de l'analyse).
+			if ( ! $v || ! $near( $v, $v ) || array_filter( array_keys( $seen ), fn( $x ) => abs( (float) $x - $v ) < 1.0 ) ) {
 				continue;
 			}
-			$seen[ $k ] = 1;
+			$seen[ (string) $v ] = 1;
 			$t          = trim( (string) ( $l['type'] ?? '' ) );
 			$levels[]   = array(
 				'price' => $v,

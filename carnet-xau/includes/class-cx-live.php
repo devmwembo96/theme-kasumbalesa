@@ -193,13 +193,8 @@ class CX_Live {
 		}
 		$t     = CX_Tuning::values();
 		$out[] = 'S|' . (int) $t['touch'] . '|' . (int) $t['swing'] . '|' . self::n( $t['fvg'] ) . '|' . self::n( $t['slbuf'] ) . '|' . (int) $t['limitmin'] . '|' . (int) $t['cooldown'];
+		// Niveaux : deux niveaux à moins de 1 $ n'en font qu'un (un seul trait sur le graphique).
 		$seen = array();
-		foreach ( (array) ( $c['levels'] ?? array() ) as $l ) {
-			if ( null !== $l['price'] ) {
-				$out[]                                  = 'L|' . self::n( $l['price'] ) . '|' . self::t( $l['type'] );
-				$seen[ (string) round( $l['price'], 1 ) ] = 1;
-			}
-		}
 		// Dernière analyse de séance du jour : ses niveaux (L), son invalidation (X) et ses scénarios
 		// d'exécution (P), tracés par l'EA comme sur le graphique envoyé sur Telegram.
 		$order = array(
@@ -213,14 +208,20 @@ class CX_Live {
 				$last = $se;
 			}
 		}
-		if ( $last ) {
-			foreach ( (array) ( $last['levels'] ?? array() ) as $l ) {
-				$k = (string) round( (float) $l['price'], 1 );
-				if ( null !== $l['price'] && ! isset( $seen[ $k ] ) ) {
-					$out[]      = 'L|' . self::n( $l['price'] ) . '|' . self::t( $l['type'] );
-					$seen[ $k ] = 1;
-				}
+		// Ceux de l'analyse de séance d'abord, puis ceux du plan de la semaine.
+		$all = array_merge( $last ? (array) ( $last['levels'] ?? array() ) : array(), (array) ( $c['levels'] ?? array() ) );
+		foreach ( $all as $l ) {
+			$v    = (float) $l['price'];
+			$near = false;
+			foreach ( $seen as $x ) {
+				$near = $near || abs( $x - $v ) < 1.0;
 			}
+			if ( null !== $l['price'] && ! $near ) {
+				$out[]  = 'L|' . self::n( $l['price'] ) . '|' . self::t( $l['type'] );
+				$seen[] = (float) $l['price'];
+			}
+		}
+		if ( $last ) {
 			if ( preg_match_all( '/\d[\d \x{202F}\x{00A0}]*(?:[.,]\d+)?/u', (string) ( $last['invalid'] ?? '' ), $m ) ) {
 				foreach ( $m[0] as $x ) {
 					$v = (float) str_replace( array( ' ', "\u{202F}", "\u{00A0}", ',' ), array( '', '', '', '.' ), trim( $x ) );
