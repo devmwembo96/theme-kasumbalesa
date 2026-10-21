@@ -769,7 +769,15 @@ class CX_Telegram {
 		if ( empty( $c['chat'] ) || empty( $c['alerts']['daily'] ) || ! $a || $loss <= 0 ) {
 			return;
 		}
-		$lim = $a['size'] * $a['params']['daily'] / 100;
+		$pa  = $a['params'];
+		if ( 'propre' === ( $pa['kind'] ?? 'propfirm' ) ) {
+			// Fonds propres : perte du jour en R du palier (solde du jour = solde actuel + perte du jour).
+			$snap = ( (array) CX_Ingest::latest_snapshots() )[ $account_id ] ?? null;
+			$cap  = $snap ? (float) $snap['balance'] + (float) $loss : (float) $a['size'];
+			$lim  = $pa['daystopr'] * CX_Repo::own_risk( $cap, $pa )['risk'];
+		} else {
+			$lim = $a['size'] * $pa['daily'] / 100;
+		}
 		if ( $lim <= 0 ) {
 			return;
 		}

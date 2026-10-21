@@ -203,7 +203,16 @@ class CX_Live {
 			$out[] = 'N|' . $e['t'] . '|' . $e['impact'] . '|' . self::t( $e['name'] );
 		}
 		$pa    = $acc['params'];
-		$out[] = 'R|' . self::n( $pa['risk'] ) . '|' . self::n( $pa['riskred'] ) . '|' . self::n( $pa['redat'] ) . '|' . self::n( $pa['contract'] ) . '|' . (int) $pa['maxtrades'] . '|' . (int) $pa['maxloss'] . '|' . self::n( $pa['spreadmax'] ) . '|' . self::n( self::STOP_MIN ) . '|' . self::n( self::STOP_MAX ) . '|' . self::n( $acc['size'] * $pa['daily'] / 100 ) . '|' . self::n( $acc['size'] ) . '|' . self::n( $acc['size'] * ( 1 - $pa['max'] / 100 ) );
+		if ( 'propre' === ( $pa['kind'] ?? 'propfirm' ) ) {
+			// Fonds propres : risque du palier sur le solde MT5 (sinon capital + résultats), limite du jour
+			// en R, plancher fixe ; « taille » = solde, pour que l'EA ne réduise pas le risque.
+			$snaps = (array) CX_Ingest::latest_snapshots();
+			$cap   = isset( $snaps[ $acc['id'] ] ) ? (float) $snaps[ $acc['id'] ]['balance'] : (float) $acc['size'] + array_sum( array_map( fn( $t ) => (float) $t['pnl'], CX_Repo::trades( $acc['id'] ) ) );
+			$own   = CX_Repo::own_risk( $cap, $pa );
+			$out[] = 'R|' . self::n( $own['risk'] ) . '|' . self::n( $own['risk'] ) . '|' . self::n( 1e7 ) . '|' . self::n( $pa['contract'] ) . '|' . (int) $pa['maxtrades'] . '|' . (int) $pa['maxloss'] . '|' . self::n( $pa['spreadmax'] ) . '|' . self::n( self::STOP_MIN ) . '|' . self::n( self::STOP_MAX ) . '|' . self::n( $pa['daystopr'] * $own['risk'] ) . '|' . self::n( $cap ) . '|' . self::n( $pa['floor'] );
+		} else {
+			$out[] = 'R|' . self::n( $pa['risk'] ) . '|' . self::n( $pa['riskred'] ) . '|' . self::n( $pa['redat'] ) . '|' . self::n( $pa['contract'] ) . '|' . (int) $pa['maxtrades'] . '|' . (int) $pa['maxloss'] . '|' . self::n( $pa['spreadmax'] ) . '|' . self::n( self::STOP_MIN ) . '|' . self::n( self::STOP_MAX ) . '|' . self::n( $acc['size'] * $pa['daily'] / 100 ) . '|' . self::n( $acc['size'] ) . '|' . self::n( $acc['size'] * ( 1 - $pa['max'] / 100 ) );
+		}
 		$today = CX_Repo::clock( 'Y-m-d' );
 		$tt    = array_filter( CX_Repo::trades( $acc['id'] ), fn( $t ) => $t['date'] === $today );
 		$out[] = 'D|' . count( $tt ) . '|' . count( array_filter( $tt, fn( $t ) => $t['r'] < 0 ) ) . '|' . self::n( array_sum( array_map( fn( $t ) => (float) $t['pnl'], $tt ) ) );

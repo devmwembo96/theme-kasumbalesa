@@ -287,3 +287,12 @@
 .cx-app .score.ok{background:var(--win-soft)}
 .cx-app .score.ko{background:var(--loss-soft)}
 .cx-app .score.na{color:var(--muted)}
+.cx-app .ticket-in.quick{border-top:1px dashed var(--line);border-bottom:0;display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap}
+.cx-app .ticket-in.quick .f{flex:0 1 240px}
+.cx-app .quick-out{flex:1;min-width:200px;padding-bottom:9px;color:var(--muted)}
+.cx-app .quick-out b{color:var(--ink);font-size:18px}
+.cx-app .pill.own{background:var(--gold-soft);color:var(--gold-ink);border-color:transparent}
+.cx-app .feu{padding:10px 12px;border-radius:var(--radius);margin-bottom:10px}
+.cx-app .feu.go{background:var(--win-soft);color:var(--win)}
+.cx-app .feu.warn{background:var(--warn-soft);color:var(--warn)}
+.cx-app .feu.stop{background:var(--loss-soft);color:var(--loss)}

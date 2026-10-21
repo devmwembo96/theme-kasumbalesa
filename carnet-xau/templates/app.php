@@ -33,29 +33,19 @@ defined( 'ABSPATH' ) || exit;
 			<span class="meta" id="t-meta"></span>
 		</div>
 		<div class="mt5-line" id="mt5-line" hidden></div>
-		<div class="ticket-in grid g4">
-			<label class="f">Solde du matin ($)<input id="in-balance" type="number" step="0.01" inputmode="decimal"></label>
-			<label class="f">Jours déjà tradés<input id="in-days" type="number" min="0" step="1" inputmode="numeric"></label>
-			<label class="f">Stop (distance en $)<input id="in-stop" type="number" step="0.01" min="0" inputmode="decimal" placeholder="ex. 1,80"></label>
-			<label class="f">Spread actuel ($)<input id="in-spread" type="number" step="0.01" min="0" inputmode="decimal" placeholder="ex. 0,25"></label>
-		</div>
-		<div class="ticket-out">
-			<div class="cell hero"><div class="k">Lot à prendre</div><div class="v" id="o-lot">—</div><div class="s" id="o-lot-s"></div></div>
-			<div class="cell"><div class="k">Objectif du jour</div><div class="v" id="o-target">—</div><div class="s" id="o-target-s"></div></div>
-			<div class="cell"><div class="k">Take-profit du jour</div><div class="v" id="o-tp">—</div><div class="s" id="o-tp-s"></div></div>
-			<div class="cell"><div class="k">Sortie partielle à 2R</div><div class="v" id="o-2r">—</div><div class="s" id="o-2r-s"></div></div>
-			<div class="cell"><div class="k">Marge avant perte max</div><div class="v" id="o-margin">—</div><div class="s" id="o-margin-s"></div></div>
-			<div class="cell"><div class="k">Aujourd’hui</div><div class="v" id="o-today">—</div><div class="s" id="o-today-s"></div></div>
+		<div class="ticket-out" id="ticket-out"></div>
+		<div class="ticket-in quick">
+			<label class="f">Lot rapide : stop (distance en $)<input id="in-stop" type="number" step="0.01" min="0" inputmode="decimal" placeholder="ex. 4,20"></label>
+			<div class="quick-out" id="quick-out"></div>
 		</div>
 		<div class="alerts" id="alerts"></div>
 	</div>
 
 	<div class="grid g2">
-		<div class="panel">
-			<h3>Check-list avant d’entrer</h3>
-			<div id="checklist"></div>
-			<div class="verdict no" id="verdict">Cochez les six points pour valider le trade.</div>
-			<div class="row" style="margin-top:12px"><button type="button" class="btn gold" id="btn-log" disabled>Noter ce trade dans le journal</button></div>
+		<div class="panel" id="feu-panel">
+			<h3>Feu du jour</h3>
+			<div id="feu"></div>
+			<div class="row" style="margin-top:12px"><button type="button" class="btn gold" id="btn-log">Noter un trade dans le journal</button></div>
 		</div>
 		<div class="panel planmini" id="planmini"></div>
 	</div>
@@ -68,6 +58,21 @@ defined( 'ABSPATH' ) || exit;
 	<details class="panel" id="settings">
 		<summary>Paramètres du compte</summary>
 		<div class="grid g3" style="margin-top:12px">
+			<label class="f">Type de compte<select id="s-kind"><option value="propfirm">Prop firm</option><option value="propre">Fonds propres</option></select></label>
+		</div>
+		<div class="grid g3" id="set-own" style="margin-top:12px">
+			<label class="f">Capital de départ ($)<input id="s-start" type="number" step="1"></label>
+			<label class="f">Budget de pertes (risque = capital ÷ N)<input id="s-budget" type="number" step="1"></label>
+			<label class="f">Plancher ($)<input id="s-floor" type="number" step="1"></label>
+			<label class="f">Retrait en fin de mois (% du gain)<input id="s-withdraw" type="number" step="1"></label>
+			<label class="f">Pertes max par jour<input id="s-maxloss-o" type="number" step="1"></label>
+			<label class="f">Perte max du jour (R)<input id="s-daystopr" type="number" step="0.5"></label>
+			<label class="f">Pertes max par semaine<input id="s-weekloss" type="number" step="1"></label>
+			<label class="f">Perte max de la semaine (R)<input id="s-weekstopr" type="number" step="0.5"></label>
+			<label class="f">Trades max par jour<input id="s-maxtrades-o" type="number" step="1"></label>
+			<label class="f">Contrat or (onces par lot)<input id="s-contract-o" type="number" step="1"></label>
+		</div>
+		<div class="grid g3" id="set-prop" style="margin-top:12px">
 			<label class="f">Étape<select id="s-phase"><option value="phase1">Phase 1</option><option value="phase2">Phase 2</option><option value="finance">Compte financé</option><option value="echoue">Échoué</option><option value="retire">Retiré</option></select></label>
 			<label class="f">Taille du compte ($)<input id="s-size" type="number" step="1"></label>
 			<label class="f">Jours minimum par phase<input id="s-mindays" type="number" step="1"></label>
@@ -222,16 +227,17 @@ defined( 'ABSPATH' ) || exit;
 	<div class="panel" id="acc-form" hidden>
 		<h3 id="af-title">Nouveau compte</h3>
 		<div class="grid g3">
+			<label class="f">Type de compte<select id="af-kind"><option value="propre">Fonds propres (chez un courtier)</option><option value="propfirm">Prop firm (challenge)</option></select></label>
 			<label class="f">Nom<input id="af-name" type="text" maxlength="100" placeholder="Challenge 2"></label>
-			<label class="f">Prop firm<input id="af-firm" type="text" maxlength="100" placeholder="FundedNext"></label>
-			<label class="f">Modèle<input id="af-model" type="text" maxlength="100" placeholder="Stellar 2-Step"></label>
-			<label class="f">Taille ($)<input id="af-size" type="number" step="1" min="1"></label>
-			<label class="f">Prix du challenge ($)<input id="af-price" type="number" step="0.01" min="0"></label>
-			<label class="f">Statut<select id="af-status"><option value="phase1">Phase 1</option><option value="phase2">Phase 2</option><option value="finance">Financé</option><option value="echoue">Échoué</option><option value="retire">Retiré</option></select></label>
-			<label class="f">Date d’achat<input id="af-date" type="date"></label>
-			<label class="f">Début de l’étape en cours<input id="af-phase" type="date"></label>
+			<label class="f"><span id="af-firm-l">Prop firm</span><input id="af-firm" type="text" maxlength="100" placeholder="FundedNext"></label>
+			<label class="f af-prop">Modèle<input id="af-model" type="text" maxlength="100" placeholder="Stellar 2-Step"></label>
+			<label class="f"><span id="af-size-l">Taille ($)</span><input id="af-size" type="number" step="1" min="1"></label>
+			<label class="f af-prop">Prix du challenge ($)<input id="af-price" type="number" step="0.01" min="0"></label>
+			<label class="f af-prop">Statut<select id="af-status"><option value="phase1">Phase 1</option><option value="phase2">Phase 2</option><option value="finance">Financé</option><option value="echoue">Échoué</option><option value="retire">Retiré</option></select></label>
+			<label class="f"><span id="af-date-l">Date d’achat</span><input id="af-date" type="date"></label>
+			<label class="f af-prop">Début de l’étape en cours<input id="af-phase" type="date"></label>
 		</div>
-		<p class="hint" style="margin-top:10px">Les paramètres de risque d’un nouveau compte reprennent ceux du compte actif. Ils se modifient dans l’onglet Jour.</p>
+		<p class="hint" style="margin-top:10px" id="af-hint">Les paramètres de risque d’un nouveau compte reprennent ceux du compte actif. Ils se modifient dans l’onglet Jour.</p>
 		<div class="row">
 			<button type="button" class="btn gold" id="af-save">Enregistrer le compte</button>
 			<button type="button" class="btn ghost" id="af-cancel">Annuler</button>

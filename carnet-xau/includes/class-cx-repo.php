@@ -229,16 +229,56 @@ class CX_Repo {
 			'maxloss'   => array( 1, 100 ),
 			'spreadmax' => array( 1, 100 ),
 			'contract'  => array( 1, 10000 ),
+			'start'     => array( 1, 1e8 ),
+			'budget'    => array( 4, 100 ),
+			'floor'     => array( 0, 1e8 ),
+			'withdraw'  => array( 0, 100 ),
+			'daystopr'  => array( 0.5, 20 ),
+			'weekloss'  => array( 1, 100 ),
+			'weekstopr' => array( 0.5, 50 ),
 		);
-		$out    = array();
+		$out    = array( 'kind' => self::pick( $in['kind'] ?? CX_Install::DEFAULT_PARAMS['kind'], array( 'propfirm', 'propre' ), 'propfirm' ) );
 		foreach ( $ranges as $k => $r ) {
 			$v = array_key_exists( $k, $in ) ? self::num( $in[ $k ], $r[0], $r[1] ) : CX_Install::DEFAULT_PARAMS[ $k ];
 			if ( null === $v ) {
 				return self::invalid( sprintf( 'Paramètre « %s » invalide.', $k ) );
 			}
-			$out[ $k ] = in_array( $k, array( 'mindays', 'maxtrades', 'maxloss' ), true ) ? (int) $v : $v;
+			$out[ $k ] = in_array( $k, array( 'mindays', 'maxtrades', 'maxloss', 'budget', 'weekloss' ), true ) ? (int) $v : $v;
+		}
+		if ( 'propre' === $out['kind'] && $out['floor'] >= $out['start'] ) {
+			return self::invalid( 'Le plancher doit être sous le capital de départ.' );
 		}
 		return $out;
+	}
+
+	/**
+	 * Risque par trade d'un compte en fonds propres, comme le Calculateur XAU : capital de départ / N
+	 * jusqu'à 500 $ (capital / N s'il passe sous le départ), puis 4 %, 2 % et 1 %.
+	 *
+	 * @param float $cap Capital (solde du début de journée).
+	 * @param array $pa  Paramètres du compte.
+	 * @return array {risk, tier, pct}
+	 */
+	public static function own_risk( $cap, $pa ) {
+		$cap = max( 0.0, (float) $cap );
+		if ( $cap < 500 ) {
+			$r = min( $cap, (float) $pa['start'] ) / max( 1, (int) $pa['budget'] );
+			$t = 1;
+		} elseif ( $cap < 1000 ) {
+			$r = $cap * 0.04;
+			$t = 2;
+		} elseif ( $cap < 2500 ) {
+			$r = $cap * 0.02;
+			$t = 3;
+		} else {
+			$r = $cap * 0.01;
+			$t = 4;
+		}
+		return array(
+			'risk' => round( $r, 2 ),
+			'tier' => $t,
+			'pct'  => $cap > 0 ? round( 100 * $r / $cap, 2 ) : 0,
+		);
 	}
 
 	/**

@@ -29,6 +29,16 @@ class CX_Install {
 		'maxloss'   => 3,
 		'spreadmax' => 15,
 		'contract'  => 100,
+		// Type de compte : propfirm (challenge, objectif et jours minimum) ou propre (fonds propres).
+		'kind'      => 'propfirm',
+		// Fonds propres : capital de départ = budget de pertes, plancher, retrait mensuel, limites en R.
+		'start'     => 250,
+		'budget'    => 12,
+		'floor'     => 125,
+		'withdraw'  => 50,
+		'daystopr'  => 2,
+		'weekloss'  => 4,
+		'weekstopr' => 4,
 	);
 
 	/**

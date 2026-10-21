@@ -82,7 +82,6 @@ const EMO_L={calme:"Calme",presse:"Pressé",revanche:"Revanche",fatigue:"Fatigue
 let ACCOUNTS=[], ACTIVE=null, S={}, TRADES=[], PAYOUTS=[], SNAPS={};
 let PLAN_WEEK=planWeek(), CUR_PLAN=null, THIS_WEEK_PLAN=null, EDIT_ID=null, CAPTURE=null, CALC={lot:NaN,stop:NaN};
 let PAY_EDIT=null, ACC_EDIT=null;
-const day={balance:"",days:"",stop:"",spread:""};
 const accName=id=>{const a=ACCOUNTS.find(x=>x.id===id);return a?a.name:"—"};
 
 /* ---------- onglets ---------- */
@@ -98,7 +97,7 @@ function showTab(t){
 
 /* ---------- comptes : sélection ---------- */
 function fillAccountSelects(){
-  const opts=(all)=>{const o=[];if(all)o.push(el("option",{value:"",text:"Tous les comptes"}));ACCOUNTS.forEach(a=>o.push(el("option",{value:String(a.id),text:a.name+" · "+(STATUS_L[a.status]||a.status)})));return o};
+  const opts=(all)=>{const o=[];if(all)o.push(el("option",{value:"",text:"Tous les comptes"}));ACCOUNTS.forEach(a=>o.push(el("option",{value:String(a.id),text:a.name+" · "+accLabel(a)})));return o};
   [["#acct-switch",false],["#tf-account",false],["#pf-account",false],["#jf-account",true],["#sf-account",true]].forEach(([s,all])=>{
     const e=$(s),prev=e.value;e.replaceChildren(...opts(all));
     if(prev&&ACCOUNTS.some(a=>String(a.id)===prev))e.value=prev;else if(ACTIVE)e.value=String(ACTIVE.id);
@@ -110,7 +109,7 @@ function setActive(){
   if(!ACTIVE)return;
   const p=ACTIVE.params;
   S=Object.assign({},p,{status:ACTIVE.status,size:ACTIVE.size,phase:ACTIVE.status==="phase1"?"1":ACTIVE.status==="phase2"?"2":"f"});
-  fillSettings();loadDay();
+  QUICK_STOP="";$("#in-stop").value="";fillSettings();
 }
 $("#acct-switch").addEventListener("change",async e=>{
   const id=e.target.value;
@@ -122,30 +121,40 @@ $("#acct-switch").addEventListener("change",async e=>{
 });
 
 /* ---------- paramètres du compte actif ---------- */
+const isOwn=a=>!!a&&a.params&&a.params.kind==="propre";
+const accLabel=a=>isOwn(a)?(a.status==="retire"?"Retiré":"Fonds propres"):(STATUS_L[a.status]||a.status);
 const PARAM_FIELDS=["mindays","t1","t2","tf","daily","max","contract","risk","riskred","redat","maxtrades","maxloss","spreadmax"];
+// Fonds propres : champ de l'écran => paramètre (les limites communes ont leur propre champ).
+const OWN_FIELDS={start:"start",budget:"budget",floor:"floor",withdraw:"withdraw","maxloss-o":"maxloss",daystopr:"daystopr",weekloss:"weekloss",weekstopr:"weekstopr","maxtrades-o":"maxtrades","contract-o":"contract"};
+function showKind(k){$("#set-own").hidden=k!=="propre";$("#set-prop").hidden=k==="propre"}
 function fillSettings(){
   if(!ACTIVE)return;
+  const p=ACTIVE.params;$("#s-kind").value=p.kind||"propfirm";showKind($("#s-kind").value);
   $("#s-phase").value=ACTIVE.status;$("#s-size").value=ACTIVE.size;
-  PARAM_FIELDS.forEach(k=>{$("#s-"+k).value=ACTIVE.params[k]});
+  PARAM_FIELDS.forEach(k=>{$("#s-"+k).value=p[k]});
+  Object.entries(OWN_FIELDS).forEach(([f,k])=>{$("#s-"+f).value=p[k]});
 }
+$("#s-kind").addEventListener("change",e=>showKind(e.target.value));
 $("#btn-settings").addEventListener("click",async()=>{
   if(!ACTIVE)return;
-  const params={};for(const k of PARAM_FIELDS){params[k]=num($("#s-"+k).value);if(!Number.isFinite(params[k])){toast("Valeur manquante : vérifiez chaque champ.");return}}
-  const size=num($("#s-size").value);if(!Number.isFinite(size)||size<=0){toast("Taille du compte invalide.");return}
-  try{const a=await api("accounts/"+ACTIVE.id,{method:"PUT",body:{status:$("#s-phase").value,size,params}});
+  const kind=$("#s-kind").value, params={kind};let body;
+  if(kind==="propre"){
+    for(const [f,k] of Object.entries(OWN_FIELDS)){params[k]=num($("#s-"+f).value);if(!Number.isFinite(params[k])){toast("Valeur manquante : vérifiez chaque champ.");return}}
+    body={status:ACTIVE.status==="retire"?"retire":"finance",size:params.start,params};
+  }else{
+    for(const k of PARAM_FIELDS){params[k]=num($("#s-"+k).value);if(!Number.isFinite(params[k])){toast("Valeur manquante : vérifiez chaque champ.");return}}
+    const size=num($("#s-size").value);if(!Number.isFinite(size)||size<=0){toast("Taille du compte invalide.");return}
+    body={status:$("#s-phase").value,size,params};
+  }
+  try{const a=await api("accounts/"+ACTIVE.id,{method:"PUT",body});
     replaceAccount(a);setActive();fillAccountSelects();toast("Paramètres enregistrés")}
   catch(e){toast("Enregistrement impossible : "+errMsg(e))}
   calc();
 });
 function replaceAccount(a){const i=ACCOUNTS.findIndex(x=>x.id===a.id);if(i>=0)ACCOUNTS[i]=a;else ACCOUNTS.push(a)}
 
-/* ---------- ticket du jour ---------- */
+/* ---------- ticket du jour : tout vient du compte sélectionné (MT5 et journal) ---------- */
 function accTrades(id){return TRADES.filter(t=>t.accountId===id)}
-function phaseTradesBeforeToday(){
-  if(!ACTIVE)return [];
-  const from=ACTIVE.phaseStart||"0000-00-00", t=todayStr();
-  return accTrades(ACTIVE.id).filter(x=>x.date>=from&&x.date<t);
-}
 function todaySnap(){const s=ACTIVE&&SNAPS[ACTIVE.id];return s&&s.at.slice(0,10)===todayStr()?s:null}
 function renderMt5Line(){
   const box=$("#mt5-line"), s=ACTIVE&&SNAPS[ACTIVE.id];
@@ -156,97 +165,116 @@ function renderMt5Line(){
     el("span",null,s.dailyLoss>0?"perte du jour ":"gain du jour ",el("b",{text:money2(Math.abs(s.dailyLoss))})),el("span",{class:mins>10?"old":"",text:ago}));
   box.hidden=false;
 }
-function autoDays(){return new Set(phaseTradesBeforeToday().map(x=>x.date)).size}
-function autoBalance(){return Math.round((ACTIVE.size+phaseTradesBeforeToday().reduce((a,x)=>a+(num(x.pnl)||0),0))*100)/100}
-function loadDay(){
-  const saved=ls.get("day:"+ACTIVE.id,null);
-  const fresh=!(saved&&saved.date===todayStr());
-  ["balance","days","stop","spread"].forEach(k=>{day[k]=fresh?"":(saved[k]||"")});
-  const sn=todaySnap();
-  if(!day.balance)day.balance=String(sn?Math.round((sn.equity+sn.dailyLoss)*100)/100:autoBalance());
-  if(day.days==="")day.days=String(autoDays());
-  ["balance","days","stop","spread"].forEach(k=>{$("#in-"+k).value=day[k]});
+// Solde du matin : MT5 du jour (équité + perte du jour), sinon taille + résultats avant aujourd'hui.
+function morningBalance(){
+  const sn=todaySnap();if(sn)return Math.round((sn.equity+sn.dailyLoss)*100)/100;
+  const t=todayStr(), from=isOwn(ACTIVE)?"0000-00-00":(ACTIVE.phaseStart||"0000-00-00");
+  return Math.round((ACTIVE.size+accTrades(ACTIVE.id).filter(x=>x.date>=from&&x.date<t).reduce((a,x)=>a+(num(x.pnl)||0),0))*100)/100;
 }
-["balance","days","stop","spread"].forEach(k=>{
-  const i=$("#in-"+k);i.addEventListener("input",()=>{day[k]=i.value;if(ACTIVE)ls.set("day:"+ACTIVE.id,Object.assign({date:todayStr()},day));calc()});
-});
+// Capital actuel : solde MT5, sinon taille + tous les résultats.
+function currentCapital(){const sn=ACTIVE&&SNAPS[ACTIVE.id];return sn?sn.equity:ACTIVE.size+accTrades(ACTIVE.id).reduce((a,x)=>a+(num(x.pnl)||0),0)}
+// Jours tradés de l'étape : un jour compte dès qu'il porte un trade, aujourd'hui compris.
+function tradedDays(){const from=ACTIVE.phaseStart||"0000-00-00";return new Set(accTrades(ACTIVE.id).filter(x=>x.date>=from).map(x=>x.date))}
+// Risque du palier (fonds propres), comme le Calculateur XAU : départ ÷ N jusqu'à 500 $, puis 4, 2 et 1 %.
+function ownRisk(cap,p){
+  if(cap<500)return{risk:Math.min(cap,p.start)/Math.max(1,p.budget),tier:1};
+  if(cap<1000)return{risk:cap*0.04,tier:2};
+  if(cap<2500)return{risk:cap*0.02,tier:3};
+  return{risk:cap*0.01,tier:4};
+}
+function mondayStr(){const d=new Date();d.setDate(d.getDate()-((d.getDay()+6)%7));return d.toISOString().slice(0,10)}
+let QUICK_STOP="";
+$("#in-stop").addEventListener("input",e=>{QUICK_STOP=e.target.value;calc()});
 function todayTrades(){const t=todayStr();return ACTIVE?accTrades(ACTIVE.id).filter(x=>x.date===t):[]}
+const cellEl=(k,v,sub,cls)=>el("div",{class:"cell"+(cls?" "+cls:"")},el("div",{class:"k",text:k}),el("div",{class:"v",text:v}),el("div",{class:"s",text:sub||""}));
+let DAY_RISK=NaN, DAY_STATE={light:"go",why:[]};
 function calc(){
   if(!ACTIVE)return;
-  const size=S.size, bal=num(day.balance), stop=num(day.stop), spread=num(day.spread);
-  const phase=S.phase, pct=phase==="1"?S.t1:phase==="2"?S.t2:S.tf;
-  const target=size*pct/100, floor=size*(1-S.max/100), dailyLim=size*S.daily/100;
-  const tt=todayTrades(), netToday=tt.reduce((a,x)=>a+(num(x.pnl)||0),0), lossesToday=tt.filter(x=>num(x.r)<0).length;
-  const daysDone=Number.isFinite(num(day.days))?num(day.days):0;
-  const daysLeft=phase==="f"?1:Math.max(1,S.mindays-daysDone);
-  CALC={lot:NaN,stop:NaN};
-  $("#t-phase").textContent=(STATUS_L[S.status]||"Phase 1")+" · "+ACTIVE.name;
   renderMt5Line();
-  $("#t-meta").textContent="Compte "+money(size)+" · objectif "+fmt(pct,1)+" % ("+money(target)+") · plancher "+money(floor);
-  const alerts=[];
-  if(S.status==="echoue"||S.status==="retire")alerts.push(["warn","Ce compte est « "+STATUS_L[S.status].toLowerCase()+" ». Choisissez un autre compte actif pour trader."]);
-  if(!Number.isFinite(bal)){["o-lot","o-target","o-tp","o-2r","o-margin"].forEach(id=>$("#"+id).textContent="—");
-    ["o-lot-s","o-target-s","o-tp-s","o-2r-s","o-margin-s"].forEach(id=>$("#"+id).textContent="");
-    alerts.push(["warn","Entrez le solde du matin pour lancer le calcul."]);}
-  const profit=bal-size, remaining=target-profit;
-  const dayTarget=remaining>0?remaining/daysLeft:0;
-  const reduced=Number.isFinite(bal)&&profit<=-S.redat;
-  let risk=reduced?S.riskred:S.risk;
-  const margin=bal-floor;
-  if(Number.isFinite(margin)&&risk>margin-5)risk=Math.max(0,margin-5);
-  $("#o-today").textContent=money(netToday);
-  $("#o-today-s").textContent=tt.length+"/"+S.maxtrades+" trades · "+lossesToday+"/"+S.maxloss+" pertes";
-  if(Number.isFinite(bal)){
-    $("#o-target").textContent=remaining>0?money(dayTarget):"Atteint";
-    $("#o-target-s").textContent=remaining>0?("Reste "+money(remaining)+" sur "+daysLeft+" jour"+(daysLeft>1?"s":"")):"Micro-trades à 0,01 lot jusqu’au jour minimum";
-    $("#o-margin").textContent=money(margin);
-    $("#o-margin-s").textContent="≈ "+(risk>0?Math.floor(margin/(risk+5)):0)+" pertes possibles · limite du jour "+money(dailyLim+Math.min(0,netToday));
+  const own=isOwn(ACTIVE), p=ACTIVE.params, alerts=[], cells=[];
+  const tt=todayTrades(), netToday=tt.reduce((a,x)=>a+(num(x.pnl)||0),0), lossesToday=tt.filter(x=>num(x.r)<=-0.5).length;
+  const bal=morningBalance();
+  $("#t-phase").textContent=accLabel(ACTIVE)+" · "+ACTIVE.name;
+  if(ACTIVE.status==="echoue"||ACTIVE.status==="retire")alerts.push(["warn","Ce compte est « "+accLabel(ACTIVE).toLowerCase()+" ». Choisissez un autre compte actif pour trader."]);
+  let risk;
+  if(own){
+    const cap=currentCapital(), r=ownRisk(bal,p);risk=r.risk;
+    const dayLim=p.daystopr*risk, dayLeft=dayLim+Math.min(0,netToday);
+    const wk=accTrades(ACTIVE.id).filter(x=>x.date>=mondayStr()), wkNet=wk.reduce((a,x)=>a+(num(x.pnl)||0),0), wkLoss=wk.filter(x=>num(x.r)<=-0.5).length;
+    const mo=accTrades(ACTIVE.id).filter(x=>x.date.slice(0,7)===todayStr().slice(0,7)), moNet=mo.reduce((a,x)=>a+(num(x.pnl)||0),0);
+    const toFloor=cap-p.floor;
+    $("#t-meta").textContent=(ACTIVE.firm?ACTIVE.firm+" · ":"")+"départ "+money(p.start)+" · plancher "+money(p.floor)+" · retrait "+fmt(p.withdraw,0)+" % du gain du mois";
+    cells.push(cellEl("Capital",money2(cap),"Début de journée "+money2(bal),"hero"));
+    cells.push(cellEl("Risque par trade",money2(risk),r.tier===1?"Palier 1 : "+money(p.start)+" ÷ "+p.budget:"Palier "+r.tier+" : "+fmt(100*risk/bal,0)+" % du capital"));
+    cells.push(cellEl("Aujourd’hui",(netToday>=0?"+":"−")+money2(Math.abs(netToday)),tt.length+"/"+p.maxtrades+" trades · "+lossesToday+"/"+p.maxloss+" pertes · reste "+money(Math.max(0,dayLeft))));
+    cells.push(cellEl("Semaine",(wkNet>=0?"+":"−")+money2(Math.abs(wkNet)),wkLoss+"/"+p.weekloss+" pertes · limite "+fmt(p.weekstopr,0)+" R ("+money(p.weekstopr*risk)+")"));
+    cells.push(cellEl("Avant le plancher",money(toFloor),"≈ "+(risk>0?Math.max(0,Math.floor(toFloor/risk)):0)+" pertes pleines"));
+    cells.push(cellEl("Mois",(moNet>=0?"+":"−")+money2(Math.abs(moNet)),moNet>0?"Retrait conseillé en fin de mois : "+money2(moNet*p.withdraw/100):"Pas de retrait ce mois-ci"));
+    if(lossesToday>=p.maxloss)alerts.push(["stop","Arrêt pour aujourd’hui : "+lossesToday+" pertes."]);
+    else if(dayLeft<=0)alerts.push(["stop","Perte maximum du jour atteinte ("+fmt(p.daystopr,0)+" R) : arrêt jusqu’à demain."]);
+    else if(tt.length>=p.maxtrades)alerts.push(["stop","Limite de "+p.maxtrades+" trades atteinte pour aujourd’hui."]);
+    if(wkLoss>=p.weekloss||wkNet<=-p.weekstopr*risk)alerts.push(["stop","Limite de la semaine atteinte : arrêt jusqu’à lundi, relecture complète."]);
+    if(cap<=p.floor)alerts.push(["stop","Plancher de "+money(p.floor)+" atteint : plus de trade réel, retour en démo."]);
+    else if(toFloor<=2*risk)alerts.push(["warn","Plus que "+Math.max(0,Math.floor(toFloor/risk))+" perte(s) avant le plancher."]);
+  }else{
+    const size=ACTIVE.size, phase=S.phase, pct=phase==="1"?p.t1:phase==="2"?p.t2:p.tf;
+    const target=size*pct/100, floor=size*(1-p.max/100), dailyLim=size*p.daily/100;
+    const days=tradedDays(), daysDone=days.size, daysBefore=[...days].filter(d=>d<todayStr()).length;
+    const daysLeft=phase==="f"?1:Math.max(1,p.mindays-daysBefore);
+    const profit=bal-size, remaining=target-profit, dayTarget=remaining>0?remaining/daysLeft:0;
+    const reduced=profit<=-p.redat;risk=reduced?p.riskred:p.risk;
+    const margin=currentCapital()-floor;if(risk>margin-5)risk=Math.max(0,margin-5);
+    $("#t-meta").textContent="Compte "+money(size)+" · objectif "+fmt(pct,1)+" % ("+money(target)+") · plancher "+money(floor);
+    cells.push(cellEl("Risque par trade",money2(risk),reduced?"Risque réduit : compte à "+money(profit):"Risque normal","hero"));
+    cells.push(cellEl("Objectif de l’étape",remaining>0?money(remaining):"Atteint",remaining>0?"Progression "+money(profit)+" sur "+money(target):"Micro-trades jusqu’au jour minimum"));
+    cells.push(cellEl("Objectif du jour",remaining>0?money(dayTarget):"—",remaining>0?"Sur "+daysLeft+" jour"+(daysLeft>1?"s":"")+" restant"+(daysLeft>1?"s":""):""));
+    cells.push(cellEl("Jours tradés",phase==="f"?String(daysDone):daysDone+" / "+p.mindays,tt.length?"Aujourd’hui compté":"Compté au premier trade du jour"));
+    cells.push(cellEl("Marge avant perte max",money(margin),"≈ "+(risk>0?Math.floor(margin/(risk+5)):0)+" pertes · limite du jour "+money(dailyLim+Math.min(0,netToday))));
+    cells.push(cellEl("Aujourd’hui",(netToday>=0?"+":"−")+money2(Math.abs(netToday)),tt.length+"/"+p.maxtrades+" trades · "+lossesToday+"/"+p.maxloss+" pertes"));
     if(remaining<=0)alerts.push(["go","Objectif de l’étape atteint. Faites seulement des micro-trades jusqu’au nombre de jours minimum."]);
-    if(reduced)alerts.push(["warn","Le compte est à "+money(profit)+" : risque réduit à "+money(S.riskred)+" par trade."]);
-    if(margin<=S.risk)alerts.push(["stop","Marge presque épuisée : un seul trade de plus peut faire perdre le compte."]);
+    if(reduced)alerts.push(["warn","Le compte est à "+money(profit)+" : risque réduit à "+money(p.riskred)+" par trade."]);
+    if(margin<=p.risk)alerts.push(["stop","Marge presque épuisée : un seul trade de plus peut faire perdre le compte."]);
+    if(lossesToday>=p.maxloss)alerts.push(["stop","Arrêt pour aujourd’hui : "+lossesToday+" pertes."]);
+    else if(tt.length>=p.maxtrades)alerts.push(["stop","Limite de "+p.maxtrades+" trades atteinte pour aujourd’hui."]);
+    if(remaining>0&&netToday>=dayTarget&&tt.length>0)alerts.push(["go","Objectif du jour atteint : arrêtez de trader aujourd’hui."]);
+    if(-netToday>=dailyLim*0.8)alerts.push(["stop","Vous approchez de la limite de perte journalière."]);
   }
-  if(Number.isFinite(stop)&&stop>0&&Number.isFinite(bal)&&risk>0){
-    const lot=Math.floor(risk/(stop*S.contract)*100+1e-9)/100;
-    const realRisk=lot*stop*S.contract;
-    CALC={lot,stop};
-    $("#o-lot").textContent=lot>0?fmt(lot,2):"0,00";
-    $("#o-lot-s").textContent="Risque réel "+money(realRisk)+" pour un stop de "+fmt(stop,2)+" $";
-    if(lot>0&&remaining>0){const tp=dayTarget/(lot*S.contract);$("#o-tp").textContent=fmt(tp,2)+" $";$("#o-tp-s").textContent="de mouvement · soit "+fmt(tp/stop,1)+"R"}
-    else{$("#o-tp").textContent="—";$("#o-tp-s").textContent=""}
-    $("#o-2r").textContent=fmt(stop*2,2)+" $";$("#o-2r-s").textContent="Fermez 50 % (+"+money(realRisk)+") puis stop au prix d’entrée";
+  $("#ticket-out").replaceChildren(...cells);
+  DAY_RISK=risk;
+  // Lot rapide : le seul calcul à saisir (le Calculateur XAU le fait dans MT5).
+  const stop=num(QUICK_STOP), q=$("#quick-out");CALC={lot:NaN,stop:NaN};
+  if(Number.isFinite(stop)&&stop>0&&risk>0){
+    const lot=Math.floor(risk/(stop*p.contract)*100+1e-9)/100;CALC={lot,stop};
+    q.replaceChildren(el("b",{text:fmt(lot,2)+" lot"}),document.createTextNode(" · risque réel "+money2(lot*stop*p.contract)+" · 2R à "+fmt(stop*2,2)+" $ de mouvement"));
     if(lot<0.01)alerts.push(["stop","Stop trop large pour ce risque : le lot tombe sous 0,01."]);
-    if(stop<1.5||stop>8)alerts.push(["warn","Stop hors de la plage 1,50 – 8,00 $ : passez votre tour ou revoyez le placement."]);
-    if(Number.isFinite(spread)&&spread>0){const p=spread/stop*100;if(p>S.spreadmax)alerts.push(["warn","Le spread fait "+fmt(p,0)+" % du stop (max "+S.spreadmax+" %) : attendez un spread plus bas."])}
-  }else if(Number.isFinite(bal)){$("#o-lot").textContent="—";$("#o-lot-s").textContent="Entrez la distance du stop";$("#o-tp").textContent="—";$("#o-tp-s").textContent="";$("#o-2r").textContent="—";$("#o-2r-s").textContent=""}
-  if(lossesToday>=S.maxloss)alerts.push(["stop","Arrêt pour aujourd’hui : "+lossesToday+" pertes."]);
-  else if(tt.length>=S.maxtrades)alerts.push(["stop","Limite de "+S.maxtrades+" trades atteinte pour aujourd’hui."]);
-  if(Number.isFinite(bal)&&remaining>0&&netToday>=dayTarget&&tt.length>0)alerts.push(["go","Objectif du jour atteint : arrêtez de trader aujourd’hui."]);
-  if(-netToday>=dailyLim*0.8)alerts.push(["stop","Vous approchez de la limite de perte journalière."]);
-  const box=$("#alerts");box.replaceChildren(...alerts.map(([c,t])=>el("div",{class:"alert "+c,text:t})));
-  box.hidden=!alerts.length;
-  updateVerdict();
+    if(stop<1.5||stop>8)alerts.push(["warn","Stop hors de la plage 1,50 – 8,00 $ : passez votre tour ou attendez l’ordre limite."]);
+  }else q.textContent="Risque "+money2(risk)+" par trade : saisissez la distance du stop pour le lot.";
+  const box=$("#alerts");box.replaceChildren(...alerts.map(([c,t])=>el("div",{class:"alert "+c,text:t})));box.hidden=!alerts.length;
+  DAY_STATE={light:alerts.some(a=>a[0]==="stop")?"stop":alerts.some(a=>a[0]==="warn")?"warn":"go",why:alerts.filter(a=>a[0]!=="go").map(a=>a[1])};
+  renderFeu();
 }
 
-/* ---------- check-list ---------- */
-const CHECKS=["Setup 1 (liquidité), 2 (continuation) ou 3 (iFVG) clairement identifié","Niveau fixe touché (EQH/EQL, 2 Liq, PDH/PDL, session fermée) ou BoS confirmé","Gros triangle de signal dans le bon sens","Aucun filtre : pas de news, pas de signal opposé depuis 15 min, pas de range serré","Stop entre 1,50 $ et 8,00 $","Au moins 2R de place jusqu’à la prochaine liquidité"];
-function buildChecklist(){
-  $("#checklist").replaceChildren(...CHECKS.map((t,i)=>{const cb=el("input",{type:"checkbox",id:"cx-ck"+i});cb.addEventListener("change",updateVerdict);return el("label",{class:"check"},cb,el("span",{text:t}))}));
-}
-function updateVerdict(){
-  const ok=CHECKS.every((_,i)=>$("#cx-ck"+i)&&$("#cx-ck"+i).checked);
-  const blocked=$$("#alerts .alert.stop").length>0;
-  const v=$("#verdict");
-  if(ok&&!blocked){v.className="verdict yes";v.textContent="Six « oui » : vous pouvez entrer."}
-  else if(ok&&blocked){v.className="verdict no";v.textContent="Check-list validée, mais une alerte rouge bloque le trade."}
-  else{v.className="verdict no";v.textContent="Cochez les six points pour valider le trade."}
-  $("#btn-log").disabled=!(ok&&!blocked);
+/* ---------- feu du jour : peut-on trader, dernier signal, plan de la séance ---------- */
+let LAST_SIGNALS=[];
+async function loadFeuSignals(){try{LAST_SIGNALS=await api("claude-signals")}catch(e){LAST_SIGNALS=[]}renderFeu()}
+function renderFeu(){
+  const out=[], st=DAY_STATE;
+  out.push(el("div",{class:"feu "+st.light},el("b",{text:st.light==="stop"?"Arrêt":st.light==="warn"?"Prudence":"Feu vert"}),
+    document.createTextNode(st.light==="go"?" : vous pouvez prendre les signaux du plan, risque "+(Number.isFinite(DAY_RISK)?money2(DAY_RISK):"—")+" par trade.":" : "+st.why[0])));
+  const t=todayStr(), sig=LAST_SIGNALS.filter(s=>s.kind!=="retest"&&s.at.slice(0,10)===t)[0];
+  const SL={ouvert:"en cours",attente:"ordre limite en attente",annule:"annulé",gagne:"gagnant",perdu:"perdant",be:"sorti à zéro"};
+  out.push(el("p",null,el("span",{class:"k",text:"Dernier signal : "}),document.createTextNode(sig?sig.at.slice(11,16)+" · "+(sig.side==="sell"?"vente":"achat")+(sig.setup?" · setup "+sig.setup:"")+" · entrée "+px(sig.entry)+", stop "+px(sig.sl)+", objectif "+px(sig.tp)+" · "+(SL[sig.status]||sig.status)+(sig.r!=null?" ("+(sig.r>0?"+":"")+fmt(sig.r,1)+"R)":""):"aucun aujourd’hui")));
+  const ses=(((THIS_WEEK_PLAN||{}).content||{}).sessions||[]).filter(x=>x.date===t), O={asia:0,premarket:1,us:2}, K={asia:"session Asie",premarket:"pré-marché",us:"plan US"};
+  const last=ses.sort((a,b)=>O[b.kind]-O[a.kind])[0];
+  if(last){out.push(el("p",null,el("span",{class:"k",text:"À exécuter ("+K[last.kind]+") : "})));
+    out.push(el("ul",{class:"rules"},...(last.execution||[]).slice(0,3).map(x=>el("li",{text:x})),last.invalid?el("li",{class:"sell",text:"Annule : "+last.invalid}):null));}
+  else out.push(el("p",{class:"hint",text:"Pas encore d’analyse de séance aujourd’hui (Asie à 06:45, pré-marché et plan US l’après-midi)."}));
+  $("#feu").replaceChildren(...out);
 }
 $("#btn-log").addEventListener("click",()=>{
   resetTradeForm();
   if(Number.isFinite(CALC.stop))$("#tf-stop").value=CALC.stop;
-  if(Number.isFinite(CALC.lot)){$("#tf-lot").value=CALC.lot;if(Number.isFinite(CALC.stop))$("#tf-risk").value=(CALC.lot*CALC.stop*S.contract).toFixed(2)}
-  $("#tf-rules").checked=true;
-  CHECKS.forEach((_,i)=>{$("#cx-ck"+i).checked=false});updateVerdict();
+  if(Number.isFinite(CALC.lot)){$("#tf-lot").value=CALC.lot;if(Number.isFinite(CALC.stop))$("#tf-risk").value=(CALC.lot*CALC.stop*ACTIVE.params.contract).toFixed(2)}
   showTab("journal");$("#tf-r").focus();
 });
 
@@ -924,7 +952,7 @@ $("#mc-run").addEventListener("click",()=>{
 
 /* ---------- comptes et retraits ---------- */
 function renderAccounts(){
-  const cost=ACCOUNTS.reduce((a,x)=>a+(num(x.price)||0),0);
+  const cost=ACCOUNTS.filter(x=>!isOwn(x)).reduce((a,x)=>a+(num(x.price)||0),0);
   const paidIds=new Set(PAYOUTS.map(p=>p.accountId));
   const funded=ACCOUNTS.filter(a=>a.status==="finance"||paidIds.has(a.id)).length;
   const share=PAYOUTS.reduce((a,p)=>a+(num(p.share)||0),0), fees=PAYOUTS.reduce((a,p)=>a+(num(p.fees)||0),0);
@@ -937,9 +965,10 @@ function renderAccounts(){
   if(!ACCOUNTS.length){box.replaceChildren(el("div",{class:"empty",text:"Aucun compte. Créez votre premier challenge."}))}
   else box.replaceChildren(...ACCOUNTS.slice().reverse().map(a=>{
     const T=accTrades(a.id), g=agg(T), paid=PAYOUTS.filter(p=>p.accountId===a.id).reduce((s,p)=>s+(num(p.share)||0),0);
-    const head=el("div",{class:"row"},el("span",{class:"t1",text:a.name}),el("span",{class:"pill "+a.status,text:STATUS_L[a.status]||a.status}));
+    const head=el("div",{class:"row"},el("span",{class:"t1",text:a.name}),el("span",{class:"pill "+(isOwn(a)?"own":a.status),text:accLabel(a)}));
     if(a.active)head.append(el("span",{class:"tag",text:"actif"}));
-    const sub=[a.firm,a.model,money(a.size),"challenge "+money2(a.price)].filter(Boolean).join(" · ")+(a.purchaseDate?" · acheté le "+new Date(a.purchaseDate+"T00:00:00").toLocaleDateString("fr-FR"):"");
+    const sub=isOwn(a)?[a.firm,"fonds propres","départ "+money(a.size)].filter(Boolean).join(" · ")+(a.purchaseDate?" · ouvert le "+new Date(a.purchaseDate+"T00:00:00").toLocaleDateString("fr-FR"):"")
+      :[a.firm,a.model,money(a.size),"challenge "+money2(a.price)].filter(Boolean).join(" · ")+(a.purchaseDate?" · acheté le "+new Date(a.purchaseDate+"T00:00:00").toLocaleDateString("fr-FR"):"");
     const nums=el("div",{class:"nums"},
       el("div",null,el("b",{text:String(g.n)}),el("span",{text:"trades"})),
       el("div",null,el("b",{text:(g.sum>=0?"+":"−")+fmt(Math.abs(g.sum),1)+"R"}),el("span",{text:"total"})),
@@ -959,18 +988,31 @@ function renderAccounts(){
 }
 function openAccForm(a){
   ACC_EDIT=a?a.id:null;$("#acc-form").hidden=false;$("#af-title").textContent=a?"Modifier le compte":"Nouveau compte";
-  $("#af-name").value=a?a.name:"";$("#af-firm").value=a?a.firm:"FundedNext";$("#af-model").value=a?a.model:"Stellar 2-Step";
-  $("#af-size").value=a?a.size:(ACTIVE?ACTIVE.size:6000);$("#af-price").value=a?a.price:"";$("#af-status").value=a?a.status:"phase1";
+  $("#af-kind").value=a?(isOwn(a)?"propre":"propfirm"):"propre";afKind();
+  $("#af-name").value=a?a.name:"";$("#af-firm").value=a?a.firm:($("#af-kind").value==="propre"?"Deriv":"FundedNext");$("#af-model").value=a?a.model:"Stellar 2-Step";
+  $("#af-size").value=a?a.size:($("#af-kind").value==="propre"?250:6000);$("#af-price").value=a?a.price:"";$("#af-status").value=a?a.status:"phase1";
   $("#af-date").value=a?(a.purchaseDate||""):todayStr();$("#af-phase").value=a?(a.phaseStart||""):todayStr();
   $("#acc-form").scrollIntoView({behavior:"smooth",block:"start"});$("#af-name").focus();
 }
+// Le formulaire s'adapte au type : courtier et capital de départ, ou prop firm, modèle, prix et étape.
+function afKind(){const own=$("#af-kind").value==="propre";
+  $$("#acc-form .af-prop").forEach(e=>{e.hidden=own});
+  $("#af-firm-l").textContent=own?"Courtier":"Prop firm";$("#af-size-l").textContent=own?"Capital de départ ($)":"Taille ($)";
+  $("#af-date-l").textContent=own?"Date d’ouverture":"Date d’achat";$("#af-firm").placeholder=own?"Deriv, Exness…":"FundedNext";
+  $("#af-hint").textContent=own?"Fonds propres : risque = capital de départ ÷ 12, plancher à la moitié du départ, retrait de 50 % du gain chaque mois. Modifiables dans l’onglet Jour.":"Les paramètres de risque d’un nouveau compte reprennent ceux du compte actif. Ils se modifient dans l’onglet Jour."}
+$("#af-kind").addEventListener("change",()=>{afKind();if(!ACC_EDIT){const own=$("#af-kind").value==="propre";$("#af-size").value=own?250:6000;$("#af-firm").value=own?"Deriv":"FundedNext"}});
 $("#acc-new").addEventListener("click",()=>openAccForm(null));
 $("#af-cancel").addEventListener("click",()=>{$("#acc-form").hidden=true;ACC_EDIT=null});
 $("#af-save").addEventListener("click",async()=>{
   const body={name:$("#af-name").value.trim(),firm:$("#af-firm").value.trim(),model:$("#af-model").value.trim(),size:$("#af-size").value,price:$("#af-price").value,
     status:$("#af-status").value,purchaseDate:$("#af-date").value,phaseStart:$("#af-phase").value};
   if(!body.name){toast("Donnez un nom au compte.");return}
-  if(!ACC_EDIT&&ACTIVE)body.params=ACTIVE.params;
+  const own=$("#af-kind").value==="propre";
+  if(own){const sz=num(body.size);body.status=body.status==="retire"?"retire":"finance";
+    const base=ACC_EDIT?(ACCOUNTS.find(x=>x.id===ACC_EDIT)||{}).params:(ACTIVE?ACTIVE.params:{});
+    body.params=Object.assign({},base,{kind:"propre"},ACC_EDIT&&isOwn(ACCOUNTS.find(x=>x.id===ACC_EDIT))?{start:sz}:{start:sz,budget:12,floor:Math.round(sz/2),withdraw:50,daystopr:2,weekloss:4,weekstopr:4,maxloss:2,maxtrades:3});
+    body.price=0;}
+  else{if(!ACC_EDIT&&ACTIVE)body.params=Object.assign({},ACTIVE.params,{kind:"propfirm"});else if(ACC_EDIT)body.params=Object.assign({},(ACCOUNTS.find(x=>x.id===ACC_EDIT)||{}).params,{kind:"propfirm"})}
   const btn=$("#af-save");btn.disabled=true;
   try{const a=await api(ACC_EDIT?"accounts/"+ACC_EDIT:"accounts",{method:ACC_EDIT?"PUT":"POST",body});
     ACCOUNTS=await api("accounts");setActive();fillAccountSelects();$("#acc-form").hidden=true;
@@ -1140,14 +1182,13 @@ function lockReadOnly(){
 }
 async function start(){
   readOnlyMode();
-  buildChecklist();
   try{
     const b=await api("bootstrap");
     ACCOUNTS=b.accounts||[];TRADES=b.trades||[];PAYOUTS=b.payouts||[];SNAPS=b.snaps||{};
   }catch(e){toast("Chargement impossible : "+errMsg(e));setStatus("err","Hors ligne")}
   setActive();fillAccountSelects();resetTradeForm();resetPayoutForm();
   try{THIS_WEEK_PLAN=await api("plans/"+weekId(planWeek()))}catch(e){THIS_WEEK_PLAN=null}
-  renderPlanMini();loadPlan();renderTrades();calc();
+  renderPlanMini();loadPlan();renderTrades();calc();loadFeuSignals();setInterval(loadFeuSignals,120000);
   loadCalendar();
   lockReadOnly();
   if("serviceWorker" in navigator&&CFG.sw&&window.isSecureContext){navigator.serviceWorker.register(CFG.sw,{scope:CFG.scope||"/"}).catch(()=>{})}
