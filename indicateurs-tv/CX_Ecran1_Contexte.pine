@@ -1,0 +1,1774 @@
+//@version=6
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//  CX ÉCRAN 1  —  CONTEXTE  (analyse personnelle, indépendante du carnet et de Claude)
+//
+//  Tiré du script combiné « HTF Panel v4 ». Rien n'est ajouté au calcul : on enlève, et on reprend
+//  l'affichage le plus propre parmi les scripts fournis.
+//   PARTIE 1  : ICT Price Levels — ouvertures minuit / 08:30, PDH/PDL, PWH/PWL
+//               + D-EQ / W-EQ (50 %) repris de Shaakuni, tracés comme PDH/PDL (segment, nom centré)
+//   PARTIE 1B : Session Liquidity © Infinity_Trading_ (haut/bas de session, nom centré)
+//   PARTIE 3  : The Distilled HTF PO3 — panneau 5 H4 + 5 H1
+//   PARTIE 4  : Daily Bias (range de la veille désactivé par défaut : doublon de PDH/PDL)
+//   PARTIE 7B : Order Blocks H1 / H4 — couleurs et bord pointillé de TradingFinder
+//  Retirés : tableau IB London (partie 2), MSB (partie 5), Auto TrendLines (partie 6),
+//            SMC LuxAlgo du graphique (partie 7, structure et OB passent à l'écran 2).
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+
+indicator('CX Écran 1 · Contexte', 'CX Contexte', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
+
+// Masque les valeurs des réglages dans la ligne d'état (repris de la partie 2 retirée)
+display = display.all - display.status_line
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//                       PARTIE 1  —  ICT LIQUIDITY SESSIONS FRAMEWORK  (recréation)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//  Partie réduite à la demande : seuls les ICT PRICE LEVELS sont conservés (ouvertures de minuit et
+//  de 08:30, PDH/PDL, PWH/PWL). Sessions, killzones, crochets, échelle et limiteur de données retirés.
+//  Le fuseau et la session Asia restent des constantes : le Daily Bias (partie 4) en a besoin pour le
+//  range asiatique. Horaires en heure de New York (heure d'été gérée).
+
+const string lsTz       = "America/New_York"
+const string lsAsiaSess = "1900-0600"
+lsLookback = 3
+
+lsG4 = "ICT · PRICE LEVELS"
+lsShowOpens = input.bool(true, "Midnight & 08:30 Open", group = lsG4)
+lsShowPD    = input.bool(true, "Prev Day H/L",          group = lsG4)
+lsShowPW    = input.bool(true, "Prev Week H/L",         group = lsG4)
+lsCMid  = input.color(#9E9E9E, "Midnight", group = lsG4, inline = "o")
+lsC830  = input.color(#FF9800, "08:30",    group = lsG4, inline = "o")
+lsCPD   = input.color(#9E9E9E, "PDH/PDL",  group = lsG4, inline = "l")
+lsCPW   = input.color(#9E9E9E, "PWH/PWL",  group = lsG4, inline = "l")
+// EQ (50 %) de la veille et de la semaine précédente — élément de Shaakuni, couleurs de Shaakuni
+lsShowEQ = input.bool(true, "D-EQ / W-EQ (50 %)", group = lsG4)
+lsCDEQ  = input.color(color.rgb(0, 229, 255), "D-EQ", group = lsG4, inline = "eq")
+lsCWEQ  = input.color(color.rgb(255, 215, 0), "W-EQ", group = lsG4, inline = "eq")
+
+lsInLookback = time >= last_bar_time - lsLookback * 86400000
+
+// ---------- Midnight & 08:30 opens ----------
+type LsOpen
+    line  ln = na
+    label lb = na
+    int   d  = na
+
+method lsRunOpen(LsOpen o, string win, string name, color col) =>
+    bool inW = not na(time(timeframe.period, win, lsTz))
+    bool st  = inW and not inW[1]
+    if lsShowOpens and lsInLookback and st
+        o.d  := dayofmonth(time, lsTz)
+        o.ln := line.new(time, open, time, open, xloc = xloc.bar_time,
+             color = color.new(col, 40), style = line.style_dotted, width = 1)
+        o.lb := label.new(time, open, name, xloc = xloc.bar_time,
+             style = label.style_label_left, color = color(na), textcolor = col, size = size.tiny)
+    else if not na(o.ln) and dayofmonth(time, lsTz) == o.d
+        o.ln.set_x2(time)
+    o
+
+var LsOpen lsMidO = LsOpen.new()
+var LsOpen ls830O = LsOpen.new()
+lsMidO.lsRunOpen("0000-0001", "Midnight", lsCMid)
+ls830O.lsRunOpen("0830-0831", "08:30",    lsC830)
+
+// ---------- Previous Day / Week High-Low (sans repeinture) ----------
+// Court segment pointillé à droite du prix, étiquette centrée sur le segment.
+[lsPdh, lsPdl] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+[lsPwh, lsPwl] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+
+f_lsNewLine(color c) => line.new(na, na, na, na, xloc = xloc.bar_time, color = c, style = line.style_dashed, width = 1)
+f_lsNewLbl(color c)  => label.new(na, na, "", xloc = xloc.bar_time, style = label.style_label_center,
+     color = chart.bg_color, textcolor = c, size = size.tiny)
+
+var line  lsPdhL = f_lsNewLine(lsCPD)
+var line  lsPdlL = f_lsNewLine(lsCPD)
+var line  lsPwhL = f_lsNewLine(lsCPW)
+var line  lsPwlL = f_lsNewLine(lsCPW)
+var label lsPdhT = f_lsNewLbl(lsCPD)
+var label lsPdlT = f_lsNewLbl(lsCPD)
+var label lsPwhT = f_lsNewLbl(lsCPW)
+var label lsPwlT = f_lsNewLbl(lsCPW)
+var line  lsDeqL = f_lsNewLine(lsCDEQ)
+var line  lsWeqL = f_lsNewLine(lsCWEQ)
+var label lsDeqT = f_lsNewLbl(lsCDEQ)
+var label lsWeqT = f_lsNewLbl(lsCWEQ)
+
+f_lsSetLvl(line l, label t, bool on, float y, int x1, int x2, string txt) =>
+    if on and not na(y)
+        l.set_xy1(x1, y)
+        l.set_xy2(x2, y)
+        t.set_xy(int(math.round((x1 + x2) / 2)), y)
+        t.set_text(txt)
+        t.set_tooltip(txt + "  " + str.tostring(y, format.mintick))
+    else
+        l.set_xy1(na, na)
+        l.set_xy2(na, na)
+        t.set_xy(na, na)
+        t.set_text("")
+
+if barstate.islast
+    int lsBarMs = timeframe.in_seconds() * 1000
+    int lsX1 = time - 20 * lsBarMs
+    int lsX2 = time + 10 * lsBarMs
+    f_lsSetLvl(lsPdhL, lsPdhT, lsShowPD, lsPdh, lsX1, lsX2, "PDH")
+    f_lsSetLvl(lsPdlL, lsPdlT, lsShowPD, lsPdl, lsX1, lsX2, "PDL")
+    f_lsSetLvl(lsPwhL, lsPwhT, lsShowPW, lsPwh, lsX1, lsX2, "PWH")
+    f_lsSetLvl(lsPwlL, lsPwlT, lsShowPW, lsPwl, lsX1, lsX2, "PWL")
+    f_lsSetLvl(lsDeqL, lsDeqT, lsShowEQ and lsShowPD, (lsPdh + lsPdl) / 2, lsX1, lsX2, "D-EQ")
+    f_lsSetLvl(lsWeqL, lsWeqT, lsShowEQ and lsShowPW, (lsPwh + lsPwl) / 2, lsX1, lsX2, "W-EQ")
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//                       PARTIE 1B  —  SESSION LIQUIDITY  © Infinity_Trading_
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//  Script « Session Liquidity » inséré tel quel, converti v5 → v6. Seules modifications :
+//   - condition de fenêtre de session écrite « not na(...) » (v6 n'accepte plus un int comme booléen)
+//   - abscisse des étiquettes arrondie en entier (la division donne un float en v6)
+//   - interrupteur général « Afficher Session Liquidity »
+//  Rappel de l'auteur : lignes affichées uniquement en unité de temps inférieure à 1 heure.
+
+///////////////////////////////////////////////////////////////////////////////// CONSTANTS
+
+c_milliseconds_in_day = 24 * 60 * 60 * 1000
+c_tooltip_1 = "If the user increments/decrements this integer field and nothing happens, that is because the user is moving throught a weekend or holiday. Please continue incrementing/decrementing and after 2-3 clicks the user will see backgrounds/labels appear or disappear. The algorithm for Days Back is counting every 24-hour period which is why this behavior occurs."
+c_tooltip_2 = "To make the lines start over each day the code must know when to start the day. Since the user is entering times, a static start time won't work. Use midnight EST in the three timezone options as the starting point. If the users lines fits in the Asian Session then choose Asia/Shanghai. If the lines are within the London Session then choose Europe/London. And the same goes for the New York Session."
+c_tooltip_3 = "Please specify a start & end time within the same 'day' where the 'day' starts at midnight of the timezone selected by the user in the dropdown Start Day Timezone" 
+
+
+///////////////////////////////////////////////////////////////////////////////// INPUTS
+
+
+var string GDTB = "Limit Past Lines"
+i_sl_show = input.bool(defval=true, title="Afficher Session Liquidity", group=GDTB)
+i_display_days_back = input.int(defval=15, minval=1, maxval=80, title="Display Only 🔢 Days Back", group=GDTB, tooltip=c_tooltip_1)
+
+
+var string L0 = "First Session Lines"
+i_1st_session_high_line_toggle = input.bool(defval=true, title="High Line On/Off      ", group=L0, inline="high-1")
+i_1st_session_high_label_toggle = input.bool(defval=true, title="High Label On/Off", group=L0, inline="high-1")
+i_1st_session_low_line_toggle = input.bool(defval=true, title="Low Line On/Off      ", group=L0, inline="low-1")
+i_1st_session_low_label_toggle = input.bool(defval=true, title="Low Label On/Off", group=L0, inline="low-1")
+i_1st_session_start_day =       input.string(defval="Asia/Shanghai", title="Line Start Day Timezone", options=["America/New_York", "Europe/London", "Asia/Shanghai"], group=L0, tooltip=c_tooltip_2)
+i_1st_session_time =            input.session(defval='1900-0259', title="Line Start & End Times", group=L0, tooltip=c_tooltip_3)
+i_1st_session_text_char =        input.string(defval="First Session", title="Text Style     ", group=L0, inline="text1")
+i_1st_session_text_color =      input.color(defval=color.new(#131722, 0), title="", group=L0, inline="text1")
+i_1st_session_text_size =       input.string(defval="Normal", title="", options=["Tiny", "Small", "Normal", "Large", "Huge", "Auto"], group=L0, inline="text1")
+i_1st_session_line_high_color = input.color(defval=color.new(#00bcd4, 0), title="Line Style - High  ", group=L0, inline="line-high1")
+i_1st_session_line_high_style = input.string(defval="solid (─)", title="", options=["solid (─)", "dotted (┈)", "dashed (╌)"], group=L0, inline="line-high1")
+i_1st_session_line_high_width = input.int(defval=2, title="", minval=1, maxval=20, group=L0, inline="line-high1")
+i_1st_session_line_low_color =  input.color(defval=color.new(#00bcd4, 0), title="Line Style - Low  ", group=L0, inline="line-low1")
+i_1st_session_line_low_style =  input.string(defval="solid (─)", title="", options=["solid (─)", "dotted (┈)", "dashed (╌)"], group=L0, inline="line-low1")
+i_1st_session_line_low_width =  input.int(defval=2, title="", minval=1, maxval=20, group=L0, inline="line-low1")
+
+
+var string L2 = "Second Session Lines"
+i_2nd_session_high_line_toggle = input.bool(defval=true, title="High Line On/Off      ", group=L2, inline="high-2")
+i_2nd_session_high_label_toggle = input.bool(defval=true, title="High Label On/Off", group=L2, inline="high-2")
+i_2nd_session_low_line_toggle =  input.bool(defval=true, title="Low Line On/Off      ", group=L2, inline="low-2")
+i_2nd_session_low_label_toggle = input.bool(defval=true, title="Low Label On/Off", group=L2, inline="low-2")
+i_2nd_session_start_day =       input.string(defval="Europe/London", title="Line Start Day Timezone", options=["America/New_York", "Europe/London", "Asia/Shanghai"], group=L2, tooltip=c_tooltip_2)
+i_2nd_session_time =            input.session(defval='0300-0929', title="Line Start & End Times", group=L2, tooltip=c_tooltip_3)
+i_2nd_session_text_char =        input.string(defval="Second Session", title="Text Style     ", group=L2, inline="text2")
+i_2nd_session_text_color =      input.color(defval=color.new(#131722, 0), title="", group=L2, inline="text2")
+i_2nd_session_text_size =       input.string(defval="Normal", title="", options=["Tiny", "Small", "Normal", "Large", "Huge", "Auto"], group=L2, inline="text2")
+i_2nd_session_line_high_color = input.color(defval=color.new(#f2a03a, 0), title="Line Style - High  ", group=L2, inline="line-high2")
+i_2nd_session_line_high_style = input.string(defval="solid (─)", title="", options=["solid (─)", "dotted (┈)", "dashed (╌)"], group=L2, inline="line-high2")
+i_2nd_session_line_high_width = input.int(defval=2, title="", minval=1, maxval=20, group=L2, inline="line-high2")
+i_2nd_session_line_low_color =  input.color(defval=color.new(#f2a03a, 0), title="Line Style - Low  ", group=L2, inline="line-low2")
+i_2nd_session_line_low_style =  input.string(defval="solid (─)", title="", options=["solid (─)", "dotted (┈)", "dashed (╌)"], group=L2, inline="line-low2")
+i_2nd_session_line_low_width =  input.int(defval=2, title="", minval=1, maxval=20, group=L2, inline="line-low2")
+
+
+
+
+//------------------------------------
+// VARIABLES
+//------------------------------------
+
+// See if a new calendar day started on the intra-day time frame
+// with variable timezone 
+
+newDayFirstStartLine = dayofmonth(time, i_1st_session_start_day) != dayofmonth(time, i_1st_session_start_day)[1] and timeframe.isintraday
+
+newDaySecondStartLine = dayofmonth(time, i_2nd_session_start_day) != dayofmonth(time, i_2nd_session_start_day)[1] and timeframe.isintraday
+
+
+
+///////////////////////////////////////////////////////////////////////////////// DAYS BACK
+
+// Find the last bar on the chart
+lastBarDate = timestamp(year(timenow), month(timenow), dayofmonth(timenow), hour(timenow), minute(timenow), second(timenow))
+// Find the current bar that is being processed
+thisBarDate = timestamp(year, month, dayofmonth, hour, minute, second)
+// Find the number of days between these two bars
+daysLeft = math.floor((lastBarDate - thisBarDate) / c_milliseconds_in_day)
+// Only display the number of days specified in Input Settings
+in_days_back_range = daysLeft < i_display_days_back and i_sl_show
+
+
+///////////////////////////////////////////////////////////////////////////////// HELPER FUNCTIONS
+
+
+// Function the converts string inputs to line style code
+line_style_function(input_var) =>
+    switch input_var
+        "dotted (┈)" => line.style_dotted
+        "dashed (╌)" => line.style_dashed
+        => line.style_solid
+
+
+// Function that converts string inputs to text size code
+text_size_function(string_size) =>
+    switch string_size
+        "Tiny" => size.tiny
+        "Small" => size.small
+        "Normal" => size.normal
+        "Large" => size.large
+        "Huge" => size.huge
+        "Auto" => size.auto
+
+
+
+///////////////////////////////////////////////////////////////////////////////// MAIN FUNCTION
+
+// Creates lines and labels accoriding to settings
+session_liquidity_lines_function(HIGH_LINE_TOGGLE, LOW_LINE_TOGGLE, HIGH_LABEL_TOGGLE, LOW_LABEL_TOGGLE, SESSION_TIME, DAYS_BACK, NEW_DAY, LINE_HIGH_COLOR, LINE_HIGH_STYLE, LINE_HIGH_WIDTH, LINE_LOW_COLOR, LINE_LOW_STYLE, LINE_LOW_WIDTH, TEXT_COLOR, TEXT_CHAR, TEXT_SIZE) =>
+
+    // Time period variables
+    session_est_window = time(timeframe.period, SESSION_TIME, "America/New_York")
+    // Parse start hour and start minutes from session string
+    session_start_hour = str.substring(SESSION_TIME, 0, 2)
+    session_start_minutes = str.substring(SESSION_TIME, 2, 4)
+    // Use time hour and minute to create boolean for time
+    session_start_time = (hour(time, "America/New_York") == str.tonumber(session_start_hour)) and (minute(time) == str.tonumber(session_start_minutes))
+
+    // Line Style functions
+    session_line_high_style = line_style_function(LINE_HIGH_STYLE)
+    session_line_low_style = line_style_function(LINE_LOW_STYLE)
+    // Text size function
+    label_text_size = text_size_function(TEXT_SIZE)
+
+    // Instantiate variables
+    var float session_high = 0.0
+    var float session_low = 0.0
+    var line session_line_low = na
+    var line session_line_high = na
+    var label session_label_low = na
+    var label session_label_high = na
+    var float price_session_line_low = na
+    var float price_session_line_high = na
+
+    standardized_calc = ta.stdev(close, 10) / 2
+
+    // Only display the specified number of days back
+    if DAYS_BACK
+
+        // Toggle NY Session box on/off
+        // Only display when timeframe is 30 minutes or less
+        if timeframe.isminutes and timeframe.multiplier < 60
+        
+            // If a new day starts, create initial lines
+            if NEW_DAY
+                
+                if HIGH_LINE_TOGGLE
+                    session_line_high := line.new(x1=na, y1=na, x2=na, y2=na, color=LINE_HIGH_COLOR, style=session_line_high_style, width=LINE_HIGH_WIDTH)
+                if LOW_LINE_TOGGLE
+                    session_line_low := line.new(x1=na, y1=na, x2=na, y2=na, color=LINE_LOW_COLOR, style=session_line_low_style, width=LINE_LOW_WIDTH)
+
+                // Dummy variable to trick pine script. Both sides of the conditional must return the same object type
+                pine_script = 5
+
+            // If not new day, then update the highest high and lowest low values and update the lines
+            else
+
+                // When time cross the start time, create the line with updated highs and lows for the first time
+                if session_start_time
+                    session_high := high
+                    session_low := low
+
+                    if HIGH_LINE_TOGGLE
+                        // Update high line with initial x's and y's
+                        line.set_x1(session_line_high, bar_index)
+                        line.set_y1(session_line_high, session_high)
+                        line.set_x2(session_line_high, bar_index + 1)
+                        line.set_y2(session_line_high, session_high)
+
+                    if LOW_LINE_TOGGLE
+                        // Update low line with initial x's and y's
+                        line.set_x1(session_line_low, bar_index)
+                        line.set_y1(session_line_low, session_low)
+                        line.set_x2(session_line_low, bar_index + 1)
+                        line.set_y2(session_line_low, session_low)
+
+                // At every new candle during specified time span, update y1, x2, y2 values to move the lines up or down and to the right
+                if not na(session_est_window)
+                    session_high := math.max(session_high, high)
+                    session_low := math.min(session_low, low)
+
+                    if HIGH_LINE_TOGGLE
+                        // Don't need to update x1
+                        line.set_y1(session_line_high, session_high)
+                        line.set_x2(session_line_high, bar_index + 1)
+                        line.set_y2(session_line_high, session_high)
+
+                    if LOW_LINE_TOGGLE
+                        // Don't need to update x1
+                        line.set_y1(session_line_low, session_low)
+                        line.set_x2(session_line_low, bar_index + 1)
+                        line.set_y2(session_line_low, session_low)
+
+                    // Draw label only for most recent line
+                    // Calculation to center label on line
+                    x_middle = (line.get_x2(session_line_low) - line.get_x1(session_line_low)) / 2
+                    
+                    if HIGH_LABEL_TOGGLE
+                        price_session_line_high := line.get_price(session_line_high, bar_index)
+                        session_label_high := label.new(x=int(math.round(bar_index - x_middle)), y=price_session_line_high, text=TEXT_CHAR, xloc=xloc.bar_index, color=color.new(#131722, 100), textcolor=TEXT_COLOR, tooltip=str.tostring(price_session_line_high), size = label_text_size)
+                        // Delete all pasts labels except the most recent one
+                        label.delete(session_label_high[1])
+
+                    if LOW_LABEL_TOGGLE
+                        // Get y value (price) of midnight open line
+                        price_session_line_low := line.get_price(session_line_low, bar_index)
+                        session_label_low := label.new(x=int(math.round(bar_index - x_middle)), y=price_session_line_low - standardized_calc, text=TEXT_CHAR, xloc=xloc.bar_index, color=color.new(#131722, 100), textcolor=TEXT_COLOR, tooltip=str.tostring(price_session_line_low), size = label_text_size)
+                        // Delete all pasts labels except the most recent one
+                        label.delete(session_label_low[1])
+
+                // Dummy variable to trick pine script. Both sides of the conditional must return the same object type
+                pine_script = 6
+
+
+
+//------------------------------------
+// 1st SESSION LIQUIDITY
+//------------------------------------
+
+
+session_liquidity_lines_function(i_1st_session_high_line_toggle, i_1st_session_low_line_toggle, i_1st_session_high_label_toggle, i_1st_session_low_label_toggle, i_1st_session_time, in_days_back_range, newDayFirstStartLine, i_1st_session_line_high_color, i_1st_session_line_high_style, i_1st_session_line_high_width, i_1st_session_line_low_color, i_1st_session_line_low_style, i_1st_session_line_low_width, i_1st_session_text_color, i_1st_session_text_char, i_1st_session_text_size)
+
+
+//------------------------------------
+// 2nd SESSION LIQUIDITY
+//------------------------------------
+
+
+session_liquidity_lines_function(i_2nd_session_high_line_toggle, i_2nd_session_low_line_toggle, i_2nd_session_high_label_toggle, i_2nd_session_low_label_toggle, i_2nd_session_time, in_days_back_range, newDaySecondStartLine, i_2nd_session_line_high_color, i_2nd_session_line_high_style, i_2nd_session_line_high_width, i_2nd_session_line_low_color, i_2nd_session_line_low_style, i_2nd_session_line_low_width, i_2nd_session_text_color, i_2nd_session_text_char, i_2nd_session_text_size)
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////////
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//                       PARTIE 3  —  PANNEAU DE BOUGIES HTF  (The Distilled HTF PO3)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//  Deux panneaux fixes à droite du prix : 5 bougies H4 puis 5 bougies H1 (unités réglables).
+//  Le couplage automatique « Governing timeframe » est remplacé par ces deux unités fixes.
+//  Chaque panneau garde : étiquettes C1/C2, balayages C2 entre bougies, gap boxes.
+//  Les séparateurs verticaux suivent la frontière du premier panneau (H4).
+//  Un panneau n'est tracé que si son unité est supérieure à celle du graphique.
+
+// --- Réglages -------------------------------------------------------------------------------
+grpG = "Governing timeframe"
+govTfA = input.timeframe("240", "Panneau 1 · unité", group = grpG)
+govTfB = input.timeframe("60",  "Panneau 2 · unité", group = grpG)
+
+grpD = "Detection"
+useC2x  = input.bool(true, "Include C2X", group = grpD, tooltip = "C2   the candle takes the previous extreme and CLOSES BACK INSIDE it.\nC2X  it closes BEYOND, and the next governing candle closes back through both its opposite extreme and its open — the same reversal, confirmed one candle late.")
+
+grpP = "HTF panel"
+showPan = input.bool(true, "Governing candle panel", group = grpP, tooltip = "Les bougies H4 et H1 agrégées sur les bougies du graphique, tracées à droite du prix. La bougie la plus récente est celle en formation.")
+panN    = input.int(5, "  - candles shown", minval = 2, maxval = 14, group = grpP)
+panSize = input.string("Medium", "  - size / gap from price", options = ["Small", "Medium", "Large"], inline = "p1", group = grpP)
+panOff  = input.int(10, "", minval = 0, maxval = 100, inline = "p1", group = grpP)
+panGap  = input.int(6, "  - écart entre les 2 panneaux (barres)", minval = 1, maxval = 50, group = grpP)
+panBull = input.color(#4caf50, "  - body  bull / bear", inline = "p2", group = grpP)
+panBear = input.color(#000000, "", inline = "p2", group = grpP)
+panBdU  = input.color(#000000, "  - border  bull / bear", inline = "p3", group = grpP)
+panBdD  = input.color(#000000, "", inline = "p3", group = grpP)
+panWkU  = input.color(#000000, "  - wick  bull / bear", inline = "p4", group = grpP)
+panWkD  = input.color(#000000, "", inline = "p4", group = grpP)
+panWick = input.color(#787b86, "  - panel text", group = grpP)
+panFvg  = input.bool(true, "  - gap boxes", group = grpP, tooltip = "The 3-candle gap on the GOVERNING candles. Displacement is required on the bodies as well as the wicks, so a pair of long tails either side of a small body does not register as delivery.")
+cPanFv  = input.color(color.new(#00bcd4, 85), "  - gap colour / border", inline = "p5", group = grpP)
+cPanFvB = input.int(60, "", minval = 0, maxval = 100, inline = "p5", group = grpP)
+panC2   = input.bool(true, "  - C2 sweeps", group = grpP, tooltip = "The same rule the engine uses, drawn between the panel candles: the newer one takes the older one's extreme and closes back inside it. The line sits at the SWEPT level.")
+
+grpS2 = "Governing candle on the chart"
+showSep = input.bool(true, "Divider at each governing boundary", group = grpS2, tooltip = "Une verticale à chaque nouvelle bougie du panneau 1 (H4), avec son heure d'ouverture.")
+cSep    = input.color(#787b86, "  - colour / style", inline = "sp", group = grpS2)
+sepSty  = input.string("Dotted", "", options = ["Solid", "Dashed", "Dotted"], inline = "sp", group = grpS2)
+sepLbl  = input.bool(true, "  - stamp the time", group = grpS2)
+sepN    = input.int(8, "  - dividers kept", minval = 1, maxval = 40, group = grpS2)
+
+grpA = "Appearance"
+cUp    = input.color(#ef5350, "Sweep  bull / bear", inline = "sw", group = grpA, tooltip = "Bull = a LOW was swept and given back. Bear = a HIGH was.")
+cDn    = input.color(#ef5350, "", inline = "sw", group = grpA)
+swW    = input.int(1, "  - width / style", minval = 1, maxval = 5, inline = "sww", group = grpA)
+opac   = input.int(15, "Line transparency", minval = 0, maxval = 90, group = grpA)
+szCs   = input.string("Small", "  - CISD tag  size / offset", options = ["Tiny", "Small", "Normal", "Large"], inline = "l2", group = grpA)
+szC2   = input.string("Tiny", "  - c2-in-c2 tag size", options = ["Tiny", "Small", "Normal", "Large"], group = grpA)
+
+// --- Fonctions ------------------------------------------------------------------------------
+f_style(string s) =>
+    s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
+
+f_lsz(string z) =>
+    z == "Large" ? size.large : z == "Normal" ? size.normal : z == "Small" ? size.small : size.tiny
+
+f_tfTag(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    sec < 60 ? str.tostring(sec) + "s" : sec < 3600 ? str.tostring(sec / 60) + "m" : sec < 86400 ? str.tostring(sec / 3600) + "h" : sec < 604800 ? str.tostring(sec / 86400) + "D" : sec < 2592000 ? str.tostring(sec / 604800) + "W" : str.tostring(sec / 2592000) + "M"
+
+f_c2k(bool up, float bE, float bC, float aE, bool wantX, float cC, float bOpp, float bO) =>
+    int k = 0
+    if not na(bE)
+        if not na(aE)
+            if not na(bC)
+                if up ? bE > aE : bE < aE
+                    if up ? bC <= aE : bC >= aE
+                        k := 1
+                    else if wantX
+                        if not na(cC)
+                            if not na(bOpp)
+                                if not na(bO)
+                                    if up ? (cC < bOpp and cC < bO) : (cC > bOpp and cC > bO)
+                                        k := 2
+    k
+
+// --- Agrégation des bougies d'une unité de temps --------------------------------------------
+_tfs = timeframe.in_seconds(timeframe.period)
+
+type GovAgg
+    string       tf
+    string       tag
+    bool         ok  = false
+    float        op  = na
+    float        hi  = na
+    float        lo  = na
+    array<float> o
+    array<float> c
+    array<float> h
+    array<float> l
+
+f_govNew(string tf) =>
+    GovAgg.new(tf = tf, tag = f_tfTag(tf), ok = timeframe.in_seconds(tf) > _tfs, o = array.new_float(), c = array.new_float(), h = array.new_float(), l = array.new_float())
+
+// Renvoie true sur la première bougie du graphique d'une nouvelle bougie de cette unité
+method govFeed(GovAgg g, int t) =>
+    bool newB = not na(t) and (na(t[1]) or t != t[1])
+    if g.ok
+        if newB and barstate.isconfirmed and not na(g.hi)
+            g.h.push(g.hi)
+            g.l.push(g.lo)
+            g.o.push(g.op)
+            g.c.push(close[1])
+            while g.o.size() > 60
+                g.h.shift()
+                g.l.shift()
+                g.o.shift()
+                g.c.shift()
+        if newB or na(g.hi)
+            g.op := open
+            g.hi := high
+            g.lo := low
+        else
+            g.hi := math.max(g.hi, high)
+            g.lo := math.min(g.lo, low)
+    newB
+
+var GovAgg govA = f_govNew(govTfA)
+var GovAgg govB = f_govNew(govTfB)
+int  govTA = time(govTfA)
+int  govTB = time(govTfB)
+bool newGA = govA.govFeed(govTA)
+bool newGB = govB.govFeed(govTB)
+
+// --- Séparateurs de frontière (panneau 1) ---------------------------------------------------
+var array<line>  sepLn = array.new<line>()
+var array<label> sepLb = array.new<label>()
+
+if govA.ok and newGA and barstate.isconfirmed
+    if showSep
+        array.push(sepLn, line.new(bar_index, low, bar_index, high, extend = extend.both, color = color.new(cSep, 55), style = f_style(sepSty), width = 1))
+        array.push(sepLb, sepLbl ? label.new(bar_index, low, str.format_time(time, "HH:mm", syminfo.timezone), style = label.style_label_up, color = color.new(color.gray, 100), textcolor = color.new(cSep, 25), size = f_lsz(szC2)) : label(na))
+        while array.size(sepLn) > sepN
+            line.delete(array.shift(sepLn))
+            label.delete(array.shift(sepLb))
+
+// --- Panneaux -------------------------------------------------------------------------------
+var array<box>   panBx = array.new<box>()
+var array<line>  panLn = array.new<line>()
+var array<label> panLb = array.new<label>()
+
+int pnW    = panSize == "Large" ? 5 : panSize == "Medium" ? 3 : 1
+int pnStep = pnW + 2
+int pnHalf = math.max(1, math.round(pnW / 2))
+
+// Trace un panneau à partir de l'abscisse pnX0. Renvoie le nombre de bougies tracées.
+f_drawPanel(GovAgg g, int pnX0) =>
+    int drawn = 0
+    if g.ok and not na(g.op) and not na(g.hi) and not na(g.lo)
+        int pnM = g.o.size()
+        int pnN = math.min(panN, pnM + 1)
+        if pnN >= 2
+            array<float> pO = array.new_float()
+            array<float> pH = array.new_float()
+            array<float> pL = array.new_float()
+            array<float> pC = array.new_float()
+            for pi = 0 to pnN - 1
+                if pi == 0
+                    pO.push(g.op)
+                    pH.push(g.hi)
+                    pL.push(g.lo)
+                    pC.push(close)
+                else
+                    int px = pnM - pi
+                    pO.push(g.o.get(px))
+                    pH.push(g.h.get(px))
+                    pL.push(g.l.get(px))
+                    pC.push(g.c.get(px))
+            for pi = 0 to pnN - 1
+                float pa = pO.get(pi)
+                float pb = pC.get(pi)
+                float ph = pH.get(pi)
+                float pl = pL.get(pi)
+                if not (na(pa) or na(pb) or na(ph) or na(pl))
+                    int   pcx = pnX0 + (pnN - 1 - pi) * pnStep
+                    float pbt = math.max(pa, pb)
+                    float pbb = math.min(pa, pb)
+                    if pbt == pbb
+                        pbt := pbb + syminfo.mintick
+                    bool pBull = pb >= pa
+                    panBx.push(box.new(pcx - pnHalf, pbt, pcx + pnHalf, pbb, bgcolor = pBull ? panBull : panBear, border_color = pBull ? panBdU : panBdD, border_width = 1))
+                    panLn.push(line.new(pcx, ph, pcx, pbt, color = pBull ? panWkU : panWkD, width = 1))
+                    panLn.push(line.new(pcx, pbb, pcx, pl, color = pBull ? panWkU : panWkD, width = 1))
+                    if pi < 2
+                        panLb.push(label.new(pcx, pl, pi == 0 ? "C2" : "C1", style = label.style_label_up, color = color.new(color.gray, 100), textcolor = panWick, size = f_lsz(szC2)))
+            panLb.push(label.new(pnX0 + math.round((pnN - 1) * pnStep / 2.0), pH.max(), g.tag, style = label.style_label_down, color = color.new(color.gray, 100), textcolor = panWick, size = f_lsz(szCs)))
+            if panC2
+                for pi = 0 to pnN - 2
+                    float pnc = pi >= 1 ? pC.get(pi - 1) : na
+                    int pxn = pnX0 + (pnN - 1 - pi) * pnStep
+                    int pxp = pnX0 + (pnN - 2 - pi) * pnStep
+                    int ku = f_c2k(false, pL.get(pi), pC.get(pi), pL.get(pi + 1), useC2x, pnc, pH.get(pi), pO.get(pi))
+                    int kd = f_c2k(true,  pH.get(pi), pC.get(pi), pH.get(pi + 1), useC2x, pnc, pL.get(pi), pO.get(pi))
+                    if ku > 0
+                        panLn.push(line.new(pxp, pL.get(pi + 1), pxn, pL.get(pi + 1), color = color.new(cUp, opac), width = swW, style = ku == 2 ? line.style_dashed : line.style_solid))
+                    if kd > 0
+                        panLn.push(line.new(pxp, pH.get(pi + 1), pxn, pH.get(pi + 1), color = color.new(cDn, opac), width = swW, style = kd == 2 ? line.style_dashed : line.style_solid))
+            if panFvg and pnN >= 3
+                for pj = 0 to pnN - 3
+                    float g1o = pO.get(pj)
+                    float g1c = pC.get(pj)
+                    float g1h = pH.get(pj)
+                    float g1l = pL.get(pj)
+                    float g2o = pO.get(pj + 2)
+                    float g2c = pC.get(pj + 2)
+                    float g2h = pH.get(pj + 2)
+                    float g2l = pL.get(pj + 2)
+                    if not (na(g1o) or na(g1c) or na(g1h) or na(g1l) or na(g2o) or na(g2c) or na(g2h) or na(g2l))
+                        int gxn = pnX0 + (pnN - 1 - pj) * pnStep
+                        int gxp = pnX0 + (pnN - 3 - pj) * pnStep
+                        if g1l > g2h and math.min(g1o, g1c) > math.max(g2o, g2c)
+                            panBx.push(box.new(gxp, g1l, gxn, g2h, bgcolor = cPanFv, border_color = color.new(cPanFv, cPanFvB)))
+                        if g1h < g2l and math.max(g1o, g1c) < math.min(g2o, g2c)
+                            panBx.push(box.new(gxp, g2l, gxn, g1h, bgcolor = cPanFv, border_color = color.new(cPanFv, cPanFvB)))
+            drawn := pnN
+    drawn
+
+if barstate.islast
+    while panBx.size() > 0
+        box.delete(panBx.pop())
+    while panLn.size() > 0
+        line.delete(panLn.pop())
+    while panLb.size() > 0
+        label.delete(panLb.pop())
+    if showPan
+        int x0A = bar_index + panOff + 8
+        int nA  = f_drawPanel(govA, x0A)
+        int x0B = nA > 0 ? x0A + nA * pnStep + panGap : x0A
+        f_drawPanel(govB, x0B)
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//                       PARTIE 4  —  DAILY BIAS  (moteur d'enchères appliqué à la bougie journalière)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//
+//   Quatre couches, un score de 0 à 100, un état LONG / SHORT / ATTENDRE.
+//
+//     L1  Tendance        moyenne journalière : la clôture de la veille est-elle au-dessus ou en dessous ?
+//     L2  Veille clôturée moteur d'enchères appliqué à la bougie D1 close (état d'enchère + position de clôture)
+//     L3  D1 en formation 4 états face au range de la veille : range pur, balayage rejeté, sortie acceptée, sortie en cours
+//     L4  H4 en formation direction et clôture de la bougie H4 en cours
+//
+//   Une bougie jeune parle peu : L3 et L4 pèsent selon l'avancement de leur bougie, et ne votent pas
+//   tant qu'elles sont trop jeunes. Une couche muette ramène le score vers 50, donc vers ATTENDRE.
+//   Deux règles forcent ATTENDRE : L1 et L2 se contredisent ; la D1 est en RANGE PUR.
+//
+//   En plus du biais : un SCÉNARIO pour la D1 (lue sur les M15) et pour la H4 (lue sur les M5), reconstitués
+//   à partir des bougies du graphique. Événements horodatés (compression, balayage rejeté, déplacement,
+//   retracement) -> phase (range, manipulation, expansion, pullback) -> bloc DÉCISION croisant D1, H4 et biais.
+//   La liste chronologique des événements s'affiche dans l'info-bulle de chaque ligne SCÉNARIO.
+//
+//   Les statistiques de la couche L2 (SUIVI, PORTÉE) se mesurent sur l'historique chargé. En intraday
+//   le plan gratuit ne charge que 5 000 bougies (≈ 13 jours) : le panneau affiche alors « non significatif ».
+//   Passez le graphique en Daily une minute pour calibrer sur tout l'historique, puis revenez.
+//
+//   Données journalières : lookahead_on avec des décalages [1] et plus, le montage recommandé pour lire
+//   la veille sur un graphique intraday sans écart entre l'historique et le temps réel.
+//
+//   RÉGLAGE : période ATR = 8 (au lieu de 14) — valeur par défaut retenue après optimisation. Elle est
+//   appliquée à la classification journalière (ta.atr ci-dessous) et à la récurrence de Wilder des
+//   agrégateurs M15/M5 dans DbAgg.feed.
+//
+// --- Réglages -------------------------------------------------------------------------------
+
+dbGR     = 'Daily Bias'
+dbShow   = input.bool(true, 'Daily Bias Panel', group = dbGR, display = display)
+dbPosT   = input.string('Bottom Right', '  Position', options = ['Top Left', 'Top Center', 'Top Right', 'Middle Left', 'Middle Center', 'Middle Right', 'Bottom Left', 'Bottom Center', 'Bottom Right'], group = dbGR, display = display)
+dbSizeT  = input.string('Small', '  Taille du texte', options = ['Tiny', 'Small', 'Normal'], group = dbGR, display = display)
+
+dbTrendM = input.float(1.2, 'Seuil journée de tendance (× ATR)', minval = 0.8, step = .1, group = dbGR, display = display, tooltip = 'Range de la journée rapporté à ATR(8) journalier. Au-delà : journée de tendance.')
+dbCompM  = input.float(0.7, 'Seuil journée de compression (× ATR)', minval = 0.2, maxval = 1.0, step = .1, group = dbGR, display = display)
+dbClvH   = input.int(70, 'Clôture forte (% du range)', minval = 55, maxval = 95, group = dbGR, display = display, tooltip = 'Position de la clôture dans le range de la journée. 70 signifie : clôture dans les 30 % hauts = force acheteuse.')
+
+dbRecent = input.int(1250, 'Fenêtre récente (jours)', minval = 60, group = dbGR, display = display, tooltip = 'Second score calculé sur les N derniers jours seulement. Quand il diverge du score complet, c\'est le récent qui commande.')
+dbMinN   = input.int(30, 'Échantillons minimum', minval = 5, group = dbGR, display = display, tooltip = 'En dessous de ce nombre, aucun pourcentage n\'est affiché.')
+
+dbLines  = input.bool(false, 'Tracer le range de la veille', inline = 'DBL', group = dbGR, display = display)
+dbBack   = input.int(120, '', minval = 10, inline = 'DBL', group = dbGR, display = display)
+dbUpC    = input.color(color.new(#26a69a, 0), 'Haussier', inline = 'DBC', group = dbGR)
+dbDnC    = input.color(color.new(#ef5350, 0), 'Baissier', inline = 'DBC', group = dbGR)
+dbNeC    = input.color(color.new(#787b86, 0), 'Neutre', inline = 'DBC', group = dbGR)
+dbH4Ln   = input.bool(true, 'Tracer le haut / bas de la H4 précédente', inline = 'DBH', group = dbGR, display = display)
+dbH4LnC  = input.color(color.new(#9598a1, 0), '', inline = 'DBH', group = dbGR)
+
+dbGR2       = 'Daily Bias · Couches'
+dbMaType    = input.string('EMA', 'L1 · Type de moyenne', options = ['EMA', 'SMA', 'WMA'], group = dbGR2, display = display, tooltip = "Moyenne journalière qui définit la tendance. EMA : plus réactive qu'une SMA sur un instrument volatil.")
+dbMaLen     = input.int(50, 'L1 · Période (jours)', minval = 5, group = dbGR2, display = display, tooltip = "50 jours, environ un trimestre de trading : assez long pour éviter les faux croisements.")
+dbTrendBand = input.float(1.0, 'L1 · Écart pour tendance pleine (× ATR)', minval = 0.1, step = .1, group = dbGR2, display = display, tooltip = "Écart entre la clôture de la veille et la moyenne, en ATR journalier, à partir duquel la tendance pèse à 100 %.")
+
+dbW1 = input.int(20, 'Poids L1 · Tendance (%)', minval = 0, maxval = 100, group = dbGR2, display = display)
+dbW2 = input.int(30, 'Poids L2 · Veille clôturée (%)', minval = 0, maxval = 100, group = dbGR2, display = display)
+dbW3 = input.int(30, 'Poids L3 · D1 en formation (%)', minval = 0, maxval = 100, group = dbGR2, display = display)
+dbW4 = input.int(20, 'Poids L4 · H4 en formation (%)', minval = 0, maxval = 100, group = dbGR2, display = display)
+dbThrL = input.int(65, 'Seuil LONG (score ≥)', minval = 51, maxval = 95, group = dbGR2, display = display, tooltip = "Exige une majorité claire, pas un consensus mou.")
+dbThrS = input.int(35, 'Seuil SHORT (score ≤)', minval = 5, maxval = 49, group = dbGR2, display = display)
+
+dbD1Min  = input.int(15, 'D1 · Avancement minimum (%)', minval = 0, maxval = 90, group = dbGR2, display = display, tooltip = "En dessous, la bougie D1 est trop jeune : la couche L3 ne vote pas.")
+dbD1Full = input.int(50, 'D1 · Avancement pour poids plein (%)', minval = 10, maxval = 100, group = dbGR2, display = display, tooltip = "Dès la mi-journée, la bougie D1 pèse à 100 % de son poids.")
+dbH4MinM = input.int(30, 'H4 · Minutes minimum', minval = 0, maxval = 200, group = dbGR2, display = display, tooltip = "En dessous, la bougie H4 est trop jeune : la couche L4 ne vote pas.")
+dbH4Full = input.int(50, 'H4 · Avancement pour poids plein (%)', minval = 10, maxval = 100, group = dbGR2, display = display)
+dbRngH4  = input.float(0.25, 'H4 · Range minimum lisible (× ATR)', minval = 0.05, step = .05, group = dbGR2, display = display)
+
+dbInsideWait = input.bool(true, 'D1 en RANGE PUR : forcer ATTENDRE', group = dbGR2, display = display, tooltip = "Tant que la bougie D1 n'a pas cassé le range de la veille, le marché n'a pas choisi.")
+dbBoxes = input.bool(true, 'Marquer les bougies H4 / H1 en formation', group = dbGR2, display = display)
+
+dbGR3      = 'Daily Bias · Scénarios'
+dbTz       = input.string('UTC+2', 'Fuseau des heures affichées', group = dbGR3, display = display, tooltip = "Fuseau utilisé pour horodater les événements. UTC+2 : Lubumbashi. Format accepté : UTC+2, GMT-5, America/New_York.")
+dbSwpExc   = input.float(0.05, 'Balayage · excursion minimale (× ATR D1)', minval = 0.0, step = .01, group = dbGR3, display = display, tooltip = "Un niveau n'est balayé que si le prix le dépasse d'au moins cette distance. Filtre les touches de quelques cents.")
+dbSwpRet   = input.int(4, 'Balayage · retour dedans en (clôtures)', minval = 1, maxval = 20, group = dbGR3, display = display, tooltip = "Retour dans le range en 4 clôtures M15 ou moins : balayage rejeté net. Au-delà, c'est une sortie échouée, datée du moment du retour.")
+dbAccN     = input.int(2, 'Acceptation · clôtures consécutives dehors', minval = 1, maxval = 10, group = dbGR3, display = display, tooltip = "2 clôtures M15 consécutives au-delà du niveau = sortie acceptée. Une seule = sortie en cours.")
+dbDispBody = input.int(60, 'Déplacement · corps minimum (% du range)', minval = 40, maxval = 95, group = dbGR3, display = display)
+dbDispRng  = input.float(1.0, 'Déplacement · range minimum (× ATR de la bougie)', minval = 0.3, step = .1, group = dbGR3, display = display, tooltip = "Le range de la bougie doit valoir au moins ce multiple de l'ATR(8) de son unité de temps (M15 pour la D1, M5 pour la H4).")
+dbRetrPct  = input.int(38, 'Retracement · % du déplacement', minval = 20, maxval = 90, group = dbGR3, display = display)
+dbCompRat  = input.float(0.7, 'Compression · range moyen / ATR', minval = 0.2, maxval = 1.0, step = .05, group = dbGR3, display = display, tooltip = "Range moyen des 4 dernières bougies rapporté à l'ATR(8). En dessous : la volatilité se contracte.")
+dbOrMin    = input.int(30, 'H4 · minutes du range d\'ouverture', minval = 5, maxval = 120, group = dbGR3, display = display, tooltip = "Le début de la H4 est lu comme le range de ses premières minutes, pas comme son prix d'ouverture.")
+dbLaunchBody = input.int(60, 'Mouvement lancé · corps minimum (%)', minval = 40, maxval = 95, group = dbGR3, display = display, tooltip = "Bougie M15 à corps dominant qui clôture au-delà du milieu du range du jour, dans le sens du biais.")
+dbTrapMin  = input.int(180, 'Zone piégeuse · fenêtre (minutes)', minval = 30, maxval = 480, group = dbGR3, display = display, tooltip = "Balayages rejetés des deux côtés dans cette fenêtre : le marché piège les deux camps.")
+dbRevMin   = input.int(180, 'Reversal · ancienneté max du balayage (minutes)', minval = 30, maxval = 480, group = dbGR3, display = display)
+dbRevStart = input.float(1.0, 'Reversal · retour amorcé (× ATR)', minval = 0.2, step = .1, group = dbGR3, display = display, tooltip = "Distance parcourue depuis l'extrême du balayage, dans le sens du biais, pour déclarer le retour amorcé sans attendre une bougie à grand corps. Plus la valeur est basse, plus REVERSAL apparaît tôt.")
+
+dbPos = dbPosT == 'Top Left' ? position.top_left : dbPosT == 'Top Center' ? position.top_center : dbPosT == 'Top Right' ? position.top_right : dbPosT == 'Middle Left' ? position.middle_left : dbPosT == 'Middle Center' ? position.middle_center : dbPosT == 'Middle Right' ? position.middle_right : dbPosT == 'Bottom Left' ? position.bottom_left : dbPosT == 'Bottom Center' ? position.bottom_center : position.bottom_right
+dbSize = dbSizeT == 'Tiny' ? size.tiny : dbSizeT == 'Normal' ? size.normal : size.small
+
+// --- Données journalières, sans repeinture ---------------------------------------------------
+// Les [1] [2] [3] sont évalués DANS le contexte journalier : jour clos, veille, avant-veille.
+// lookahead_on avec un décalage d'au moins une barre : sur chaque bougie intraday du jour D, on lit les
+// valeurs de D-1, aussi bien sur l'historique qu'en temps réel.
+// ATR = 8 (réglage retenu par défaut).
+
+[d1h, d1l, d1c, d2h, d2l, d2c, d3h, d3l, dAtr1, dAtr2, dT1, dT2, dEma, dSma, dWma, dTc1] = request.security(syminfo.tickerid, 'D',
+     [high[1], low[1], close[1], high[2], low[2], close[2], high[3], low[3],
+      ta.atr(8)[1], ta.atr(8)[2], time[1], time[2],
+      ta.ema(close, dbMaLen)[1], ta.sma(close, dbMaLen)[1], ta.wma(close, dbMaLen)[1],
+      time_close[1]], lookahead = barmerge.lookahead_on)
+
+// dTc1 : heure de CLÔTURE de la bougie D1 d'hier. La date affichée dans le panneau en est tirée : sur l'or, la
+// bougie du lundi s'ouvre le dimanche soir, et sa date d'ouverture donnerait un jour de retard.
+
+// --- Classification d'une journée close ------------------------------------------------------
+// Renvoie : direction (-1/0/1), type (0 tendance, 1 normale, 2 compression), expansion, clôture %, état d'enchère
+
+f_dbClass(float hh, float ll, float cc, float refH, float refL, float atr, float trendM, float compM, int clvH) =>
+    float rng = hh - ll
+    float exp = atr > 0 ? rng / atr : na
+    float clv = rng > 0 ? (cc - ll) / rng * 100 : 50.0
+    bool  outA = hh > refH
+    bool  outB = ll < refL
+    int   aSt = cc > refH ? 2 : cc < refL ? -2 : (outA and outB ? 0 : outA ? -1 : outB ? 1 : 0)
+    int   sCl = clv >= clvH ? 1 : clv <= (100 - clvH) ? -1 : 0
+    int   sc  = aSt + sCl
+    int   dir = sc >= 2 ? 1 : sc <= -2 ? -1 : 0
+    int   typ = na(exp) ? 1 : exp >= trendM ? 0 : exp >= compM ? 1 : 2
+    [dir, typ, exp, clv, aSt]
+
+f_dbStateTxt(int aSt) =>
+    switch aSt
+        2  => 'Accepted Above'
+        -2 => 'Accepted Below'
+        1  => 'Failed Below'
+        -1 => 'Failed Above'
+        => 'Inside / Balanced'
+
+f_dbTypeTxt(int typ) =>
+    switch typ
+        0 => 'Tendance'
+        2 => 'Compression'
+        => 'Normale'
+
+// --- Compteurs par compartiment ---------------------------------------------------------------
+// 6 compartiments : direction (haussier / baissier) × type de journée (tendance / normale / compression)
+
+var array<float> dbN    = array.new<float>(6, 0)
+var array<float> dbHit  = array.new<float>(6, 0)
+var array<float> dbWin  = array.new<float>(6, 0)
+var array<float> dbSum  = array.new<float>(6, 0)
+var array<float> dbE1   = array.new<float>(6, 0)
+var array<float> dbE2   = array.new<float>(6, 0)
+var array<float> dbNr   = array.new<float>(6, 0)
+var array<float> dbHitr = array.new<float>(6, 0)
+var array<float> dbWinr = array.new<float>(6, 0)
+var array<float> dbSumr = array.new<float>(6, 0)
+var array<float> dbE1r  = array.new<float>(6, 0)
+var array<float> dbE2r  = array.new<float>(6, 0)
+
+f_dbBump(a, i, v) =>
+    a.set(i, a.get(i) + v)
+
+// --- Accumulation : à chaque nouvelle journée close, on note le résultat de l'échantillon -------
+// Le bias de la veille (d2, référence d3) est jugé sur ce qu'a fait le jour clos (d1).
+
+if dT1 != dT1[1] and not na(d3h) and not na(dAtr2) and dAtr2 > 0
+    [dir2, typ2, e2, c2, a2] = f_dbClass(d2h, d2l, d2c, d3h, d3l, dAtr2, dbTrendM, dbCompM, dbClvH)
+    if dir2 != 0
+        int   dbBkt    = (dir2 > 0 ? 0 : 3) + typ2
+        float trig = dir2 > 0 ? d2h : d2l
+        float exc  = math.max((dir2 > 0 ? d1h - trig : trig - d1l) / dAtr2, 0)
+        bool  good = dir2 > 0 ? d1c > trig : d1c < trig
+        bool  rec  = dT2 >= timenow - dbRecent * 86400000
+
+        f_dbBump(dbN, dbBkt, 1)
+        if exc > 0
+            f_dbBump(dbHit, dbBkt, 1)
+        if good
+            f_dbBump(dbWin, dbBkt, 1)
+        f_dbBump(dbSum, dbBkt, exc)
+        if exc >= 1.0
+            f_dbBump(dbE1, dbBkt, 1)
+        if exc >= 2.0
+            f_dbBump(dbE2, dbBkt, 1)
+
+        if rec
+            f_dbBump(dbNr, dbBkt, 1)
+            if good
+                f_dbBump(dbWinr, dbBkt, 1)
+            f_dbBump(dbSumr, dbBkt, exc)
+            if exc >= 1.0
+                f_dbBump(dbE1r, dbBkt, 1)
+            if exc >= 2.0
+                f_dbBump(dbE2r, dbBkt, 1)
+
+// --- Bias du jour ------------------------------------------------------------------------------
+
+[dbDir, dbTyp, dbExp, dbClv, dbASt] = f_dbClass(d1h, d1l, d1c, d2h, d2l, dAtr1, dbTrendM, dbCompM, dbClvH)
+int    dbB    = (dbDir > 0 ? 0 : 3) + dbTyp
+color  dbCol  = dbDir > 0 ? dbUpC : dbDir < 0 ? dbDnC : dbNeC
+
+// ══ Fonctions utilitaires ═══════════════════════════════════════════════════════════════════════
+
+f_dbClamp(float xV) => math.max(-1.0, math.min(1.0, xV))
+
+f_dbSgn(float sV) => (sV >= 0 ? '+' : '') + str.tostring(math.round(sV * 100))
+
+f_dbArrow(int dV) => dV > 0 ? '▲' : dV < 0 ? '▼' : '■'
+
+f_dbTime(int tV) => na(tV) or tV == 0 ? '--:--' : str.format_time(tV, 'HH:mm', dbTz)
+
+// ══ Types du moteur de scénario ══════════════════════════════════════════════════════════════════
+
+// Agrégateur : reconstitue des bougies M15 ou M5 à partir des bougies du graphique.
+// Les valeurs « co, ch, cl, cc, ct » décrivent la bougie qui vient de se clôturer.
+type DbAgg
+    float o
+    float h
+    float l
+    float c
+    int   t
+    float pc
+    float atr
+    float co
+    float ch
+    float cl
+    float cc
+    int   ct
+
+method feed(DbAgg this, bool newB) =>
+    bool closedB = false
+    if newB
+        if not na(this.t)
+            closedB := true
+            this.co := this.o
+            this.ch := this.h
+            this.cl := this.l
+            this.cc := this.c
+            this.ct := this.t
+            float pcV = nz(this.pc, this.c)
+            float trV = math.max(this.h - this.l, math.max(math.abs(this.h - pcV), math.abs(this.l - pcV)))
+            this.atr := na(this.atr) ? trV : (this.atr * 7.0 + trV) / 8.0
+            this.pc := this.c
+        this.o := open
+        this.h := high
+        this.l := low
+        this.c := close
+        this.t := time
+    else
+        this.h := math.max(this.h, high)
+        this.l := math.min(this.l, low)
+        this.c := close
+    closedB
+
+// Moteur de scénario d'une bougie (D1 ou H4). Il est remis à zéro à l'ouverture de la bougie.
+// Niveaux : 8 au maximum, 2 côtés chacun (indice 2k = franchi vers le haut, 2k+1 = franchi vers le bas).
+type DbEng
+    array<int>    evT
+    array<int>    evK
+    array<int>    evD
+    array<float>  evP
+    array<string> evS
+    array<int>    evC
+    array<int>    pendT
+    array<float>  pendExt
+    array<int>    pendAge
+    array<int>    outN
+    array<int>    rejT
+    array<float>  rejExt
+    array<float>  rng
+    bool   comp      = false
+    int    compT     = 0
+    int    dispT     = 0
+    int    dispD     = 0
+    float  dispFrom  = na
+    float  dispTo    = na
+    float  dispExt   = na
+    bool   dispOn    = false
+    bool   retr      = false
+    bool   negated   = false
+    int    retrT     = 0
+    float  retrPct   = na
+    int    swpT      = 0
+    int    swpD      = 0
+    float  swpLvl    = na
+    float  swpExt    = na
+    string swpNm     = ''
+    bool   swpLate   = false
+    int    lastUpT   = 0
+    float  lastUpExt = na
+    int    lastDnT   = 0
+    float  lastDnExt = na
+    float  dayH      = na
+    float  dayL      = na
+    int    lnDir     = 0
+    int    lnT       = 0
+    float  lnInv     = na
+    int    swpBars   = 0
+    float  lastC     = na
+    float  lastAtr   = na
+
+f_dbNewEng() =>
+    DbEng.new(evT = array.new<int>(), evK = array.new<int>(), evD = array.new<int>(), evP = array.new<float>(), evS = array.new<string>(), evC = array.new<int>(),
+         pendT = array.new<int>(16, 0), pendExt = array.new<float>(16, na), pendAge = array.new<int>(16, 0), outN = array.new<int>(16, 0),
+         rejT = array.new<int>(16, 0), rejExt = array.new<float>(16, na), rng = array.new<float>())
+
+// Remise à zéro à l'ouverture d'une nouvelle bougie D1 ou H4
+method wipe(DbEng this) =>
+    this.evT.clear()
+    this.evK.clear()
+    this.evD.clear()
+    this.evP.clear()
+    this.evS.clear()
+    this.evC.clear()
+    this.rng.clear()
+    for iW = 0 to 15
+        this.pendT.set(iW, 0)
+        this.pendExt.set(iW, na)
+        this.pendAge.set(iW, 0)
+        this.outN.set(iW, 0)
+        this.rejT.set(iW, 0)
+        this.rejExt.set(iW, na)
+    this.comp := false
+    this.compT := 0
+    this.dispT := 0
+    this.dispD := 0
+    this.dispFrom := na
+    this.dispTo := na
+    this.dispExt := na
+    this.dispOn := false
+    this.retr := false
+    this.negated := false
+    this.retrT := 0
+    this.retrPct := na
+    this.swpT := 0
+    this.swpD := 0
+    this.swpLvl := na
+    this.swpExt := na
+    this.swpNm := ''
+    this.swpLate := false
+    this.lastUpT := 0
+    this.lastUpExt := na
+    this.lastDnT := 0
+    this.lastDnExt := na
+    this.dayH := na
+    this.dayL := na
+    this.lnDir := 0
+    this.lnT := 0
+    this.lnInv := na
+    this.swpBars := 0
+    this.lastC := na
+    this.lastAtr := na
+    true
+
+// Journal d'événements : 1 compression, 2 balayage rejeté, 3 déplacement, 4 retracement, 5 dépassement en cours.
+// Chaque entrée garde l'heure de l'événement (tT) ET l'heure à laquelle il a été confirmé (cC) : l'écart est le retard.
+method addEv(DbEng this, int tT, int kK, int dD, float pP, string sS, int cC) =>
+    this.evT.push(tT)
+    this.evK.push(kK)
+    this.evD.push(dD)
+    this.evP.push(pP)
+    this.evS.push(sS)
+    this.evC.push(cC)
+    if this.evT.size() > 12
+        this.evT.shift()
+        this.evK.shift()
+        this.evD.shift()
+        this.evP.shift()
+        this.evS.shift()
+        this.evC.shift()
+    true
+
+// Un dépassement annoncé dès qu'il se produit devient « balayage rejeté » quand le prix revient dedans
+method promote(DbEng this, int tP, int dD, string nmS, float pE, string txtS, int cT) =>
+    bool found = false
+    int  nEv   = this.evT.size()
+    if nEv > 0
+        for jP = nEv - 1 to 0
+            if not found and this.evK.get(jP) == 5 and this.evT.get(jP) == tP and this.evD.get(jP) == dD and this.evS.get(jP) == nmS
+                this.evK.set(jP, 2)
+                this.evP.set(jP, pE)
+                this.evS.set(jP, txtS)
+                this.evC.set(jP, cT)
+                found := true
+    if not found
+        this.addEv(tP, 2, dD, pE, txtS, cT)
+    true
+
+// ══ Bloc 1 · ÉVÉNEMENTS ══════════════════════════════════════════════════════════════════════════
+// Traite UNE bougie de base close (M15 pour la D1, M5 pour la H4). Aucune donnée en formation.
+method runBar(DbEng this, float bo, float bh, float bl, float bc, int tOpen, int tClose, float atrB, array<float> lv, array<string> nm, float exc, int nAcc, int maxRet, float dBody, float dRng, float rPct, float cRat, float lBody) =>
+    float rngB  = bh - bl
+    float bodyB = math.abs(bc - bo)
+    this.swpBars := this.swpBars + 1
+    float prevC = na(this.lastC) ? bo : this.lastC
+
+    // — Balayages : la pointe dépasse le niveau, la clôture revient de l'autre côté —
+    for kL = 0 to lv.size() - 1
+        float lvl = lv.get(kL)
+        if not na(lvl)
+            int iUp = 2 * kL
+            int iDn = 2 * kL + 1
+
+            // franchi vers le haut
+            if bh > lvl + exc
+                if this.pendT.get(iUp) == 0
+                    // le prix doit venir d'en dessous : être déjà au-dessus du niveau n'est pas un dépassement
+                    if prevC <= lvl
+                        this.pendT.set(iUp, tOpen)
+                        this.pendAge.set(iUp, 0)
+                        this.pendExt.set(iUp, bh)
+                        this.addEv(tOpen, 5, 1, bh, nm.get(kL), tClose)
+                else
+                    this.pendExt.set(iUp, math.max(this.pendExt.get(iUp), bh))
+            this.outN.set(iUp, bc > lvl + exc ? this.outN.get(iUp) + 1 : 0)
+            if this.pendT.get(iUp) > 0
+                if bc < lvl
+                    bool lateU = this.pendAge.get(iUp) + 1 > maxRet
+                    int  tEvU  = lateU ? tOpen : this.pendT.get(iUp)
+                    if lateU
+                        this.addEv(tEvU, 2, 1, this.pendExt.get(iUp), nm.get(kL) + ' (sortie échouée)', tClose)
+                    else
+                        this.promote(tEvU, 1, nm.get(kL), this.pendExt.get(iUp), nm.get(kL), tClose)
+                    this.rejT.set(iUp, tEvU)
+                    this.rejExt.set(iUp, this.pendExt.get(iUp))
+                    this.swpT := tEvU
+                    this.swpD := 1
+                    this.swpLvl := lvl
+                    this.swpExt := this.pendExt.get(iUp)
+                    this.swpNm := nm.get(kL)
+                    this.swpLate := lateU
+                    this.swpBars := 0
+                    this.lastUpT := tEvU
+                    this.lastUpExt := this.pendExt.get(iUp)
+                    this.pendT.set(iUp, 0)
+                else
+                    this.pendAge.set(iUp, this.pendAge.get(iUp) + 1)
+
+            // franchi vers le bas
+            if bl < lvl - exc
+                if this.pendT.get(iDn) == 0
+                    // le prix doit venir d'au-dessus : être déjà sous le niveau n'est pas un dépassement
+                    if prevC >= lvl
+                        this.pendT.set(iDn, tOpen)
+                        this.pendAge.set(iDn, 0)
+                        this.pendExt.set(iDn, bl)
+                        this.addEv(tOpen, 5, -1, bl, nm.get(kL), tClose)
+                else
+                    this.pendExt.set(iDn, math.min(this.pendExt.get(iDn), bl))
+            this.outN.set(iDn, bc < lvl - exc ? this.outN.get(iDn) + 1 : 0)
+            if this.pendT.get(iDn) > 0
+                if bc > lvl
+                    bool lateD = this.pendAge.get(iDn) + 1 > maxRet
+                    int  tEvD  = lateD ? tOpen : this.pendT.get(iDn)
+                    if lateD
+                        this.addEv(tEvD, 2, -1, this.pendExt.get(iDn), nm.get(kL) + ' (sortie échouée)', tClose)
+                    else
+                        this.promote(tEvD, -1, nm.get(kL), this.pendExt.get(iDn), nm.get(kL), tClose)
+                    this.rejT.set(iDn, tEvD)
+                    this.rejExt.set(iDn, this.pendExt.get(iDn))
+                    this.swpT := tEvD
+                    this.swpD := -1
+                    this.swpLvl := lvl
+                    this.swpExt := this.pendExt.get(iDn)
+                    this.swpNm := nm.get(kL)
+                    this.swpLate := lateD
+                    this.swpBars := 0
+                    this.lastDnT := tEvD
+                    this.lastDnExt := this.pendExt.get(iDn)
+                    this.pendT.set(iDn, 0)
+                else
+                    this.pendAge.set(iDn, this.pendAge.get(iDn) + 1)
+
+    // — Compression : le range moyen des 4 dernières bougies se contracte face à l'ATR —
+    this.rng.push(rngB)
+    if this.rng.size() > 4
+        this.rng.shift()
+    bool compNow = this.rng.size() == 4 and atrB > 0 and this.rng.avg() / atrB < cRat
+    if compNow and not this.comp
+        this.addEv(tOpen, 1, 0, na, '', tClose)
+        this.compT := tOpen
+    this.comp := compNow
+
+    // — Déplacement : bougie à corps dominant et à grand range ; les bougies consécutives de même sens n'en font qu'un —
+    bool isDisp = atrB > 0 and rngB > 0 and rngB >= dRng * atrB and bodyB / rngB >= dBody
+    int  dDir   = bc >= bo ? 1 : -1
+    if isDisp
+        if this.dispOn and this.dispD == dDir and this.dispT > 0 and not this.negated
+            this.dispTo := bc
+            this.dispExt := dDir > 0 ? math.max(this.dispExt, bh) : math.min(this.dispExt, bl)
+        else
+            this.dispT := tOpen
+            this.dispD := dDir
+            this.dispFrom := bo
+            this.dispTo := bc
+            this.dispExt := dDir > 0 ? bh : bl
+            this.retr := false
+            this.negated := false
+            this.retrPct := na
+            this.addEv(tOpen, 3, dDir, bc, '', tClose)
+    this.dispOn := isDisp
+
+    // — Retracement : retour d'au moins rPct du déplacement ; 100 % ou plus l'annule —
+    if this.dispT > 0 and not this.negated and not isDisp
+        if this.dispD > 0
+            if bh > this.dispExt
+                this.dispExt := bh
+                this.retr := false
+        else
+            if bl < this.dispExt
+                this.dispExt := bl
+                this.retr := false
+        float spanD = math.abs(this.dispExt - this.dispFrom)
+        if spanD > 0
+            float fracD = this.dispD > 0 ? (this.dispExt - bc) / spanD : (bc - this.dispExt) / spanD
+            if fracD >= 1.0
+                this.negated := true
+            else if fracD >= rPct and not this.retr
+                this.retr := true
+                this.retrT := tOpen
+                this.retrPct := fracD
+                this.addEv(tOpen, 4, this.dispD, fracD * 100.0, '', tClose)
+
+    // — Mouvement lancé : corps dominant qui clôture au-delà du milieu du range du jour AVANT cette bougie —
+    float midD = na(this.dayH) ? na : (this.dayH + this.dayL) / 2.0
+    if not na(midD) and rngB > 0 and bodyB / rngB >= lBody
+        if bc > midD and bc > bo
+            if this.lnDir != 1
+                this.lnDir := 1
+                this.lnT := tOpen
+                this.lnInv := bl
+        else if bc < midD and bc < bo
+            if this.lnDir != -1
+                this.lnDir := -1
+                this.lnT := tOpen
+                this.lnInv := bh
+    if this.lnDir == 1 and bc < this.lnInv
+        this.lnDir := 0
+    else if this.lnDir == -1 and bc > this.lnInv
+        this.lnDir := 0
+    this.dayH := na(this.dayH) ? bh : math.max(this.dayH, bh)
+    this.dayL := na(this.dayL) ? bl : math.min(this.dayL, bl)
+    this.lastC := bc
+    this.lastAtr := atrB
+    true
+
+// ══ Bloc 2 · PHASES ══════════════════════════════════════════════════════════════════════════════
+// Déduit la phase de la séquence d'événements. Renvoie [phase, direction attendue, niveau clé, séquence complète].
+//   1 accumulation / range · 2 manipulation · 3 expansion (distribution) · 4 pullback dans une expansion
+f_dbPhase(DbEng e) =>
+    int   phV = 1
+    int   drV = 0
+    float lvV = na
+    bool  sqV = false
+    if e.dispT > 0 and not e.negated
+        drV := e.dispD
+        lvV := e.dispFrom
+        phV := e.retr ? 4 : 3
+        sqV := e.swpT > 0 and e.dispT >= e.swpT and e.dispD == -e.swpD
+    else if e.swpT > 0
+        phV := 2
+        drV := -e.swpD
+        lvV := e.swpLvl
+    [phV, drV, lvV, sqV]
+
+f_dbConfTxt(int phV, bool sqV, DbEng e, bool youngV, bool fullV) =>
+    int pts = 0
+    if phV == 2
+        pts := 1 + (e.swpLate ? 0 : 1)
+    else if phV == 3 or phV == 4
+        pts := 1 + (sqV ? 1 : 0)
+    else
+        pts := e.comp ? 1 : 0
+    pts := pts + (fullV ? 1 : 0)
+    youngV ? 'EN CONSTRUCTION' : pts >= 3 ? 'conf. élevée' : pts == 2 ? 'conf. moyenne' : 'conf. faible'
+
+// Une ligne de scénario par bougie. Renvoie [texte, direction attendue].
+f_dbScn(DbEng e, bool okV, bool youngV, bool fullV, int biasV, float stK) =>
+    string outS = ''
+    int    drOut = 0
+    if not okV
+        outS := 'indisponible : graphique supérieur à 15 min'
+    else
+        [phV, drV, lvV, sqV] = f_dbPhase(e)
+        drOut := drV
+        string txtP = ''
+        if phV == 1
+            txtP := 'RANGE' + (e.comp ? ' · compression ' + f_dbTime(e.compT) : '')
+        else if phV == 2
+            bool movedP = e.swpBars >= 1 and not na(e.lastC) and e.lastAtr > 0 and (drV > 0 ? e.lastC - e.swpExt : e.swpExt - e.lastC) >= stK * e.lastAtr
+            txtP := 'MANIPULATION ' + f_dbArrow(e.swpD) + ' ' + e.swpNm + ' ' + f_dbTime(e.swpT) + ' · ' + (drV > 0 ? 'acheteurs au-dessus de ' : 'vendeurs sous ') + str.tostring(lvV, format.mintick) + (movedP ? ' · retour amorcé' : '')
+        else if phV == 3
+            txtP := 'EXPANSION ' + f_dbArrow(drV) + ' ' + f_dbTime(e.dispT) + ' · ' + (drV > 0 ? 'acheteurs au-dessus de ' : 'vendeurs sous ') + str.tostring(lvV, format.mintick)
+        else
+            txtP := 'PULLBACK ' + f_dbArrow(-drV) + ' ' + str.tostring(e.retrPct * 100, '#') + ' % dans expansion ' + f_dbArrow(drV)
+        outS := txtP + ' · ' + f_dbConfTxt(phV, sqV, e, youngV, fullV)
+        if biasV != 0 and drV != 0 and drV != biasV
+            outS := outS + ' ⚠'
+    [outS, drOut]
+
+// Liste chronologique des événements, pour l'info-bulle : heure de l'événement, puis heure de confirmation
+f_dbEvList(DbEng e) =>
+    string sOut = ''
+    int nE = e.evT.size()
+    if nE == 0
+        sOut := 'aucun événement détecté'
+    else
+        for iE = 0 to nE - 1
+            int    kE   = e.evK.get(iE)
+            string txtE = kE == 1 ? 'compression' : kE == 2 ? 'balayage ' + f_dbArrow(e.evD.get(iE)) + ' ' + e.evS.get(iE) + ' rejeté' : kE == 3 ? 'déplacement ' + f_dbArrow(e.evD.get(iE)) : kE == 4 ? 'retracement ' + str.tostring(e.evP.get(iE), '#') + ' %' : 'dépasse ' + f_dbArrow(e.evD.get(iE)) + ' ' + e.evS.get(iE) + ' · toujours dehors'
+            sOut := sOut + (iE > 0 ? '\n' : '') + f_dbTime(e.evT.get(iE)) + '   ' + txtE + '   · confirmé ' + f_dbTime(e.evC.get(iE))
+    sOut
+
+// ══ Bloc 3 · DÉCISION ════════════════════════════════════════════════════════════════════════════
+// Balayage contre-biais rejeté par un moteur, suivi d'un déplacement dans le sens du biais (dans l'un ou l'autre moteur).
+f_dbRevCand(DbEng e, DbEng o, int biasV, int nowT, int revMin, float stK) =>
+    int   tR = 0
+    float iR = na
+    if biasV != 0 and e.swpT > 0 and e.swpD == -biasV and e.swpT >= nowT - revMin * 60000
+        bool dispOk  = (e.dispD == biasV and e.dispT > e.swpT and not e.negated) or (o.dispD == biasV and o.dispT > e.swpT and not o.negated)
+        // Retour amorcé sans attendre un grand corps : une bougie close, après celle du balayage, s'est éloignée
+        // de l'extrême balayé d'au moins stK fois l'ATR, dans le sens du biais.
+        bool movedOk = e.swpBars >= 1 and not na(e.lastC) and e.lastAtr > 0 and (biasV > 0 ? e.lastC - e.swpExt : e.swpExt - e.lastC) >= stK * e.lastAtr
+        if dispOk or movedOk
+            tR := e.swpT
+            iR := e.swpExt
+    [tR, iR]
+
+// Priorité : ZONE PIÉTEUSE > MOUVEMENT LANCÉ > REVERSAL > ATTENDRE L'EXTRÊME.
+// Renvoie [code, invalidation A, invalidation B, note]. Codes : 0 attendre, 1 reversal, 2 mouvement lancé, 3 zone piégeuse.
+f_dbDecide(DbEng d, DbEng h, int biasV, int nowT, int trapMin, int revMin, float stK) =>
+    int    cD   = 0
+    float  invA = na
+    float  invB = na
+    string noteD = ''
+    int upT  = math.max(d.lastUpT, h.lastUpT)
+    int dnT  = math.max(d.lastDnT, h.lastDnT)
+    int winT = nowT - trapMin * 60000
+    if upT > 0 and dnT > 0 and upT >= winT and dnT >= winT
+        cD := 3
+        float hiD = d.lastUpT >= winT ? d.lastUpExt : na
+        float hiH = h.lastUpT >= winT ? h.lastUpExt : na
+        float loD = d.lastDnT >= winT ? d.lastDnExt : na
+        float loH = h.lastDnT >= winT ? h.lastDnExt : na
+        invB := na(hiD) ? hiH : na(hiH) ? hiD : math.max(hiD, hiH)
+        invA := na(loD) ? loH : na(loH) ? loD : math.min(loD, loH)
+    else if biasV != 0 and d.lnDir == biasV and not (h.dispD == -biasV and h.dispT > d.lnT and not h.negated)
+        cD := 2
+        invA := d.lnInv
+    else
+        [t1, i1] = f_dbRevCand(d, h, biasV, nowT, revMin, stK)
+        [t2, i2] = f_dbRevCand(h, d, biasV, nowT, revMin, stK)
+        if t1 > 0 or t2 > 0
+            cD := 1
+            invA := t1 >= t2 ? i1 : i2
+        else if biasV != 0
+            int tB = math.max(d.swpD == biasV ? d.swpT : 0, h.swpD == biasV ? h.swpT : 0)
+            if tB > 0 and tB >= nowT - revMin * 60000
+                noteD := 'biais contredit : balayage ' + f_dbArrow(biasV) + ' rejeté'
+    [cD, invA, invB, noteD]
+
+// ══ L1 · TENDANCE — clôture de la veille contre la moyenne journalière (données closes) ══════════
+
+float dbMa1 = dbMaType == 'EMA' ? dEma : dbMaType == 'SMA' ? dSma : dWma
+float dbS1  = na(dbMa1) or not (dAtr1 > 0) ? 0.0 : f_dbClamp((d1c - dbMa1) / (dAtr1 * dbTrendBand))
+
+// ══ L2 · VEILLE CLÔTURÉE — état d'enchère et position de clôture, modulés par l'expansion ═════════
+
+float dbConvF = dbTyp == 0 ? 1.0 : dbTyp == 1 ? 0.8 : 0.5
+float dbS2    = f_dbClamp((0.6 * dbASt / 2.0 + 0.4 * (dbClv - 50.0) / 50.0) * dbConvF)
+
+// ══ Bougies D1 et H4 en formation, agrégées sur les bougies du graphique ═════════════════════════
+// Le début de chaque bougie suit les limites de séance du symbole, donc celles que TradingView affiche.
+
+bool dbChartD = timeframe.in_seconds() <= 86400
+bool dbChartH = timeframe.in_seconds() <= 14400
+
+var float dbFdO   = na
+var float dbFdH   = na
+var float dbFdL   = na
+var int   dbFdT   = na
+var int   dbFdBar = na
+if timeframe.change('D') or barstate.isfirst
+    dbFdO   := open
+    dbFdH   := high
+    dbFdL   := low
+    dbFdT   := time
+    dbFdBar := bar_index
+else
+    dbFdH := math.max(dbFdH, high)
+    dbFdL := math.min(dbFdL, low)
+
+var float dbFhO   = na
+var float dbFhH   = na
+var float dbFhL   = na
+var int   dbFhT   = na
+var int   dbFhBar = na
+if timeframe.change('240') or barstate.isfirst
+    dbFhO   := open
+    dbFhH   := high
+    dbFhL   := low
+    dbFhT   := time
+    dbFhBar := bar_index
+else
+    dbFhH := math.max(dbFhH, high)
+    dbFhL := math.min(dbFhL, low)
+
+// Bougie H1 en formation : sert uniquement au marquage sur le graphique (n'entre pas dans le score)
+var float dbF1O   = na
+var float dbF1H   = na
+var float dbF1L   = na
+var int   dbF1T   = na
+var int   dbF1Bar = na
+if timeframe.change('60') or barstate.isfirst
+    dbF1O   := open
+    dbF1H   := high
+    dbF1L   := low
+    dbF1T   := time
+    dbF1Bar := bar_index
+else
+    dbF1H := math.max(dbF1H, high)
+    dbF1L := math.min(dbF1L, low)
+
+float dbProgD = na(dbFdT) ? 0.0 : math.max(0.0, math.min(nz((time_close - dbFdT) / 86400000.0), 1.0))
+float dbMinH  = na(dbFhT) ? 0.0 : math.max(0.0, nz((time_close - dbFhT) / 60000.0))
+float dbProgH = math.min(dbMinH / 240.0, 1.0)
+
+// Confiance de chaque couche selon l'avancement de sa bougie : muette sous le minimum, pleine au seuil plein
+float dbC3 = dbChartD and dbProgD >= dbD1Min / 100.0 ? math.min(dbProgD / (dbD1Full / 100.0), 1.0) : 0.0
+float dbC4 = dbChartH and dbMinH >= dbH4MinM ? math.min(dbProgH / (dbH4Full / 100.0), 1.0) : 0.0
+
+// ══ Agrégation M15 et M5, niveaux de référence, moteurs D1 et H4 ═══════════════════════════════════
+// Tout est lu sur les bougies du graphique : aucun appel request.security, historique et temps réel identiques.
+// La bougie de base la plus récente n'est traitée qu'une fois close, à l'ouverture de la suivante.
+
+bool dbScnOk = timeframe.in_seconds() <= 900
+
+var DbAgg dbAg15 = DbAgg.new()
+var DbAgg dbAg5  = DbAgg.new()
+bool dbCl15 = dbAg15.feed(timeframe.change('15') or barstate.isfirst)
+bool dbCl5  = dbAg5.feed(timeframe.change('5') or barstate.isfirst)
+
+bool dbNewDay = timeframe.change('D') or barstate.isfirst
+bool dbNewH4  = timeframe.change('240') or barstate.isfirst
+
+// Range asiatique du jour : horaires de la session Asia de la PARTIE 1 (ICT), utilisé une fois la séance terminée
+bool dbAsNow = not na(time(timeframe.period, lsAsiaSess, lsTz))
+var float dbAsH    = na
+var float dbAsL    = na
+var bool  dbAsDone = false
+if dbNewDay
+    dbAsH := na
+    dbAsL := na
+    dbAsDone := false
+if dbAsNow
+    dbAsH := na(dbAsH) ? high : math.max(dbAsH, high)
+    dbAsL := na(dbAsL) ? low : math.min(dbAsL, low)
+else if dbAsNow[1] and not na(dbAsH)
+    dbAsDone := true
+
+// Début de la H4 : range de ses premières minutes, et extrêmes de la H4 précédente
+var float dbOrH    = na
+var float dbOrL    = na
+var bool  dbOrDone = false
+var float dbPh4H   = na
+var float dbPh4L   = na
+var int   dbPh4Bar = na
+if dbNewH4
+    dbPh4H := dbFhH[1]
+    dbPh4L := dbFhL[1]
+    dbPh4Bar := dbFhBar[1]
+    dbOrH := high
+    dbOrL := low
+    dbOrDone := false
+else if not dbOrDone
+    if (time - dbFhT) / 60000.0 < dbOrMin
+        dbOrH := math.max(dbOrH, high)
+        dbOrL := math.min(dbOrL, low)
+    else
+        dbOrDone := true
+
+float dbExc = dbSwpExc * nz(dAtr1)
+var array<string> dbLvNm = array.from('PDH', 'PDL', 'Asia H', 'Asia L', 'H4 préc H', 'H4 préc L', 'OR H4 H', 'OR H4 L')
+var DbEng dbD1 = f_dbNewEng()
+var DbEng dbH4 = f_dbNewEng()
+
+float dbAsHu = dbAsDone ? dbAsH : na
+float dbAsLu = dbAsDone ? dbAsL : na
+
+if dbNewDay
+    dbD1.wipe()
+else if dbCl15 and dbScnOk
+    dbD1.runBar(dbAg15.co, dbAg15.ch, dbAg15.cl, dbAg15.cc, dbAg15.ct, time, dbAg15.atr,
+         array.from(d1h, d1l, dbAsHu, dbAsLu, float(na), float(na), float(na), float(na)), dbLvNm,
+         dbExc, dbAccN, dbSwpRet, dbDispBody / 100.0, dbDispRng, dbRetrPct / 100.0, dbCompRat, dbLaunchBody / 100.0)
+
+if dbNewH4
+    dbH4.wipe()
+else if dbCl5 and dbScnOk
+    dbH4.runBar(dbAg5.co, dbAg5.ch, dbAg5.cl, dbAg5.cc, dbAg5.ct, time, dbAg5.atr,
+         array.from(d1h, d1l, dbAsHu, dbAsLu, dbPh4H, dbPh4L, dbOrDone ? dbOrH : na, dbOrDone ? dbOrL : na), dbLvNm,
+         dbExc, dbAccN, dbSwpRet, dbDispBody / 100.0, dbDispRng, dbRetrPct / 100.0, dbCompRat, dbLaunchBody / 100.0)
+
+// ══ L3 · D1 EN FORMATION — quatre états face au range de la veille ═══════════════════════════════
+//   0 RANGE PUR         ni le haut ni le bas de la veille dépassés
+//   1 BALAYAGE REJETÉ   dépassé puis revenu dedans (côté, niveau et heure conservés)
+//   2 SORTIE ACCEPTÉE   au moins dbAccN clôtures M15 consécutives dehors
+//   3 SORTIE EN COURS   dehors, mais moins de dbAccN clôtures
+// Le haut de la veille se lit côté « franchi vers le haut » (indice 0), le bas côté « vers le bas » (indice 3).
+
+int  dbL3St  = 0
+int  dbL3Dir = 0
+bool dbL3Dbl = dbScnOk and dbD1.rejT.get(0) > 0 and dbD1.rejT.get(3) > 0
+if dbScnOk
+    int nUpO = dbD1.outN.get(0)
+    int nDnO = dbD1.outN.get(3)
+    int tRU  = dbD1.rejT.get(0)
+    int tRD  = dbD1.rejT.get(3)
+    if nUpO >= dbAccN or nDnO >= dbAccN
+        dbL3St := 2
+        dbL3Dir := nUpO >= dbAccN ? 1 : -1
+    else if nUpO >= 1 or nDnO >= 1
+        dbL3St := 3
+        dbL3Dir := nUpO >= 1 ? 1 : -1
+    else if tRU > 0 or tRD > 0
+        dbL3St := 1
+        dbL3Dir := tRU >= tRD ? -1 : 1
+
+// Repli quand le graphique est trop grossier pour lire les M15 : dépassement brut du range de la veille
+bool  dbInside = dbScnOk ? dbL3St == 0 : (not na(d1h) and dbFdH <= d1h and dbFdL >= d1l)
+float dbS3     = dbL3Dbl ? 0.0 : dbL3St == 2 ? dbL3Dir * 1.0 : dbL3St == 1 ? dbL3Dir * 0.7 : dbL3St == 3 ? dbL3Dir * 0.4 : 0.0
+
+// ══ L4 · H4 EN FORMATION — direction du corps et position de clôture ═════════════════════════════
+
+float dbFhRng = dbFhH - dbFhL
+float dbFhBR  = dbFhRng > 0 ? math.abs(close - dbFhO) / dbFhRng : 0.0
+int   dbFhDir = close > dbFhO ? 1 : close < dbFhO ? -1 : 0
+float dbFhClv = dbFhRng > 0 ? (close - dbFhL) / dbFhRng : 0.5
+float dbRngF4 = dAtr1 > 0 ? math.min(dbFhRng / (dbRngH4 * dAtr1), 1.0) : 0.0
+float dbS4    = f_dbClamp((0.6 * dbFhDir * dbFhBR + 0.4 * (2.0 * dbFhClv - 1.0)) * dbRngF4)
+
+// ══ SCORE GLOBAL ═════════════════════════════════════════════════════════════════════════════════
+// Le dénominateur reste la somme des poids nominaux : une couche muette ou trop jeune ramène le score
+// vers 50, donc vers ATTENDRE. L'information manquante ne se transforme jamais en signal.
+
+float dbWSum  = math.max(dbW1 + dbW2 + dbW3 + dbW4, 1)
+float dbRaw   = nz(50.0 + 50.0 * (dbW1 * dbS1 + dbW2 * dbS2 + dbW3 * dbC3 * dbS3 + dbW4 * dbC4 * dbS4) / dbWSum, 50.0)
+
+bool  dbConflict  = dbS1 * dbS2 < 0 and math.abs(dbS1) >= 0.15 and math.abs(dbS2) >= 0.15
+bool  dbWaitIn    = dbInsideWait and dbInside and dbC3 > 0
+bool  dbForceWait = dbConflict or dbWaitIn
+
+float dbScore = dbForceWait ? math.max(40.0, math.min(60.0, dbRaw)) : dbRaw
+int   dbState = dbForceWait ? 0 : dbScore >= dbThrL ? 1 : dbScore <= dbThrS ? -1 : 0
+color dbColG  = dbState > 0 ? dbUpC : dbState < 0 ? dbDnC : dbNeC
+
+float dbTrigG = dbState > 0 ? d1h : dbState < 0 ? d1l : na
+float dbInvG  = dbState > 0 ? d1l : dbState < 0 ? d1h : na
+
+// ══ DÉCISION — croise D1, H4 et biais ════════════════════════════════════════════════════════════
+
+int    dbDecCode = 0
+float  dbDecInvA = na
+float  dbDecInvB = na
+string dbDecNote = ''
+if dbScnOk
+    [dcV, iaV, ibV, ntV] = f_dbDecide(dbD1, dbH4, dbState, time, dbTrapMin, dbRevMin, dbRevStart)
+    dbDecCode := dcV
+    dbDecInvA := iaV
+    dbDecInvB := ibV
+    dbDecNote := ntV
+
+// --- Range de la veille sur le graphique --------------------------------------------------------
+
+var line dbLnH = na
+var line dbLnL = na
+var line dbLnM = na
+
+if dbLines and barstate.islast and not na(d1h)
+    if na(dbLnH)
+        dbLnH := line.new(bar_index, d1h, bar_index, d1h, xloc.bar_index, extend.none, dbUpC, line.style_dotted, 1)
+        dbLnL := line.new(bar_index, d1l, bar_index, d1l, xloc.bar_index, extend.none, dbDnC, line.style_dotted, 1)
+        dbLnM := line.new(bar_index, d1h, bar_index, d1h, xloc.bar_index, extend.none, dbNeC, line.style_dotted, 1)
+    dbLnH.set_xy1(bar_index - dbBack, d1h), dbLnH.set_xy2(bar_index + 5, d1h)
+    dbLnL.set_xy1(bar_index - dbBack, d1l), dbLnL.set_xy2(bar_index + 5, d1l)
+    dbLnM.set_xy1(bar_index - dbBack, math.avg(d1h, d1l)), dbLnM.set_xy2(bar_index + 5, math.avg(d1h, d1l))
+
+// --- Haut et bas de la H4 précédente : deux traits fins, étiquette à droite ----------------------
+
+var line  dbLnPH = na
+var line  dbLnPL = na
+var label dbLbPH = na
+var label dbLbPL = na
+
+if dbH4Ln and barstate.islast and dbChartH and not na(dbPh4H) and not na(dbPh4Bar)
+    if na(dbLnPH)
+        dbLnPH := line.new(dbPh4Bar, dbPh4H, bar_index + 3, dbPh4H, xloc.bar_index, extend.none, dbH4LnC, line.style_dashed, 1)
+        dbLnPL := line.new(dbPh4Bar, dbPh4L, bar_index + 3, dbPh4L, xloc.bar_index, extend.none, dbH4LnC, line.style_dashed, 1)
+        dbLbPH := label.new(bar_index + 3, dbPh4H, '', xloc.bar_index, yloc.price, color(na), label.style_label_left, dbH4LnC, size.tiny)
+        dbLbPL := label.new(bar_index + 3, dbPh4L, '', xloc.bar_index, yloc.price, color(na), label.style_label_left, dbH4LnC, size.tiny)
+    dbLnPH.set_xy1(dbPh4Bar, dbPh4H)
+    dbLnPH.set_xy2(bar_index + 3, dbPh4H)
+    dbLnPL.set_xy1(dbPh4Bar, dbPh4L)
+    dbLnPL.set_xy2(bar_index + 3, dbPh4L)
+    dbLnPH.set_color(dbH4LnC)
+    dbLnPL.set_color(dbH4LnC)
+    dbLbPH.set_xy(bar_index + 3, dbPh4H)
+    dbLbPL.set_xy(bar_index + 3, dbPh4L)
+    dbLbPH.set_text('H4 préc H · ' + str.tostring(dbPh4H, format.mintick))
+    dbLbPL.set_text('H4 préc L · ' + str.tostring(dbPh4L, format.mintick))
+    dbLbPH.set_textcolor(dbH4LnC)
+    dbLbPL.set_textcolor(dbH4LnC)
+
+// --- Marquage des bougies H4 et H1 en formation -------------------------------------------------
+// D1 n'est plus marquée. La H4 garde sa couleur de couche L4 ; la H1 est colorée par la direction
+// de son corps et la position de sa clôture (même formule que L4, affichage seulement).
+
+bool  dbChart1 = timeframe.in_seconds() < 3600
+float dbF1Rng  = dbF1H - dbF1L
+float dbF1BR   = dbF1Rng > 0 ? math.abs(close - dbF1O) / dbF1Rng : 0.0
+int   dbF1Dir  = close > dbF1O ? 1 : close < dbF1O ? -1 : 0
+float dbF1Clv  = dbF1Rng > 0 ? (close - dbF1L) / dbF1Rng : 0.5
+float dbS1h    = f_dbClamp(0.6 * dbF1Dir * dbF1BR + 0.4 * (2.0 * dbF1Clv - 1.0))
+
+var box dbBxH  = na
+var box dbBxH1 = na
+
+if dbBoxes and barstate.islast
+    if dbChartH and not na(dbFhT)
+        color dbCH = dbC4 > 0 ? (dbS4 > 0.15 ? dbUpC : dbS4 < -0.15 ? dbDnC : dbNeC) : dbNeC
+        if na(dbBxH)
+            dbBxH := box.new(dbFhBar, dbFhH, bar_index, dbFhL, border_color = color.new(dbCH, 30), border_style = line.style_dotted, border_width = 1, bgcolor = color.new(dbCH, 93), text = 'H4', text_size = size.tiny, text_color = color.new(dbCH, 20), text_halign = text.align_right, text_valign = text.align_bottom)
+        else
+            dbBxH.set_lefttop(dbFhBar, dbFhH)
+            dbBxH.set_rightbottom(bar_index, dbFhL)
+            dbBxH.set_border_color(color.new(dbCH, 30))
+            dbBxH.set_bgcolor(color.new(dbCH, 93))
+            dbBxH.set_text_color(color.new(dbCH, 20))
+    if dbChart1 and not na(dbF1T)
+        color dbC1 = dbS1h > 0.15 ? dbUpC : dbS1h < -0.15 ? dbDnC : dbNeC
+        if na(dbBxH1)
+            dbBxH1 := box.new(dbF1Bar, dbF1H, bar_index, dbF1L, border_color = color.new(dbC1, 30), border_style = line.style_dashed, border_width = 1, bgcolor = color.new(dbC1, 95), text = 'H1', text_size = size.tiny, text_color = color.new(dbC1, 20), text_halign = text.align_right, text_valign = text.align_top)
+        else
+            dbBxH1.set_lefttop(dbF1Bar, dbF1H)
+            dbBxH1.set_rightbottom(bar_index, dbF1L)
+            dbBxH1.set_border_color(color.new(dbC1, 30))
+            dbBxH1.set_bgcolor(color.new(dbC1, 95))
+            dbBxH1.set_text_color(color.new(dbC1, 20))
+
+// --- Panneau ------------------------------------------------------------------------------------
+
+var table dbTbl = table.new(dbPos, 2, 11, bgcolor = color.new(chart.fg_color, 95), border_color = color.new(chart.fg_color, 95), border_width = 1, frame_color = color.new(chart.fg_color, 81), frame_width = 1)
+
+f_dbRow(int rV, string kT, string vT, color vC, color bgC, string ttT) =>
+    table.cell(dbTbl, 0, rV, kT, text_color = color.new(chart.fg_color, 35), text_halign = text.align_left, text_size = dbSize)
+    table.cell(dbTbl, 1, rV, vT, text_color = vC, text_halign = text.align_left, text_size = dbSize, bgcolor = bgC, tooltip = ttT)
+
+if dbShow and barstate.islast
+    float nA = dbN.get(dbB)
+    float nR = dbNr.get(dbB)
+    bool  okA = nA >= dbMinN
+    string sSuivi = okA ? str.tostring(dbWin.get(dbB) / nA * 100, '#') + ' %  ·  n=' + str.tostring(nA, '#') : 'n=' + str.tostring(nA, '#') + '  ·  non significatif'
+    string sRec   = nR >= dbMinN ? '   (' + str.tostring(dbRecent / 250, '#') + ' ans : ' + str.tostring(dbWinr.get(dbB) / nR * 100, '#') + ' %)' : ''
+    string sPort  = okA ? 'moy ' + str.tostring(dbSum.get(dbB) / nA, '#.0') + ' ATR  ·  ≥1 ATR ' + str.tostring(dbE1.get(dbB) / nA * 100, '#') + ' %  ·  ≥2 ATR ' + str.tostring(dbE2.get(dbB) / nA * 100, '#') + ' %' : '—'
+
+    bool dbYoungD = dbProgD < dbD1Min / 100.0
+    bool dbYoungH = dbMinH < dbH4MinM
+    bool dbFullD  = dbProgD >= dbD1Full / 100.0
+    bool dbFullH  = dbProgH >= dbH4Full / 100.0
+
+    string dbStTxt = (dbState > 0 ? 'LONG' : dbState < 0 ? 'SHORT' : 'ATTENDRE') + '   ·   score ' + str.tostring(dbScore, '#') + ' / 100'
+
+    string dbT1 = dbMaType + ' ' + str.tostring(dbMaLen) + ' D1 : ' + (dbS1 > 0.15 ? 'clôture au-dessus' : dbS1 < -0.15 ? 'clôture en dessous' : 'clôture sur la moyenne') + '   (' + f_dbSgn(dbS1) + ')'
+
+    string dbT2 = f_dbTypeTxt(dbTyp) + ' ' + str.tostring(dbExp, '#.0') + ' ATR  ·  ' + f_dbStateTxt(dbASt) + '  ·  clôture ' + str.tostring(dbClv, '#') + ' %   (' + f_dbSgn(dbS2) + ')'
+
+    // L3 : l'un des quatre états, avec côté, niveau et heure
+    string dbL3Nm = dbL3St == 0 ? 'RANGE PUR' : dbL3St == 1 ? 'BALAYAGE REJETÉ' : dbL3St == 2 ? 'SORTIE ACCEPTÉE' : 'SORTIE EN COURS'
+    string dbL3Dt = ''
+    if dbL3St == 0
+        dbL3Dt := ' · veille non dépassée'
+    else if dbL3St == 1
+        bool  upLast = dbD1.rejT.get(0) >= dbD1.rejT.get(3)
+        int   tRJ    = upLast ? dbD1.rejT.get(0) : dbD1.rejT.get(3)
+        dbL3Dt := ' · ' + (upLast ? 'PDH ▲' : 'PDL ▼') + ' à ' + f_dbTime(tRJ) + (dbL3Dbl ? ' · des 2 côtés' : '')
+    else
+        int nOut = dbL3Dir > 0 ? dbD1.outN.get(0) : dbD1.outN.get(3)
+        dbL3Dt := ' · ' + (dbL3Dir > 0 ? 'au-dessus de PDH ▲' : 'sous PDL ▼') + ' · ' + str.tostring(nOut) + '/' + str.tostring(dbAccN) + ' clôtures'
+    string dbT3 = not dbChartD ? 'indisponible : graphique supérieur à 1 jour' : not dbScnOk ? 'lecture M15 indisponible : graphique supérieur à 15 min' : dbL3Nm + dbL3Dt + (dbYoungD ? ' · en construction' : '') + '   (' + f_dbSgn(dbS3) + ')'
+
+    string dbT4 = not dbChartH ? 'indisponible : graphique supérieur à 4 h' : dbC4 == 0 ? 'trop jeune  ·  ' + str.tostring(dbMinH, '#') + ' min' : 'corps ' + f_dbArrow(dbFhDir) + ' ' + str.tostring(dbFhBR * 100, '#') + ' %  ·  clôture ' + str.tostring(dbFhClv * 100, '#') + ' %  ·  ' + str.tostring(dbMinH, '#') + ' min   (' + f_dbSgn(dbS4) + ')'
+
+    [dbScnD, dbDrD] = f_dbScn(dbD1, dbScnOk, dbYoungD, dbFullD, dbState, dbRevStart)
+    [dbScnH, dbDrH] = f_dbScn(dbH4, dbScnOk, dbYoungH, dbFullH, dbState, dbRevStart)
+
+    // Décision : état, invalidation, notes
+    string dbDecTxt = ''
+    color  dbDecCol = dbNeC
+    if dbDecCode == 1
+        dbDecTxt := 'REVERSAL DISPONIBLE · ' + (dbState > 0 ? 'ACHAT' : 'VENTE') + ' · invalid. ' + str.tostring(dbDecInvA, format.mintick)
+        dbDecCol := dbState > 0 ? dbUpC : dbDnC
+    else if dbDecCode == 2
+        dbDecTxt := 'MOUVEMENT DU BIAIS LANCÉ · ' + (dbState > 0 ? 'ACHATS' : 'VENTES') + ' · invalid. ' + str.tostring(dbDecInvA, format.mintick)
+        dbDecCol := dbState > 0 ? dbUpC : dbDnC
+    else if dbDecCode == 3
+        dbDecTxt := 'ZONE PIÉTEUSE · attendre une clôture hors de ' + str.tostring(dbDecInvA, format.mintick) + ' – ' + str.tostring(dbDecInvB, format.mintick)
+        dbDecCol := color.orange
+    else
+        dbDecTxt := not dbScnOk ? "ATTENDRE L'EXTRÊME · scénarios indisponibles" : "ATTENDRE L'EXTRÊME · bas " + str.tostring(d1l, format.mintick) + ' / haut ' + str.tostring(d1h, format.mintick)
+    int    dbDrC   = dbDrD != 0 ? dbDrD : dbDrH
+    string dbDecN2 = dbState != 0 and dbDrC != 0 and dbDrC != dbState ? 'contre-biais : probable manipulation ou pullback, pas une raison ' + (dbDrC > 0 ? "d'acheter" : 'de vendre') : ''
+    string dbDecAll = dbDecTxt + (dbDecNote != '' ? '\n' + dbDecNote : '') + (dbDecN2 != '' ? '\n' + dbDecN2 : '')
+
+    table.cell(dbTbl, 0, 0, 'DAILY BIAS', text_color = dbColG, text_halign = text.align_left, text_size = dbSize)
+    table.cell(dbTbl, 1, 0, 'journée close du ' + str.format_time(dTc1 - 1, 'dd/MM', syminfo.timezone), text_color = color.new(chart.fg_color, 35), text_halign = text.align_right, text_size = dbSize)
+
+    f_dbRow(1, 'ÉTAT', dbStTxt, dbColG, color.new(dbColG, 82), '')
+    f_dbRow(2, 'L1 · TENDANCE', dbT1, chart.fg_color, color(na), '')
+    f_dbRow(3, 'L2 · VEILLE', dbT2, chart.fg_color, color(na), '')
+    f_dbRow(4, 'L3 · D1 EN COURS', dbT3, chart.fg_color, color(na), '')
+    f_dbRow(5, 'L4 · H4 EN COURS', dbT4, chart.fg_color, color(na), '')
+    f_dbRow(6, 'SCÉNARIO D1', dbScnD, chart.fg_color, color(na), f_dbEvList(dbD1))
+    f_dbRow(7, 'SCÉNARIO H4', dbScnH, chart.fg_color, color(na), f_dbEvList(dbH4))
+    f_dbRow(8, 'DÉCISION', dbDecAll, dbDecCol, color.new(dbDecCol, 85), '')
+    f_dbRow(9, 'NIVEAUX', dbState == 0 ? 'cassure attendue : ' + str.tostring(d1l, format.mintick) + ' — ' + str.tostring(d1h, format.mintick) : (dbState > 0 ? 'achats au-dessus de ' : 'ventes sous ') + str.tostring(dbTrigG, format.mintick) + '  ·  invalide ' + (dbState > 0 ? 'sous ' : 'au-dessus de ') + str.tostring(dbInvG, format.mintick), chart.fg_color, color(na), '')
+    f_dbRow(10, 'STATS · veille', dbDir == 0 ? '—' : sSuivi + sRec + '\n' + sPort, dbDir == 0 ? color.new(chart.fg_color, 35) : okA ? dbCol : color.new(chart.fg_color, 35), color(na), '')
+
+
+// --- Alertes : franchissement d'état du biais, puis changement d'état de la DÉCISION ---------------
+
+alertcondition(dbState == 1 and dbState[1] != 1, 'Daily Bias : LONG', 'Daily Bias passe en LONG sur {{ticker}}')
+alertcondition(dbState == -1 and dbState[1] != -1, 'Daily Bias : SHORT', 'Daily Bias passe en SHORT sur {{ticker}}')
+alertcondition(dbState == 0 and dbState[1] != 0, 'Daily Bias : ATTENDRE', 'Daily Bias passe en ATTENDRE sur {{ticker}}')
+
+alertcondition(dbDecCode == 1 and dbDecCode[1] != 1, 'Décision : REVERSAL DISPONIBLE', 'Reversal disponible sur {{ticker}}')
+alertcondition(dbDecCode == 2 and dbDecCode[1] != 2, 'Décision : MOUVEMENT DU BIAIS LANCÉ', 'Mouvement du biais lancé sur {{ticker}}')
+alertcondition(dbDecCode == 3 and dbDecCode[1] != 3, 'Décision : ZONE PIÉTEUSE', 'Zone piégeuse sur {{ticker}}')
+alertcondition(dbDecCode == 0 and dbDecCode[1] != 0, "Décision : ATTENDRE L'EXTRÊME", "Attendre l'extrême sur {{ticker}}")
+
+// --- Sorties pour filtrer un signal d'un autre indicateur ----------------------------------------
+// Invisibles sur le graphique. Dans l'autre indicateur, choisissez la source « Bias · Long autorisé »
+// ou « Bias · Short autorisé » et combinez-la avec votre signal : signal ET autorisation.
+
+plot(dbState, 'Bias · État (+1 Long / -1 Short / 0 Attendre)', color = color(na), display = display)
+plot(dbScore, 'Bias · Score (0-100)', color = color(na), display = display)
+plot(dbState > 0 ? 1 : 0, 'Bias · Long autorisé', color = color(na), display = display)
+plot(dbState < 0 ? 1 : 0, 'Bias · Short autorisé', color = color(na), display = display)
+plot(dbDecCode, 'Décision · code (0 attendre / 1 reversal / 2 lancé / 3 piégeuse)', color = color(na), display = display)
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//                       PARTIE 7B  —  ORDER BLOCKS H1 ET H4  (logique LuxAlgo, bougies clôturées)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+// Trois unités d'order blocks : celle du graphique (partie 7 ci-dessus), puis H1 et H4.
+// Même logique que les order blocks internes de LuxAlgo (jambe sur 5 bougies, filtre de volatilité
+// ATR 200, mitigation High/Low), appliquée aux bougies H1 et H4 clôturées : rien ne repeint.
+// Une unité égale ou inférieure à celle du graphique n'est pas calculée.
+lxObG    = 'SMC LuxAlgo · Order Blocks H1 / H4'
+lxObOn1  = input.bool(true, 'Order Blocks H1', group = lxObG, inline = 'h1')
+lxObN1   = input.int(3, '', minval = 1, maxval = 10, group = lxObG, inline = 'h1')
+lxObOn4  = input.bool(true, 'Order Blocks H4', group = lxObG, inline = 'h4')
+lxObN4   = input.int(3, '', minval = 1, maxval = 10, group = lxObG, inline = 'h4')
+lxObLen  = input.int(5, 'Longueur de structure (bougies H1 / H4)', minval = 2, maxval = 50, group = lxObG)
+
+type lxHtfEng
+    array<float> h
+    array<float> l
+    array<float> c
+    array<float> ph
+    array<float> pl
+    array<int>   t
+    array<float> obT
+    array<float> obB
+    array<int>   obX
+    array<int>   obD
+    int   lg    = 0
+    float hiLvl = na
+    int   hiIdx = na
+    bool  hiX   = true
+    float loLvl = na
+    int   loIdx = na
+    bool  loX   = true
+
+f_lxNewEng() => lxHtfEng.new(array.new<float>(), array.new<float>(), array.new<float>(), array.new<float>(), array.new<float>(), array.new<int>(), array.new<float>(), array.new<float>(), array.new<int>(), array.new<int>())
+
+// Une bougie HTF clôturée de plus : mitigation, jambe, cassure, nouvel order block
+f_lxStep(lxHtfEng e, float h, float l, float c, int t, float a, int size) =>
+    bool hv = not na(a) and (h - l) >= 2 * a
+    e.h.push(h)
+    e.l.push(l)
+    e.c.push(c)
+    e.t.push(t)
+    e.ph.push(hv ? l : h)
+    e.pl.push(hv ? h : l)
+    int k = e.h.size() - 1
+    // mitigation High/Low (comme LuxAlgo par défaut)
+    if e.obT.size() > 0
+        for i = e.obT.size() - 1 to 0
+            if (e.obD.get(i) == -1 and h > e.obT.get(i)) or (e.obD.get(i) == 1 and l < e.obB.get(i))
+                e.obT.remove(i)
+                e.obB.remove(i)
+                e.obX.remove(i)
+                e.obD.remove(i)
+    // jambe (fonction leg de LuxAlgo) : high[size] > plus haut des size dernières bougies
+    if k >= size
+        float hiN = e.h.get(k - size)
+        float loN = e.l.get(k - size)
+        float mx = e.h.slice(k - size + 1, k + 1).max()
+        float mn = e.l.slice(k - size + 1, k + 1).min()
+        int prev = e.lg
+        if hiN > mx
+            e.lg := 0
+        else if loN < mn
+            e.lg := 1
+        if e.lg != prev
+            if e.lg == 1
+                e.loLvl := loN
+                e.loIdx := k - size
+                e.loX := false
+            else
+                e.hiLvl := hiN
+                e.hiIdx := k - size
+                e.hiX := false
+    // cassure du sommet : order block haussier = bougie au plus bas « parsé » entre le pivot et la cassure
+    if k >= 1
+        float cPrev = e.c.get(k - 1)
+        if not na(e.hiLvl) and not e.hiX and c > e.hiLvl and cPrev <= e.hiLvl
+            e.hiX := true
+            if k - 1 >= e.hiIdx
+                int best = e.hiIdx
+                for j = e.hiIdx to k - 1
+                    if e.pl.get(j) < e.pl.get(best)
+                        best := j
+                e.obT.unshift(e.ph.get(best))
+                e.obB.unshift(e.pl.get(best))
+                e.obX.unshift(e.t.get(best))
+                e.obD.unshift(1)
+        if not na(e.loLvl) and not e.loX and c < e.loLvl and cPrev >= e.loLvl
+            e.loX := true
+            if k - 1 >= e.loIdx
+                int best = e.loIdx
+                for j = e.loIdx to k - 1
+                    if e.ph.get(j) > e.ph.get(best)
+                        best := j
+                e.obT.unshift(e.ph.get(best))
+                e.obB.unshift(e.pl.get(best))
+                e.obX.unshift(e.t.get(best))
+                e.obD.unshift(-1)
+    while e.obT.size() > 100
+        e.obT.pop()
+        e.obB.pop()
+        e.obX.pop()
+        e.obD.pop()
+    true
+
+var lxHtfEng lxE1 = f_lxNewEng()
+var lxHtfEng lxE4 = f_lxNewEng()
+[lxH1h, lxH1l, lxH1c, lxH1t, lxH1a] = request.security(syminfo.tickerid, '60', [high[1], low[1], close[1], time[1], ta.atr(200)[1]], lookahead = barmerge.lookahead_on)
+[lxH4h, lxH4l, lxH4c, lxH4t, lxH4a] = request.security(syminfo.tickerid, '240', [high[1], low[1], close[1], time[1], ta.atr(200)[1]], lookahead = barmerge.lookahead_on)
+bool lxUse1 = lxObOn1 and timeframe.in_seconds() < 3600
+bool lxUse4 = lxObOn4 and timeframe.in_seconds() < 14400
+if lxUse1 and timeframe.change('60') and not na(lxH1c)
+    f_lxStep(lxE1, lxH1h, lxH1l, lxH1c, lxH1t, lxH1a, lxObLen)
+if lxUse4 and timeframe.change('240') and not na(lxH4c)
+    f_lxStep(lxE4, lxH4h, lxH4l, lxH4c, lxH4t, lxH4a, lxObLen)
+
+// Dessin : couleurs des zones « Main ChoCh » de TradingFinder, bord pointillé (H1) ou tirets (H4)
+lxObCD = input.color(color.rgb(60, 176, 68, 65), 'Demand', group = lxObG, inline = 'c')
+lxObCS = input.color(color.rgb(191, 10, 48, 75), 'Supply', group = lxObG, inline = 'c')
+var array<box> lxObBx = array.new<box>()
+f_lxDraw(lxHtfEng e, int n, string tag, string st, int w) =>
+    int m = math.min(n, e.obT.size())
+    if m > 0
+        for i = 0 to m - 1
+            color cB = e.obD.get(i) == 1 ? lxObCD : lxObCS
+            lxObBx.push(box.new(e.obX.get(i), e.obT.get(i), last_bar_time, e.obB.get(i), xloc = xloc.bar_time, extend = extend.right,
+                 border_color = color.new(cB, 20), border_style = st, border_width = w, bgcolor = cB,
+                 text = tag + (e.obD.get(i) == 1 ? ' ▲' : ' ▼'), text_size = size.tiny, text_color = color.new(cB, 0),
+                 text_halign = text.align_right, text_valign = text.align_center))
+    true
+
+if barstate.islast
+    for b in lxObBx
+        box.delete(b)
+    lxObBx.clear()
+    if lxUse1
+        f_lxDraw(lxE1, lxObN1, 'OB H1', line.style_dotted, 1)
+    if lxUse4
+        f_lxDraw(lxE4, lxObN4, 'OB H4', line.style_dashed, 1)
