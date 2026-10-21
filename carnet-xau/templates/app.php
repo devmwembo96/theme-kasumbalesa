@@ -267,6 +267,7 @@ defined( 'ABSPATH' ) || exit;
 				<li>Dans MT5 : Outils › Options › Expert Advisors, cochez « Autoriser WebRequest » et ajoutez l’adresse <code id="mt5-host"></code>.</li>
 				<li>Glissez l’EA sur un graphique XAUUSD, collez l’adresse <code id="mt5-url"></code> et la clé du compte.</li>
 			</ol>
+			<p class="hint">Prise de position : <a id="calc-link" download="CalculateurXAU.mq5">CalculateurXAU.mq5</a>. Lot selon le palier du capital (fonds propres) ou risque fixe (prop firm), stop de 1,50 à 8,00 $, limites du jour, de la semaine et plancher. À glisser sur un second graphique XAUUSD.</p>
 			<div class="secret" id="mt5-key-box" hidden></div>
 		</div>
 		<div class="conn">

@@ -1057,7 +1057,7 @@ async function mt5Revoke(a){
 let CONN=null;
 async function loadConnections(){
   try{CONN=await api("connections")}catch(e){return}
-  $("#ea-link").href=CFG.ea||"#";
+  $("#ea-link").href=CFG.ea||"#";$("#calc-link").href=CFG.calc||"#";
   try{$("#mt5-host").textContent=new URL(CONN.mt5Url).origin}catch(e){}
   $("#mt5-url").textContent=CONN.mt5Url;
   $("#tv-state").textContent=CONN.tradingview.active?"Webhook actif. Générer une nouvelle adresse coupe l’ancienne.":"Aucun webhook actif.";

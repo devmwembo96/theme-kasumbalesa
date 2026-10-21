@@ -178,6 +178,13 @@ class CX_Front {
 						),
 						home_url( '/' )
 					),
+					'calc'    => add_query_arg(
+						array(
+							'cx_pwa' => 'calc',
+							'v'      => CX_VERSION,
+						),
+						home_url( '/' )
+					),
 				)
 			) . ';',
 			'before'
@@ -326,7 +333,7 @@ class CX_Front {
 	 */
 	public static function serve_pwa() {
 		$what = isset( $_GET['cx_pwa'] ) ? sanitize_key( wp_unslash( $_GET['cx_pwa'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
-		if ( ! in_array( $what, array( 'manifest', 'sw', 'ea' ), true ) ) {
+		if ( ! in_array( $what, array( 'manifest', 'sw', 'ea', 'calc' ), true ) ) {
 			return;
 		}
 		if ( ! self::can_use() ) {
@@ -352,6 +359,15 @@ class CX_Front {
 				array( rest_url( CX_Rest::NS . '/mt5' ), str_pad( 'https://' . $host, 29 ) ),
 				(string) file_get_contents( CX_DIR . 'assets/mt5/CarnetXAU.mq5.txt' ) // phpcs:ignore WordPress.WP.AlternativeFunctions
 			);
+			exit;
+		}
+
+		// EA de déclenchement des positions (calculateur de lot du modèle fonds propres).
+		if ( 'calc' === $what ) {
+			nocache_headers();
+			header( 'Content-Type: text/plain; charset=utf-8' );
+			header( 'Content-Disposition: attachment; filename="CalculateurXAU.mq5"' );
+			echo (string) file_get_contents( CX_DIR . 'assets/mt5/CalculateurXAU.mq5.txt' ); // phpcs:ignore WordPress.Security.EscapeOutput, WordPress.WP.AlternativeFunctions -- fichier source de l'EA.
 			exit;
 		}
 
