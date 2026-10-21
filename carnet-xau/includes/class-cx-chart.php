@@ -147,8 +147,14 @@ class CX_Chart {
 		}
 		// Invalidation : premier prix de la phrase « annule » (séance) ou invalidation du plan (semaine).
 		$inv = 0.0;
-		if ( $s && preg_match( '/\d[\d\s\x{202F}\x{00A0}]{2,}[.,]?\d*/u', (string) ( $s['invalid'] ?? '' ), $m ) ) {
-			$inv = (float) str_replace( array( ' ', "\u{202F}", "\u{00A0}", ',' ), array( '', '', '', '.' ), $m[0] );
+		if ( $s && preg_match_all( '/\d[\d \x{202F}\x{00A0}]*(?:[.,]\d+)?/u', (string) ( $s['invalid'] ?? '' ), $m ) ) {
+			foreach ( $m[0] as $x ) {
+				$v = (float) str_replace( array( ' ', "\u{202F}", "\u{00A0}", ',' ), array( '', '', '', '.' ), trim( $x ) );
+				if ( $v > 100 ) { // le premier prix : « M15 », « H1 »… ne comptent pas
+					$inv = $v;
+					break;
+				}
+			}
 		} elseif ( 'week' === $kind ) {
 			$inv = (float) ( $c['prediction']['invalidation'] ?? 0 );
 		}
