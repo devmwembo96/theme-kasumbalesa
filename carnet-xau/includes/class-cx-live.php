@@ -16,6 +16,8 @@
  *   L|prix|type
  *   N|heure unix|impact|annonce
  *   R|risque|risque réduit|seuil|contrat|trades max|pertes max|spread max %|stop min|stop max|limite jour $|taille|plancher
+ *   X|invalidation de la dernière analyse de séance du jour
+ *   P|achat ou vente|entrée|stop|objectif|nom (scénarios d'exécution de cette analyse)
  *   D|trades du jour|pertes du jour|résultat du jour $
  *
  * @package CarnetXAU
@@ -191,9 +193,47 @@ class CX_Live {
 		}
 		$t     = CX_Tuning::values();
 		$out[] = 'S|' . (int) $t['touch'] . '|' . (int) $t['swing'] . '|' . self::n( $t['fvg'] ) . '|' . self::n( $t['slbuf'] ) . '|' . (int) $t['limitmin'] . '|' . (int) $t['cooldown'];
+		$seen = array();
 		foreach ( (array) ( $c['levels'] ?? array() ) as $l ) {
 			if ( null !== $l['price'] ) {
-				$out[] = 'L|' . self::n( $l['price'] ) . '|' . self::t( $l['type'] );
+				$out[]                                  = 'L|' . self::n( $l['price'] ) . '|' . self::t( $l['type'] );
+				$seen[ (string) round( $l['price'], 1 ) ] = 1;
+			}
+		}
+		// Dernière analyse de séance du jour : ses niveaux (L), son invalidation (X) et ses scénarios
+		// d'exécution (P), tracés par l'EA comme sur le graphique envoyé sur Telegram.
+		$order = array(
+			'asia'      => 0,
+			'premarket' => 1,
+			'us'        => 2,
+		);
+		$last  = null;
+		foreach ( (array) ( $c['sessions'] ?? array() ) as $se ) {
+			if ( $se['date'] === $today && ( ! $last || $order[ $se['kind'] ] >= $order[ $last['kind'] ] ) ) {
+				$last = $se;
+			}
+		}
+		if ( $last ) {
+			foreach ( (array) ( $last['levels'] ?? array() ) as $l ) {
+				$k = (string) round( (float) $l['price'], 1 );
+				if ( null !== $l['price'] && ! isset( $seen[ $k ] ) ) {
+					$out[]      = 'L|' . self::n( $l['price'] ) . '|' . self::t( $l['type'] );
+					$seen[ $k ] = 1;
+				}
+			}
+			if ( preg_match_all( '/\d[\d \x{202F}\x{00A0}]*(?:[.,]\d+)?/u', (string) ( $last['invalid'] ?? '' ), $m ) ) {
+				foreach ( $m[0] as $x ) {
+					$v = (float) str_replace( array( ' ', "\u{202F}", "\u{00A0}", ',' ), array( '', '', '', '.' ), trim( $x ) );
+					if ( $v > 100 ) {
+						$out[] = 'X|' . self::n( $v );
+						break;
+					}
+				}
+			}
+			foreach ( array_slice( (array) ( $last['positions'] ?? array() ), 0, 3 ) as $po ) {
+				if ( $po['entry'] && $po['sl'] && $po['tp'] ) {
+					$out[] = 'P|' . ( 'vente' === $po['side'] ? 'vente' : 'achat' ) . '|' . self::n( $po['entry'] ) . '|' . self::n( $po['sl'] ) . '|' . self::n( $po['tp'] ) . '|' . self::t( $po['label'] ?? '' );
+				}
 			}
 		}
 		// Annonces : heure exacte (UTC) calculée ici, l'EA n'a pas à lire de date. Celles du plan

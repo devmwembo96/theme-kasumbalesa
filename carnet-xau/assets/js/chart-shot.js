@@ -30,7 +30,7 @@
   const chart = LW.createChart(box, {
     width: box.clientWidth, height: box.clientHeight,
     layout: { background: { type: "solid", color: C.bg }, textColor: C.text, fontFamily: C.font, fontSize: 11 },
-    grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
+    grid: { vertLines: { visible: false }, horzLines: { visible: false } },
     rightPriceScale: { borderColor: "#e0e3eb", scaleMargins: { top: 0.12, bottom: 0.06 } },
     timeScale: { borderColor: "#e0e3eb", timeVisible: D.tf !== "D1", secondsVisible: false, rightOffset: D.rightOffset || 40, barSpacing: D.barSpacing || 7 },
     crosshair: { mode: LW.CrosshairMode.Hidden, vertLine: { visible: false }, horzLine: { visible: false } },

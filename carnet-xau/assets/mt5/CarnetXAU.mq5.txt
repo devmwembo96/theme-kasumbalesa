@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.9.0                                    |
+//| CarnetXAU.mq5 — version 2.10.0                                   |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1 à M1), toutes |
@@ -70,7 +70,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.90"
+#property version   "2.10"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 input string InpUrl         = "https://revnefty.store/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
@@ -79,6 +79,7 @@ input string InpSymbol      = "XAU"; // Trades envoyés : symboles qui contienne
 input int    InpDaysBack    = 3;     // Jours d'historique renvoyés à chaque synchronisation
 input int    InpSnapshotSec = 60;    // Intervalle de synchronisation, en secondes (15 minimum)
 input bool   InpDrawPlan    = true;  // Tracer le plan de Claude
+input bool   InpTVStyle     = true;  // Graphique au style TradingView clair (fond blanc, sans grille)
 input bool   InpSignals     = true;  // Calculer les signaux BUY NOW / SELL NOW
 input double InpSLBuffer    = 0.30;  // Marge du stop derrière l'extrême ($, en plus du spread)
 input int    InpTouchBars   = 30;    // Bougies M1 où chercher la touche de zone
@@ -106,6 +107,10 @@ struct CxZone
    datetime lastSignal;
   };
 struct CxLevel { double price; string type; };
+//--- Scénario d'exécution de la dernière analyse de séance (outil position longue / courte).
+struct CxPos { bool buy; double entry; double sl; double tp; string label; };
+CxPos    g_pos[];
+double   g_sinv = 0;      // invalidation de la dernière analyse de séance
 
 CxZone   g_zones[];
 CxLevel  g_levels[];
@@ -181,6 +186,7 @@ int OnInit()
       g_doneM1 = (datetime)GlobalVariableGet(GV_M1);
    if(GlobalVariableCheck(GV_M15))
       g_doneM15 = (datetime)GlobalVariableGet(GV_M15);
+   ApplyTVStyle();
    Sync();
    FetchPlan();
    SendCandles();
@@ -210,12 +216,25 @@ void OnTimer()
    DrawPanel();
   }
 
+//--- Zoom ou défilement : les noms au milieu des lignes et les prix du bord droit se recalent.
+void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
+  {
+   static uint last = 0;
+   if(id == CHARTEVENT_CHART_CHANGE && InpDrawPlan && g_hash != "" && GetTickCount() - last > 300)
+     {
+      last = GetTickCount();
+      DrawPlan();
+     }
+  }
+
 void OnTick()
   {
    datetime m1 = iTime(_Symbol, PERIOD_M1, 0);
    if(m1 == g_lastM1)
       return;
    g_lastM1 = m1;               // nouvelle bougie M1 : la précédente vient de clôturer
+   if(InpDrawPlan && g_hash != "")
+      DrawPlan();               // le scénario et les étiquettes suivent la dernière bougie
    Monitor();                   // invalidation et zones sur clôture M15 (et rattrapage après un arrêt)
    ProcessTracks();             // signaux en cours, bougie par bougie depuis la dernière traitée
    DrawPanel();                 // zones les plus proches du prix
@@ -709,6 +728,8 @@ void FetchPlan()
 
    ArrayResize(g_zones, 0);
    ArrayResize(g_levels, 0);
+   ArrayResize(g_pos, 0);
+   g_sinv = 0;
    ArrayResize(g_news, 0);
    ArrayResize(g_newsName, 0);
    g_bull = 0; g_bear = 0; g_range = 0;
@@ -757,6 +778,18 @@ void FetchPlan()
          ArrayResize(g_levels, k + 1);
          g_levels[k].price = StringToDouble(f[1]);
          g_levels[k].type  = f[2];
+        }
+      else if(f[0] == "X" && c >= 2)
+         g_sinv = StringToDouble(f[1]);
+      else if(f[0] == "P" && c >= 5)
+        {
+         int k = ArraySize(g_pos);
+         ArrayResize(g_pos, k + 1);
+         g_pos[k].buy   = (f[1] != "vente");
+         g_pos[k].entry = StringToDouble(f[2]);
+         g_pos[k].sl    = StringToDouble(f[3]);
+         g_pos[k].tp    = StringToDouble(f[4]);
+         g_pos[k].label = c >= 6 ? f[5] : "";
         }
       else if(f[0] == "N" && c >= 4)
         {
@@ -840,42 +873,198 @@ void Rect(string name, datetime t1, double p1, datetime t2, double p2, color clr
    ObjBase(name);
   }
 
+//--- Style TradingView clair : fond blanc, sans grille, bougies vert 089981 et rouge F23645.
+void ApplyTVStyle()
+  {
+   if(!InpTVStyle)
+      return;
+   ChartSetInteger(0, CHART_MODE, CHART_CANDLES);
+   ChartSetInteger(0, CHART_SHOW_GRID, false);
+   ChartSetInteger(0, CHART_COLOR_BACKGROUND, clrWhite);
+   ChartSetInteger(0, CHART_COLOR_FOREGROUND, C'19,23,34');
+   ChartSetInteger(0, CHART_COLOR_CANDLE_BULL, C'8,153,129');
+   ChartSetInteger(0, CHART_COLOR_CANDLE_BEAR, C'242,54,69');
+   ChartSetInteger(0, CHART_COLOR_CHART_UP, C'8,153,129');
+   ChartSetInteger(0, CHART_COLOR_CHART_DOWN, C'242,54,69');
+   ChartSetInteger(0, CHART_COLOR_CHART_LINE, C'120,123,134');
+   ChartSetInteger(0, CHART_COLOR_BID, C'120,123,134');
+   ChartSetInteger(0, CHART_COLOR_ASK, C'178,181,190');
+   ChartSetInteger(0, CHART_COLOR_LAST, C'120,123,134');
+   ChartSetInteger(0, CHART_COLOR_STOP_LEVEL, C'242,54,69');
+   ChartSetInteger(0, CHART_SHOW_VOLUMES, CHART_VOLUME_HIDE);
+   ChartSetInteger(0, CHART_SHIFT, true);                 // place à droite pour l'outil position
+   ChartSetDouble(0, CHART_SHIFT_SIZE, 30);
+   ChartRedraw();
+  }
+
+//--- Couleur d'un niveau : PDH, PDL, PWH, PWL en bleu ; EQH, EQL en gris foncé ; le reste en gris.
+color LevelColor(string t)
+  {
+   string u = t;
+   StringToUpper(u);
+   if(StringLen(u) >= 3 && StringGetCharacter(u, 0) == 'P' && (StringFind("DWM", StringSubstr(u, 1, 1)) >= 0) && (StringFind("HL", StringSubstr(u, 2, 1)) >= 0))
+      return C'41,98,255';
+   if(StringFind(u, "EQH") == 0 || StringFind(u, "EQL") == 0)
+      return C'67,70,81';
+   return C'120,123,134';
+  }
+
+string LevelName(string t)
+  {
+   string u = t;
+   StringToUpper(u);
+   if(u == "EQH" || u == "EQL")
+      u += " LIQUIDITY";
+   return u;
+  }
+
+//--- Bougie d'origine : la dernière (hors bougie en cours) qui touche le prix ou la zone.
+datetime OriginTime(double lo, double hi)
+  {
+   int n = (int)MathMin(600, Bars(_Symbol, PERIOD_CURRENT) - 1);
+   for(int i = 2; i < n; i++)
+      if(iLow(_Symbol, PERIOD_CURRENT, i) <= hi + 0.15 && iHigh(_Symbol, PERIOD_CURRENT, i) >= lo - 0.15)
+         return iTime(_Symbol, PERIOD_CURRENT, i);
+   return iTime(_Symbol, PERIOD_CURRENT, MathMax(1, n - 1));
+  }
+
+int BarPx()           { return (int)MathPow(2, (double)ChartGetInteger(0, CHART_SCALE)); }
+datetime FutureTime(double bars) { return iTime(_Symbol, PERIOD_CURRENT, 0) + (datetime)(bars * PeriodSeconds(PERIOD_CURRENT)); }
+
+//--- Bord droit du graphique, moins la largeur d'une étiquette de prix.
+datetime RightTime()
+  {
+   int vis   = (int)ChartGetInteger(0, CHART_WIDTH_IN_BARS);
+   int first = (int)ChartGetInteger(0, CHART_FIRST_VISIBLE_BAR);
+   double fut = vis - first - 1 - 80.0 / BarPx();
+   return FutureTime(MathMax(1, fut));
+  }
+
+void Seg(string name, datetime t1, datetime t2, double price, color clr, ENUM_LINE_STYLE style, bool ray)
+  {
+   ObjectCreate(0, name, OBJ_TREND, 0, t1, price, t2, price);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_STYLE, style);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, ray);
+   ObjectSetInteger(0, name, OBJPROP_BACK, true);
+   ObjBase(name);
+  }
+
+//--- Texte centré en petites capitales, comme les étiquettes des outils de TradingView.
+void Tag(string name, datetime t, double price, string txt, color clr, ENUM_ANCHOR_POINT anchor)
+  {
+   ObjectCreate(0, name, OBJ_TEXT, 0, t, price);
+   ObjectSetString(0, name, OBJPROP_TEXT, txt);
+   ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 7);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, anchor);
+   ObjBase(name);
+  }
+
+//--- Prix sur fond de couleur au bord droit, comme l'échelle de TradingView.
+void PriceTag(string name, double price, color clr)
+  {
+   ObjectCreate(0, name, OBJ_ARROW_RIGHT_PRICE, 0, RightTime(), price);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
+   ObjBase(name);
+  }
+
+//--- Ligne de l'origine au bord droit, nom au milieu, trait interrompu sous le texte.
+void NamedLine(string id, datetime t1, double price, string txt, color clr, ENUM_LINE_STYLE style)
+  {
+   datetime t0  = iTime(_Symbol, PERIOD_CURRENT, 0);
+   int      per = PeriodSeconds(PERIOD_CURRENT);
+   datetime tm  = t1 + (t0 - t1) / 2;
+   datetime gap = (datetime)(MathCeil((StringLen(txt) * 5.5 + 10) / BarPx() / 2.0) * per);
+   if(tm - gap > t1)
+     {
+      Seg(id + "a", t1, tm - gap, price, clr, style, false);
+      Seg(id + "b", tm + gap, t0 + per, price, clr, style, true);
+     }
+   else
+      Seg(id + "a", t1, t0 + per, price, clr, style, true);
+   Tag(id + "t", tm, price, txt, clr, ANCHOR_CENTER);
+  }
+
 void DrawPlan()
   {
    ObjectsDeleteAll(0, PFX_PLAN);
-   datetime t1 = iTime(_Symbol, PERIOD_D1, 5);
-   datetime t2 = TimeCurrent() + 5 * 86400;
-   datetime tz = TimeCurrent() + 3 * PeriodSeconds(PERIOD_CURRENT);    // colonne des zones, juste à droite du prix
-   datetime tl = TimeCurrent() + 40 * PeriodSeconds(PERIOD_CURRENT);   // colonne des niveaux, plus à droite
+   datetime tFar = TimeCurrent() + 7 * 86400;
 
+   //--- Zones : rectangle plein de l'origine vers la droite, ligne médiane en tirets avec le nom,
+   //    plus haut et plus bas au bord droit (ocre pour un order block, bleu achat, rouge vente).
    for(int i = 0; i < ArraySize(g_zones); i++)
      {
       CxZone z = g_zones[i];
-      bool broken = (z.state == "cassee");
-      color clr = broken ? C'225,225,225' : (z.buy ? C'200,238,214' : C'248,212,206');
-      string tip = z.type + " " + z.tf + " " + Fr(z.lo, 2) + "–" + Fr(z.hi, 2) + (z.buy ? " (achat)" : " (vente)") + (broken ? " — cassée" : "");
-      Rect(PFX_PLAN + "Z" + IntegerToString(i), t1, z.lo, t2, z.hi, clr, tip);
-      string stars = "";
-      for(int s = 0; s < z.strength; s++)
-         stars += "*";
-      Text(PFX_PLAN + "ZT" + IntegerToString(i), tz, (z.lo + z.hi) / 2, " " + z.type + " " + z.tf + " " + stars + " " + Fr(z.lo, 1) + "-" + Fr(z.hi, 1) + (broken ? " (cassée)" : ""),
-           broken ? clrGray : (z.buy ? C'31,122,90' : C'178,58,46'), 8);
-      ObjectSetInteger(0, PFX_PLAN + "ZT" + IntegerToString(i), OBJPROP_ANCHOR, ANCHOR_LEFT);
+      bool   broken = (z.state == "cassee");
+      string up = z.type + (z.tf == "US" || z.tf == "" ? "" : " " + z.tf);
+      StringToUpper(up);
+      bool   ob   = (StringFind(up, "OB") >= 0 || StringFind(up, "ORDER") >= 0);
+      color  fill = broken ? C'240,241,244' : ob ? C'239,227,205' : (z.buy ? C'223,231,253' : C'253,224,227');
+      color  ink  = broken ? C'178,181,190' : ob ? C'19,23,34' : (z.buy ? C'41,98,255' : C'242,54,69');
+      color  axis = broken ? C'178,181,190' : ob ? C'245,159,0' : (z.buy ? C'41,98,255' : C'242,54,69');
+      string id   = PFX_PLAN + "Z" + IntegerToString(i);
+      datetime t1 = OriginTime(z.lo, z.hi);
+      Rect(id, t1, z.lo, tFar, z.hi, fill, up + " " + Fr(z.lo, 2) + "–" + Fr(z.hi, 2) + (broken ? " — cassée" : ""));
+      NamedLine(id + "m", t1, (z.lo + z.hi) / 2, up + (broken ? " (CASSÉE)" : ""), ink, STYLE_DASH);
+      PriceTag(id + "h", z.hi, axis);
+      PriceTag(id + "l", z.lo, axis);
      }
+   //--- Niveaux de liquidité : trait plein et fin, nom au milieu, prix coloré au bord droit.
    for(int i = 0; i < ArraySize(g_levels); i++)
      {
-      HLine(PFX_PLAN + "L" + IntegerToString(i), g_levels[i].price, clrDimGray, STYLE_DASH, 1, g_levels[i].type + " " + Fr(g_levels[i].price, 2));
-      Text(PFX_PLAN + "LT" + IntegerToString(i), tl, g_levels[i].price, g_levels[i].type + " " + Fr(g_levels[i].price, 2), clrDimGray, 8);
+      color  clr = LevelColor(g_levels[i].type);
+      string id  = PFX_PLAN + "L" + IntegerToString(i);
+      NamedLine(id, OriginTime(g_levels[i].price, g_levels[i].price), g_levels[i].price, LevelName(g_levels[i].type), clr, STYLE_SOLID);
+      PriceTag(id + "p", g_levels[i].price, clr);
      }
-   if(g_inval > 0)
+   //--- Invalidation : celle de la dernière analyse de séance, sinon celle du plan de la semaine.
+   double inv = g_sinv > 0 ? g_sinv : g_inval;
+   if(inv > 0)
      {
-      HLine(PFX_PLAN + "INV", g_inval, g_invalidated ? clrGray : clrRed, STYLE_DASHDOT, 2, "Invalidation " + Fr(g_inval, 2));
-      Text(PFX_PLAN + "INVT", tl, g_inval, "Invalidation " + Fr(g_inval, 2) + (g_invalidated ? " — TOUCHÉE" : ""), clrRed, 8);
+      color clr = g_invalidated && g_sinv <= 0 ? C'178,181,190' : C'242,54,69';
+      NamedLine(PFX_PLAN + "INV", OriginTime(inv, inv), inv, g_invalidated && g_sinv <= 0 ? "INVALIDATION TOUCHÉE" : "INVALIDATION", clr, STYLE_SOLID);
+      PriceTag(PFX_PLAN + "INVp", inv, clr);
      }
-   if(g_rlo > 0 && g_rhi > 0)
+   //--- Scénarios d'exécution : outil position longue / courte à droite du prix, trajet simulé du premier.
+   int per = PeriodSeconds(PERIOD_CURRENT);
+   for(int k = 0; k < ArraySize(g_pos); k++)
      {
-      HLine(PFX_PLAN + "RLO", g_rlo, clrGoldenrod, STYLE_DOT, 1, "Range attendu (bas)");
-      HLine(PFX_PLAN + "RHI", g_rhi, clrGoldenrod, STYLE_DOT, 1, "Range attendu (haut)");
+      CxPos  p   = g_pos[k];
+      string id  = PFX_PLAN + "P" + IntegerToString(k);
+      double stop = MathAbs(p.entry - p.sl);
+      if(stop <= 0)
+         continue;
+      datetime xa = FutureTime(3 + 30 * k), xb = FutureTime(29 + 30 * k), xm = xa + (xb - xa) / 2;
+      Rect(id + "tp", xa, p.entry, xb, p.tp, C'204,235,226', "Objectif " + Fr(p.tp, 2));
+      Rect(id + "sl", xa, p.entry, xb, p.sl, C'252,211,215', "Stop " + Fr(p.sl, 2));
+      Seg(id + "e", xa, xb, p.entry, C'120,123,134', STYLE_SOLID, false);
+      bool up = p.tp > p.entry;
+      double rr = MathAbs(p.tp - p.entry) / stop;
+      Tag(id + "tt", xm, p.tp, "Objectif " + Fr(p.tp, 2) + " · " + Fr(rr, 1) + "R", C'8,153,129', up ? ANCHOR_LOWER : ANCHOR_UPPER);
+      Tag(id + "st", xm, p.sl, "Stop " + Fr(p.sl, 2) + " · " + Fr(stop, 2) + " $", C'242,54,69', up ? ANCHOR_UPPER : ANCHOR_LOWER);
+      Tag(id + "et", xm, p.entry, (p.buy ? "Achat " : "Vente ") + Fr(p.entry, 2) + (p.label != "" ? " · " + p.label : ""), C'19,23,34', up ? ANCHOR_UPPER : ANCHOR_LOWER);
+      if(k == 0)
+        {
+         datetime t0 = iTime(_Symbol, PERIOD_CURRENT, 0);
+         double   c0 = iClose(_Symbol, PERIOD_CURRENT, 0);
+         ObjectCreate(0, id + "w1", OBJ_TREND, 0, t0, c0, xa + 2 * per, p.entry);
+         ObjectCreate(0, id + "w2", OBJ_TREND, 0, xa + 2 * per, p.entry, xb - 3 * per, p.tp);
+         for(int w = 1; w <= 2; w++)
+           {
+            string nm = id + "w" + IntegerToString(w);
+            ObjectSetInteger(0, nm, OBJPROP_COLOR, C'41,98,255');
+            ObjectSetInteger(0, nm, OBJPROP_STYLE, STYLE_DASH);
+            ObjectSetInteger(0, nm, OBJPROP_RAY_RIGHT, false);
+            ObjBase(nm);
+           }
+         PriceTag(id + "pt", p.tp, C'8,153,129');
+         PriceTag(id + "ps", p.sl, C'242,54,69');
+         PriceTag(id + "pe", p.entry, C'120,123,134');
+        }
      }
    ChartRedraw();
   }
