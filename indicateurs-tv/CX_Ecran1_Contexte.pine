@@ -1642,9 +1642,9 @@ plot(dbDecCode, 'Décision · code (0 attendre / 1 reversal / 2 lancé / 3 piég
 // Une unité égale ou inférieure à celle du graphique n'est pas calculée.
 lxObG    = 'SMC LuxAlgo · Order Blocks H1 / H4'
 lxObOn1  = input.bool(true, 'Order Blocks H1', group = lxObG, inline = 'h1')
-lxObN1   = input.int(3, '', minval = 1, maxval = 10, group = lxObG, inline = 'h1')
+lxObN1   = input.int(2, '', minval = 1, maxval = 10, group = lxObG, inline = 'h1')
 lxObOn4  = input.bool(true, 'Order Blocks H4', group = lxObG, inline = 'h4')
-lxObN4   = input.int(3, '', minval = 1, maxval = 10, group = lxObG, inline = 'h4')
+lxObN4   = input.int(2, '', minval = 1, maxval = 10, group = lxObG, inline = 'h4')
 lxObLen  = input.int(5, 'Longueur de structure (bougies H1 / H4)', minval = 2, maxval = 50, group = lxObG)
 
 type lxHtfEng
@@ -1750,8 +1750,8 @@ if lxUse4 and timeframe.change('240') and not na(lxH4c)
     f_lxStep(lxE4, lxH4h, lxH4l, lxH4c, lxH4t, lxH4a, lxObLen)
 
 // Dessin : couleurs des zones « Main ChoCh » de TradingFinder, bord pointillé (H1) ou tirets (H4)
-lxObCD = input.color(color.rgb(60, 176, 68, 65), 'Demand', group = lxObG, inline = 'c')
-lxObCS = input.color(color.rgb(191, 10, 48, 75), 'Supply', group = lxObG, inline = 'c')
+lxObCD = input.color(color.rgb(60, 176, 68), 'Demand', group = lxObG, inline = 'c')
+lxObCS = input.color(color.rgb(191, 10, 48), 'Supply', group = lxObG, inline = 'c')
 var array<box> lxObBx = array.new<box>()
 f_lxDraw(lxHtfEng e, int n, string tag, string st, int w) =>
     int m = math.min(n, e.obT.size())
@@ -1759,8 +1759,8 @@ f_lxDraw(lxHtfEng e, int n, string tag, string st, int w) =>
         for i = 0 to m - 1
             color cB = e.obD.get(i) == 1 ? lxObCD : lxObCS
             lxObBx.push(box.new(e.obX.get(i), e.obT.get(i), last_bar_time, e.obB.get(i), xloc = xloc.bar_time, extend = extend.right,
-                 border_color = color.new(cB, 20), border_style = st, border_width = w, bgcolor = cB,
-                 text = tag + (e.obD.get(i) == 1 ? ' ▲' : ' ▼'), text_size = size.tiny, text_color = color.new(cB, 0),
+                 border_color = color.new(cB, 45), border_style = st, border_width = w, bgcolor = color.new(cB, 92),
+                 text = tag + (e.obD.get(i) == 1 ? ' ▲' : ' ▼'), text_size = size.tiny, text_color = color.new(cB, 20),
                  text_halign = text.align_right, text_valign = text.align_center))
     true
 
