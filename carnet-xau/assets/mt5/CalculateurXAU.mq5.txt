@@ -4,8 +4,9 @@
 //+------------------------------------------------------------------+
 //| Modèle de risque « Fonds propres » (par défaut)                   |
 //|  - Le capital de départ (250 $) est un budget de 12 pertes :     |
-//|    risque = capital / 12 tant que le capital est sous 500 $,     |
-//|    puis 4 % jusqu'à 1 000 $, 2 % jusqu'à 2 500 $, 1 % au-delà.   |
+//|    risque = 250 / 12 = 20,83 $ jusqu'à 500 $ (capital / 12 si le |
+//|    capital passe sous 250 $), puis 4 % jusqu'à 1 000 $, 2 %      |
+//|    jusqu'à 2 500 $, 1 % au-delà.                                 |
 //|    Le capital de référence est celui du début de la journée.     |
 //|  - Jour : 2 pertes ou 2 R perdus = arrêt jusqu'au lendemain.     |
 //|  - Semaine : 4 pertes ou 4 R perdus = arrêt jusqu'au lundi.      |
@@ -27,7 +28,13 @@
 //|  5. Position ouverte : « SL au BE », puis « Trailing » qui monte |
 //|     le stop de BE vers R1, puis R2, puis R3, un appui par palier.|
 //|                                                                  |
+//|  Pont avec l'EA Carnet XAU (même compte, autre graphique) :      |
+//|     il transmet chaque signal ; C le charge (SL et TP du signal, |
+//|     lot du palier), Espace l'envoie. En retour, le Calculateur   |
+//|     donne au Carnet le risque du palier et son état (arrêt).     |
+//|                                                                  |
 //|  Clavier (graphique au premier plan) :                           |
+//|     C       charger le dernier signal du Carnet XAU              |
 //|     W / S   armer un achat / une vente sur la dernière bougie    |
 //|     Espace  envoyer l'ordre armé      Q  désarmer et effacer     |
 //|     A  BE     D  trailing, palier suivant     E E  fermer        |
@@ -167,7 +174,7 @@ input double        InpTPBufferR   = 0.25;       // Paliers : extension déclenc
 input double        InpTPFreeR     = 1.5;        // Libéré : TP retiré au-delà de X R
 
 input group "=== Clavier ==="
-input bool   InpKeysOn           = true;  // Raccourcis clavier (W S Espace Q A D E E)
+input bool   InpKeysOn           = true;  // Raccourcis clavier (C W S Espace Q A D E E)
 
 input group "=== Filtre news ==="
 input bool   InpNewsFilter       = true;  // Activer le filtre news
@@ -318,6 +325,23 @@ int      g_armDir          = 0;
 datetime g_armCandle       = 0;
 datetime g_armTime         = 0;
 double   g_armDist0        = 0.0;
+
+// Pont avec l'EA Carnet XAU
+struct SSignal
+  {
+   long     ref;     // référence du signal (heure de sa bougie)
+   int      dir;
+   double   entry;
+   double   sl;
+   double   tp;
+   bool     limit;
+   int      setup;
+   datetime expires; // heure locale
+  };
+SSignal  g_sig;
+long     g_sigLoaded       = 0;     // référence du signal chargé (commentaire de l'ordre)
+bool     g_slRaw           = false; // SL du signal : déjà décalé du spread par le Carnet
+uint     g_lastBridge      = 0;
 
 // Gestion automatique et statistiques
 bool     g_autoOn          = true;
@@ -578,7 +602,7 @@ datetime MonthStartFor(const datetime now)
    dt.hour = 0;
    dt.min  = 0;
    dt.sec  = 0;
-   return StructToTime(dt);
+   return DayStartFor(StructToTime(dt) + InpResetHourServer * 3600);
   }
 
 // Résultat net et nombre de pertes des positions fermées depuis « from »
@@ -623,7 +647,8 @@ double RiskForCapital(const double cap, int &tier)
    if(cap < InpTier1Max)
      {
       tier = 1;
-      return cap / (double)MathMax(1, InpLossBudget);
+      // Sous le capital de départ, le risque baisse avec le capital ; au-dessus, il reste à départ / N
+      return MathMin(cap, InpStartCapital) / (double)MathMax(1, InpLossBudget);
      }
    if(cap < InpTier2Max)
      {
@@ -767,11 +792,17 @@ void RefreshDayStats()
    g_lossesToday  = losses;
    g_dayPnlClosed = dayPnl;
 
-   //--- Semaine (depuis lundi) et mois (depuis le 1er), positions fermées seulement
-   int lw = 0, lm = 0;
-   ClosedSince(WeekStartFor(now), g_weekPnlClosed, lw);
-   ClosedSince(MonthStartFor(now), g_monthPnlClosed, lm);
-   g_lossesWeek = lw;
+   //--- Semaine (depuis lundi) et mois (depuis le 1er), positions fermées seulement :
+   //    recalculés après un trade, sinon une fois par minute
+   static uint lastLong = 0;
+   if(g_statsDirty || lastLong == 0 || GetTickCount() - lastLong > 60000)
+     {
+      lastLong = GetTickCount();
+      int lw = 0, lm = 0;
+      ClosedSince(WeekStartFor(now), g_weekPnlClosed, lw);
+      ClosedSince(MonthStartFor(now), g_monthPnlClosed, lm);
+      g_lossesWeek = lw;
+     }
 
    g_statsDirty    = false;
    g_lastStatsTick = GetTickCount();
@@ -883,6 +914,104 @@ bool NewsCheck(const datetime now, string &name, datetime &when, bool &inWindow)
       when = g_newsTimes[best];
      }
    return false;
+  }
+
+//+------------------------------------------------------------------+
+//| Pont avec l'EA Carnet XAU : variables globales du terminal       |
+//+------------------------------------------------------------------+
+string Bridge(const string key)
+  {
+   return "CXB_" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "_" + key;
+  }
+
+// Lit le dernier signal publié par le Carnet ; true s'il est nouveau
+bool ReadSignal()
+  {
+   string n = Bridge("sig_ref");
+   if(!GlobalVariableCheck(n))
+      return false;
+   long ref = (long)GlobalVariableGet(n);
+   if(ref <= 0 || ref == g_sig.ref)
+      return false;
+   g_sig.ref     = ref;
+   g_sig.dir     = (int)GlobalVariableGet(Bridge("sig_dir"));
+   g_sig.entry   = GlobalVariableGet(Bridge("sig_entry"));
+   g_sig.sl      = GlobalVariableGet(Bridge("sig_sl"));
+   g_sig.tp      = GlobalVariableGet(Bridge("sig_tp"));
+   g_sig.limit   = (GlobalVariableGet(Bridge("sig_limit")) > 0.5);
+   g_sig.setup   = (int)GlobalVariableGet(Bridge("sig_setup"));
+   g_sig.expires = (datetime)(long)GlobalVariableGet(Bridge("sig_exp"));
+   return true;
+  }
+
+bool SignalValid()
+  {
+   return g_sig.ref > 0 && g_sig.dir != 0 && g_sig.sl > 0.0 && TimeLocal() < g_sig.expires;
+  }
+
+// État publié pour le Carnet : 0 prêt, 1 pertes du jour, 2 perte du jour, 3 pertes de la semaine,
+// 4 perte de la semaine, 5 plancher
+int BlockCode()
+  {
+   bool   fonds  = (InpMode == MODE_FONDS);
+   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+   double weekPnl = g_weekPnlClosed + (equity - AccountInfoDouble(ACCOUNT_BALANCE));
+   double floorUsd = fonds ? InpFloorUsd : InpInitialBalance * (1.0 - InpFirmMaxPct / 100.0);
+   if(equity <= floorUsd)
+      return 5;
+   if(g_lossesToday >= InpMaxLossesDay)
+      return 1;
+   if(g_calc.budget > 0.0 && equity <= g_dayRef - InpDayStopR * g_calc.budget)
+      return 2;
+   if(fonds && g_lossesWeek >= InpMaxLossesWeek)
+      return 3;
+   if(fonds && g_calc.budget > 0.0 && weekPnl <= -InpWeekStopR * g_calc.budget)
+      return 4;
+   return 0;
+  }
+
+// Signe de vie, risque du palier et état, toutes les 2 secondes
+void PublishBridge()
+  {
+   if(g_lastBridge != 0 && GetTickCount() - g_lastBridge < 2000)
+      return;
+   g_lastBridge = GetTickCount();
+   GlobalVariableSet(Bridge("calc_risk"), g_calc.budget);
+   GlobalVariableSet(Bridge("calc_block"), (double)BlockCode());
+   GlobalVariableSet(Bridge("calc_on"), (double)TimeLocal());
+  }
+
+// C : arme le dernier signal (SL et TP du signal ; lot et ordre limite selon les règles du Calculateur)
+void LoadSignal()
+  {
+   ReadSignal();
+   if(!SignalValid())
+     {
+      Flash("Aucun signal du Carnet XAU en cours");
+      return;
+     }
+   g_slInput     = g_sig.sl;
+   g_pocInput    = (g_sig.tp > 0.0) ? g_sig.tp : 0.0;
+   g_slRaw       = true;
+   g_lockDir     = g_sig.dir;
+   g_candleSide  = 0;
+   g_candleTime  = 0;
+   g_candleShift = 1;
+   g_sigLoaded   = g_sig.ref;
+   MqlTick tick;
+   double ref = 0.0;
+   if(SymbolInfoTick(_Symbol, tick))
+      ref = (g_sig.dir > 0) ? tick.ask : tick.bid;
+   g_armed     = true;
+   g_armDir    = g_sig.dir;
+   g_armCandle = (datetime)g_sig.ref;
+   g_armTime   = TimeTradeServer();
+   g_armDist0  = (ref > 0.0) ? MathAbs(ref - g_slInput) : 0.0;
+   SaveArm();
+   MarkArm();
+   SetEditText(PFX + "E_SL", Px(g_slInput));
+   SetEditText(PFX + "E_POC", (g_pocInput > 0.0) ? Px(g_pocInput) : "");
+   Flash(StringFormat("Signal S%d %s chargé : Espace pour envoyer", g_sig.setup, (g_sig.dir > 0) ? "ACHAT" : "VENTE"), 4000);
   }
 
 //+------------------------------------------------------------------+
@@ -1001,7 +1130,7 @@ void ComputeCalc(SCalc &c)
       //--- Vente : entrée au bid, stop déclenché sur l'ask, d'où l'ajout du spread
       c.dir   = -1;
       c.entry = c.bid;
-      c.slEff = RoundToTick(InpSellSpreadAdjust ? g_slInput + c.spread : g_slInput, 1);
+      c.slEff = RoundToTick((InpSellSpreadAdjust && !g_slRaw) ? g_slInput + c.spread : g_slInput, 1);
       if(c.slEff <= c.ask)
         {
          c.dir    = 0;
@@ -1087,7 +1216,7 @@ void ComputeCalc(SCalc &c)
    c.pocGiven = (g_pocInput > 0.0);
    if(c.pocGiven)
      {
-      double poc = (c.dir < 0 && InpSellSpreadAdjust) ? g_pocInput + c.spread : g_pocInput;
+      double poc = (c.dir < 0 && InpSellSpreadAdjust && !g_slRaw) ? g_pocInput + c.spread : g_pocInput;
       c.pocTP        = (c.dir > 0) ? RoundToTick(poc, -1) : RoundToTick(poc, 1);
       c.pocWrongSide = ((c.dir > 0 && c.pocTP <= c.entry) || (c.dir < 0 && c.pocTP >= c.entry));
       if(!c.pocWrongSide)
@@ -1400,6 +1529,8 @@ void SaveArm()
    GlobalVariableSet(GvBase() + "armct",  (double)g_armCandle);
    GlobalVariableSet(GvBase() + "armt",   (double)g_armTime);
    GlobalVariableSet(GvBase() + "armd0",  g_armDist0);
+   GlobalVariableSet(GvBase() + "armraw", g_slRaw ? 1.0 : 0.0);
+   GlobalVariableSet(GvBase() + "armsig", (double)g_sigLoaded);
   }
 
 void LoadArm()
@@ -1419,6 +1550,8 @@ void LoadArm()
    g_candleTime = g_armCandle;
    g_armTime    = (datetime)GlobalVariableGet(GvBase() + "armt");
    g_armDist0   = GlobalVariableCheck(GvBase() + "armd0") ? GlobalVariableGet(GvBase() + "armd0") : 0.0;
+   g_slRaw      = GlobalVariableCheck(GvBase() + "armraw") && GlobalVariableGet(GvBase() + "armraw") > 0.5;
+   g_sigLoaded  = GlobalVariableCheck(GvBase() + "armsig") ? (long)GlobalVariableGet(GvBase() + "armsig") : 0;
   }
 
 void Disarm(const bool clearFields)
@@ -2208,6 +2341,12 @@ void RenderPanel()
    //--- Armement : le SL est figé, seul le lot se recalcule
    string armTxt = "Non armé   W achat · S vente · Espace envoie";
    color  armClr = CLR_MUTED;
+   if(!g_armed && SignalValid())
+     {
+      armTxt = StringFormat("Signal %s S%d %s  SL %s : C pour charger", TimeToString((datetime)g_sig.ref, TIME_MINUTES),
+                            g_sig.setup, (g_sig.dir > 0) ? "ACHAT" : "VENTE", Px(g_sig.sl));
+      armClr = (g_sig.dir > 0) ? CLR_GREEN : CLR_RED;
+     }
    if(g_armed)
      {
       armClr = CLR_ORANGE;
@@ -2304,6 +2443,10 @@ void UpdateAll(const bool force)
    if(g_lastStatsCalc == 0 || now - g_lastStatsCalc > 60000)
       RefreshStats();
    ComputeCalc(g_calc);
+   if(ReadSignal())
+      Flash(StringFormat("Signal Carnet S%d %s · SL %s · TP %s : C pour le charger", g_sig.setup,
+                         (g_sig.dir > 0) ? "ACHAT" : "VENTE", Px(g_sig.sl), Px(g_sig.tp)), 8000);
+   PublishBridge();
    RenderPanel();
   }
 
@@ -2323,6 +2466,8 @@ void SetCandleSL(const int side, const bool resetShift)
       return;
      }
    double buf = MathMax(0.0, InpSlBufUsd); // marge du carnet derrière la mèche ($ de prix)
+   g_slRaw     = false;
+   g_sigLoaded = 0;
    g_slInput    = (side > 0) ? RoundToTick(lo - buf, -1) : RoundToTick(hi + buf, 1);
    g_lockDir    = side;
    g_candleSide = side;
@@ -2350,6 +2495,8 @@ void ClearInputs()
    g_candleSide  = 0;
    g_candleShift = 1;
    g_candleTime  = 0;
+   g_slRaw       = false;
+   g_sigLoaded   = 0;
    SetEditText(PFX + "E_SL", "");
    SetEditText(PFX + "E_POC", "");
   }
@@ -2391,7 +2538,8 @@ void Execute(const int dir)
       g_trade.SetDeviationInPoints((ulong)(InpMaxSlippagePts > 0 ? InpMaxSlippagePts : 0));
       g_trade.SetTypeFilling(SymbolFilling());
 
-      string cmt  = StringFormat("CalcXAU %.1fR", g_calc.tpR);
+      string cmt  = (g_sigLoaded > 0) ? StringFormat("CalcXAU %.1fR S%d #", g_calc.tpR, g_sig.setup) + IntegerToString(g_sigLoaded)
+                                      : StringFormat("CalcXAU %.1fR", g_calc.tpR);
       if(g_calc.limit)
         {
          PlaceLimit(dir, cmt);
@@ -2496,8 +2644,12 @@ void PlaceLimit(const int dir, const string cmt)
      }
    // Ordres en attente : remplissage « Return », accepté par les courtiers pour les limites
    g_trade.SetTypeFilling(ORDER_FILLING_RETURN);
-   bool ok = (dir > 0) ? g_trade.BuyLimit(g_calc.lots, g_calc.entry, _Symbol, g_calc.slEff, g_calc.tp, ORDER_TIME_GTC, 0, cmt)
-                       : g_trade.SellLimit(g_calc.lots, g_calc.entry, _Symbol, g_calc.slEff, g_calc.tp, ORDER_TIME_GTC, 0, cmt);
+   // Expiration tenue par le serveur si le symbole l'accepte (EA retiré ou terminal fermé)
+   datetime exp  = TimeTradeServer() + InpLimitMin * 60;
+   bool     spec = ((SymbolInfoInteger(_Symbol, SYMBOL_EXPIRATION_MODE) & SYMBOL_EXPIRATION_SPECIFIED) != 0);
+   ENUM_ORDER_TYPE_TIME tt = spec ? ORDER_TIME_SPECIFIED : ORDER_TIME_GTC;
+   bool ok = (dir > 0) ? g_trade.BuyLimit(g_calc.lots, g_calc.entry, _Symbol, g_calc.slEff, g_calc.tp, tt, spec ? exp : 0, cmt)
+                       : g_trade.SellLimit(g_calc.lots, g_calc.entry, _Symbol, g_calc.slEff, g_calc.tp, tt, spec ? exp : 0, cmt);
    uint rc = g_trade.ResultRetcode();
    g_trade.SetTypeFilling(SymbolFilling());
    if(!ok || (rc != TRADE_RETCODE_DONE && rc != TRADE_RETCODE_PLACED))
@@ -2529,7 +2681,7 @@ void LimitFilled(const ulong posId)
   {
    g_pending.active      = true;
    g_pending.order       = g_limit.order;
-   g_pending.sent        = TimeTradeServer();
+   g_pending.sent        = g_limit.placed;
    g_pending.dir         = g_limit.dir;
    g_pending.slEff       = g_limit.slEff;
    g_pending.rCfg        = g_limit.rCfg;
@@ -2543,6 +2695,20 @@ void LimitFilled(const ulong posId)
    Flash("Ordre limite exécuté", 3000);
   }
 
+// true si l'ordre limite a été exécuté (en tout ou en partie)
+bool LimitWasFilled()
+  {
+   if(SelectPositionById(g_limit.order) != 0)
+      return true;
+   if(HistoryOrderSelect(g_limit.order))
+     {
+      long st = HistoryOrderGetInteger(g_limit.order, ORDER_STATE);
+      if(st == ORDER_STATE_FILLED || st == ORDER_STATE_PARTIAL)
+         return true;
+     }
+   return false;
+  }
+
 // Expiration, annulation ou exécution de l'ordre limite (minuterie)
 void CheckLimit()
   {
@@ -2550,20 +2716,28 @@ void CheckLimit()
       return;
    if(OrderSelect(g_limit.order))
      {
+      //--- Toujours en attente : annulé à l'expiration, ou si une limite est atteinte entre-temps
+      string why = "";
       if((long)TimeTradeServer() - (long)g_limit.placed > (long)InpLimitMin * 60)
+         why = StringFormat("%d min écoulées", InpLimitMin);
+      else if(g_lossesToday >= InpMaxLossesDay)
+         why = "pertes du jour atteintes";
+      else if(AccountInfoDouble(ACCOUNT_EQUITY) <= ((InpMode == MODE_FONDS) ? InpFloorUsd : InpInitialBalance * (1.0 - InpFirmMaxPct / 100.0)))
+         why = "plancher atteint";
+      if(why != "" && g_trade.OrderDelete(g_limit.order))
         {
-         if(g_trade.OrderDelete(g_limit.order))
-           {
-            ClearLimit();
-            Flash(StringFormat("Ordre limite annulé : %d min écoulées", InpLimitMin), 6000);
-           }
+         ClearLimit();
+         Flash("Ordre limite annulé : " + why, 6000);
         }
       return;
      }
-   // Plus en attente : exécuté (la position porte le numéro de l'ordre) ou annulé
-   if(SelectPositionById(g_limit.order) != 0 && !GvHas(g_limit.order, "risk"))
+   //--- Plus en attente : exécuté (la position porte le numéro de l'ordre) ou annulé
+   if(LimitWasFilled())
      {
-      LimitFilled(g_limit.order);
+      if(!GvHas(g_limit.order, "risk"))
+         LimitFilled(g_limit.order);
+      else
+         ClearLimit();
       return;
      }
    ClearLimit();
@@ -2573,13 +2747,18 @@ bool CancelLimit()
   {
    if(!g_limit.active)
       return false;
-   if(OrderSelect(g_limit.order) && !g_trade.OrderDelete(g_limit.order))
+   if(OrderSelect(g_limit.order))
      {
-      Flash("Annulation refusée : " + g_trade.ResultRetcodeDescription(), 6000);
+      if(!g_trade.OrderDelete(g_limit.order))
+        {
+         Flash("Annulation refusée : " + g_trade.ResultRetcodeDescription(), 6000);
+         return true;
+        }
+      ClearLimit();
+      Flash("Ordre limite annulé", 3000);
       return true;
      }
-   ClearLimit();
-   Flash("Ordre limite annulé", 3000);
+   CheckLimit(); // déjà exécuté ou expiré : on le traite comme tel
    return true;
   }
 
@@ -2871,6 +3050,7 @@ int OnInit()
 void OnDeinit(const int reason)
   {
    EventKillTimer();
+   GlobalVariableDel(Bridge("calc_on"));
    if(g_atrHandle != INVALID_HANDLE)
       IndicatorRelease(g_atrHandle);
    ObjectsDeleteAll(0, PFX);
@@ -2931,7 +3111,9 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
    if(id == CHARTEVENT_KEYDOWN && InpKeysOn)
      {
       int key = (int)lparam;
-      if(key == 87)          // W : armer un achat
+      if(key == 67)          // C : charger le dernier signal du Carnet XAU
+         LoadSignal();
+      else if(key == 87)     // W : armer un achat
          Arm(1);
       else if(key == 83)     // S : armer une vente
          Arm(-1);
@@ -2975,11 +3157,19 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       return;
      }
 
+   if(id == CHARTEVENT_CUSTOM + 101)
+     {
+      UpdateAll(true);
+      return;
+     }
+
    if(id == CHARTEVENT_OBJECT_ENDEDIT)
      {
       if(sparam == PFX + "E_SL")
         {
          g_slInput    = ParseNumber(ObjectGetString(0, sparam, OBJPROP_TEXT));
+         g_slRaw      = false;
+         g_sigLoaded  = 0;
          g_lockDir    = 0;
          g_candleSide = 0;
          g_candleTime = 0;

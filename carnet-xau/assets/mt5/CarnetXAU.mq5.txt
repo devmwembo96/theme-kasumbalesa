@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.8.0                                    |
+//| CarnetXAU.mq5 — version 2.9.0                                    |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1 à M1), toutes |
@@ -37,6 +37,12 @@
 //| 4. Glisser l'EA sur un graphique XAUUSD (M1 conseillé) et coller |
 //|    la clé MT5 du compte (onglet Comptes du carnet).              |
 //|                                                                  |
+//| Pont avec le Calculateur XAU (même compte, autre graphique) :    |
+//| - chaque signal lui est transmis : touche C pour le charger,     |
+//|   Espace pour l'envoyer (l'ordre porte la référence du signal) ; |
+//| - il donne le risque du palier (lot des signaux) et son état :   |
+//|   à l'arrêt (pertes, plancher), le signal dit de ne pas prendre. |
+//|                                                                  |
 //| Règles du signal (calculées à partir du plan de Claude) :        |
 //| - le prix touche une zone de Claude non cassée ;                 |
 //| - extrême de la touche dans la zone (mèche tolérée) ;            |
@@ -64,7 +70,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.80"
+#property version   "2.90"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 input string InpUrl         = "https://revnefty.store/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
@@ -481,6 +487,7 @@ string PositionJson(long position, long offset)
    long     side = -1;
    double   inVol = 0, inValue = 0, outVol = 0, outValue = 0;
    double   profit = 0, commission = 0, swap = 0, sl = 0, tp = 0;
+   string   sigRef = "";
    datetime openTime = 0, closeTime = 0;
    int total = HistoryDealsTotal();
    for(int i = 0; i < total; i++)
@@ -508,6 +515,11 @@ string PositionJson(long position, long offset)
               {
                sl = HistoryOrderGetDouble(order, ORDER_SL);
                tp = HistoryOrderGetDouble(order, ORDER_TP);
+               // Ordre du Calculateur XAU chargé depuis un signal : « CalcXAU … #référence »
+               string cm = HistoryOrderGetString(order, ORDER_COMMENT);
+               int    at = StringFind(cm, "#");
+               if(at >= 0)
+                  sigRef = StringSubstr(cm, at + 1);
               }
            }
          inVol   += vol;
@@ -538,6 +550,7 @@ string PositionJson(long position, long offset)
           + ",\"swap\":" + Num(swap, 2)
           + ",\"open_time\":" + IntegerToString((long)openTime - offset)
           + ",\"close_time\":" + IntegerToString((long)closeTime - offset)
+          + (sigRef != "" ? ",\"signal\":" + JsonText(sigRef) : "")
           + "}";
   }
 
@@ -911,7 +924,15 @@ void DrawPanel()
    Label(PFX_UI + "3", 52, g_inval > 0 ? "Invalidation " + Fr(g_inval, 2) + (g_invalidated ? " : TOUCHÉE, signaux bloqués dans ce sens" : " : intacte") : "Pas d'invalidation",
          g_invalidated ? clrRed : clrDimGray);
    Label(PFX_UI + "4", 68, NearestZones(), clrDimGray);
-   Label(PFX_UI + "5", 84, "Signaux : " + (InpSignals ? IntegerToString(g_signalCount) + " aujourd'hui · aucun ordre passé" : "désactivés"), clrDimGray);
+   string calc = "";
+   if(CalcAlive())
+     {
+      int block = CalcBlock();
+      calc = block > 0 ? " · Calculateur à l'arrêt : " + CalcBlockText(block)
+                       : " · Calculateur relié, risque " + Fr(GlobalVariableGet(Bridge("calc_risk")), 2) + " $";
+     }
+   Label(PFX_UI + "5", 84, "Signaux : " + (InpSignals ? IntegerToString(g_signalCount) + " aujourd'hui · aucun ordre passé" : "désactivés") + calc,
+         CalcBlock() > 0 ? clrRed : clrDimGray);
    // État : coupé en deux lignes si besoin.
    string st = g_status, st2 = "";
    if(StringLen(st) > 62)
@@ -1027,6 +1048,60 @@ bool MonitorBar(double hi, double lo, double c, datetime t, bool late)
         }
      }
    return changed;
+  }
+
+//+------------------------------------------------------------------+
+//| Pont avec le Calculateur XAU : variables globales du terminal    |
+//+------------------------------------------------------------------+
+string Bridge(string key)
+  {
+   return "CXB_" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "_" + key;
+  }
+
+// Calculateur présent sur le même compte (signe de vie de moins de 30 s)
+bool CalcAlive()
+  {
+   string n = Bridge("calc_on");
+   return GlobalVariableCheck(n) && (long)TimeLocal() - (long)GlobalVariableGet(n) < 30;
+  }
+
+// État du Calculateur : 0 prêt, 1 pertes du jour, 2 perte du jour, 3 pertes de la semaine,
+// 4 perte de la semaine, 5 plancher
+int CalcBlock()
+  {
+   if(!CalcAlive() || !GlobalVariableCheck(Bridge("calc_block")))
+      return 0;
+   return (int)GlobalVariableGet(Bridge("calc_block"));
+  }
+
+string CalcBlockText(int code)
+  {
+   if(code == 1) return "nombre de pertes du jour atteint";
+   if(code == 2) return "perte maximum du jour atteinte";
+   if(code == 3) return "nombre de pertes de la semaine atteint";
+   if(code == 4) return "perte maximum de la semaine atteinte";
+   if(code == 5) return "plancher du capital atteint";
+   return "";
+  }
+
+// Transmet le signal au Calculateur ; la référence est écrite en dernier (elle déclenche la lecture)
+void BridgeSignal(bool buy, string kind, string setup, double entry, double sl, double tp, string ref)
+  {
+   GlobalVariableSet(Bridge("sig_dir"), buy ? 1.0 : -1.0);
+   GlobalVariableSet(Bridge("sig_entry"), entry);
+   GlobalVariableSet(Bridge("sig_sl"), sl);
+   GlobalVariableSet(Bridge("sig_tp"), tp);
+   GlobalVariableSet(Bridge("sig_limit"), kind == "LIMIT" ? 1.0 : 0.0);
+   GlobalVariableSet(Bridge("sig_setup"), StringToDouble(setup));
+   GlobalVariableSet(Bridge("sig_exp"), (double)((long)TimeLocal() + (kind == "LIMIT" ? g_limitMin : 5) * 60));
+   GlobalVariableSet(Bridge("sig_ref"), StringToDouble(ref));
+   long ch = ChartFirst();
+   while(ch >= 0)
+     {
+      if(ch != ChartID())
+         EventChartCustom(ch, 101, buy ? 1 : -1, sl, ref);
+      ch = ChartNext(ch);
+     }
   }
 
 void Notify(string msg)
@@ -1240,12 +1315,18 @@ void CheckSignals()
          continue;
         }
 
-      // Lot : risque (réduit si le compte est à −seuil), plafonné à la marge − 5 $.
+      // Lot : risque du palier donné par le Calculateur XAU s'il tourne sur ce compte ; sinon risque
+      // du carnet (réduit si le compte est à −seuil), plafonné à la marge − 5 $.
       double balance = AccountInfoDouble(ACCOUNT_BALANCE);
       double risk = (balance - g_size <= -g_redAt) ? g_riskRed : g_risk;
-      double margin = balance - g_floor;
-      if(risk > margin - 5)
-         risk = MathMax(0, margin - 5);
+      if(CalcAlive() && GlobalVariableCheck(Bridge("calc_risk")) && GlobalVariableGet(Bridge("calc_risk")) > 0)
+         risk = GlobalVariableGet(Bridge("calc_risk"));
+      else
+        {
+         double margin = balance - g_floor;
+         if(risk > margin - 5)
+            risk = MathMax(0, margin - 5);
+        }
       double lot = MathFloor(risk / (stop * g_contract) * 100.0 + 1e-9) / 100.0;
       if(lot < 0.01)
         {
@@ -1307,15 +1388,21 @@ void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, do
         buy ? C'31,122,90' : C'178,58,46', 9);
    ChartRedraw();
 
+   int    block = CalcBlock();
+   string note  = block > 0 ? "Calculateur à l'arrêt (" + CalcBlockText(block) + ") : ne pas prendre."
+                            : (CalcAlive() ? "Calculateur : touche C pour charger le signal, Espace pour l'envoyer." : "");
    string msg = "Carnet XAU : " + label + " " + _Symbol + " — " + z.type + " " + z.tf + ", entrée " + Fr(entry, 2) + ", stop " + Fr(sl, 2)
                 + ", objectif " + Fr(tp, 2) + " (" + Fr(rr, 1) + "R), lot " + Fr(lot, 2)
-                + (kind == "LIMIT" ? ", valable " + IntegerToString(g_limitMin) + " min" : "") + ". Signal seulement : à vous de décider.";
+                + (kind == "LIMIT" ? ", valable " + IntegerToString(g_limitMin) + " min" : "") + ". Signal seulement : à vous de décider."
+                + (note != "" ? " " + note : "");
    Notify(msg);
+   BridgeSignal(buy, kind, setup, entry, sl, tp, ref);
    g_status = label + " " + TimeToString(TimeCurrent(), TIME_MINUTES) + " sur " + z.type + " " + z.tf + ".";
    SendEvent("{\"type\":\"signal\",\"ref\":" + JsonText(ref) + ",\"kind\":\"" + (kind == "LIMIT" ? "limit" : "now") + "\",\"side\":\"" + (buy ? "buy" : "sell") + "\",\"setup\":\"" + setup + "\",\"zone\":"
              + JsonText(z.type + " " + z.tf + " " + Num(z.lo, 2) + "-" + Num(z.hi, 2)) + ",\"entry\":" + Num(entry, 2) + ",\"sl\":" + Num(sl, 2)
              + ",\"tp\":" + Num(tp, 2) + ",\"lot\":" + Num(lot, 2) + ",\"rr\":" + Num(rr, 2) + ",\"stop\":" + Num(stop, 2)
              + (retest > 0 ? ",\"retest\":" + Num(retest, 2) : "")
+             + (block > 0 ? ",\"note\":" + JsonText(note) : "")
              + ",\"time\":" + IntegerToString((long)TimeGMT()) + "}");
    DrawPanel();
   }

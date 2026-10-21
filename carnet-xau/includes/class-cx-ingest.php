@@ -168,7 +168,8 @@ class CX_Ingest {
 
 		$sens = in_array( $side, array( 'sell', 'vente', '1' ), true ) ? 'vente' : 'achat';
 		// Setup, zone, niveau et biais repris du signal Claude et du plan (CX_Score::fill).
-		list( $fill, $why ) = CX_Score::fill( $sens, $entry, $stop, $open );
+		$sig = preg_replace( '/\D/', '', (string) ( $t['signal'] ?? '' ) );
+		list( $fill, $why ) = CX_Score::fill( $sens, $entry, $stop, $open, $sig );
 		if ( $why ) {
 			$notes .= ' Rempli par le carnet : ' . implode( ' ; ', $why ) . '.';
 		}

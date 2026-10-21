@@ -200,16 +200,23 @@ class CX_Score {
 	 * @param float|null        $entry Prix d'entrée.
 	 * @param float|null        $stop  Écart entrée → stop ($).
 	 * @param DateTimeImmutable $open  Ouverture (heure du carnet).
+	 * @param string            $ref   Référence du signal chargé dans le Calculateur XAU (commentaire de l'ordre).
 	 * @return array Champs du trade à remplir et note.
 	 */
-	public static function fill( $side, $entry, $stop, DateTimeImmutable $open ) {
+	public static function fill( $side, $entry, $stop, DateTimeImmutable $open, $ref = '' ) {
 		global $wpdb;
 		$out  = array();
 		$note = array();
 		$ts   = $open->getTimestamp();
 
-		// Signal Claude : même sens, émis entre 45 min avant et 5 min après l'ouverture, prix proche.
-		if ( null !== $entry ) {
+		// Signal chargé dans le Calculateur XAU : référence exacte.
+		$best = null;
+		if ( '' !== $ref ) {
+			$t    = CX_Install::table( 'csignals' );
+			$best = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $t WHERE ref = %s AND sens = %s ORDER BY id DESC LIMIT 1", $ref, 'vente' === $side ? 'sell' : 'buy' ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+		}
+		// Sinon, signal Claude : même sens, émis entre 45 min avant et 5 min après l'ouverture, prix proche.
+		if ( ! $best && null !== $entry ) {
 			$t    = CX_Install::table( 'csignals' );
 			$rows = $wpdb->get_results(
 				$wpdb->prepare(
@@ -220,7 +227,6 @@ class CX_Score {
 				)
 			);
 			$tol  = max( 2.0, 0.5 * (float) $stop );
-			$best = null;
 			foreach ( $rows as $r ) {
 				if ( null === $r->entree || abs( (float) $r->entree - $entry ) > $tol ) {
 					continue;
@@ -229,11 +235,11 @@ class CX_Score {
 					$best = $r;
 				}
 			}
-			if ( $best && in_array( $best->setup, array( '1', '2', '3' ), true ) ) {
-				$out['setup']          = $best->setup;
-				$out['sur_niveau_cle'] = 1;
-				$note[]                = sprintf( 'signal Claude de %s (setup %s%s)', substr( $best->signale_le, 11, 5 ), $best->setup, $best->zone ? ', ' . $best->zone : '' );
-			}
+		}
+		if ( $best && in_array( $best->setup, array( '1', '2', '3' ), true ) ) {
+			$out['setup']          = $best->setup;
+			$out['sur_niveau_cle'] = 1;
+			$note[]                = sprintf( 'signal Claude de %s (setup %s%s)', substr( $best->signale_le, 11, 5 ), $best->setup, $best->zone ? ', ' . $best->zone : '' );
 		}
 
 		$p = CX_Repo::plan( CX_Telegram::monday( $open ) );

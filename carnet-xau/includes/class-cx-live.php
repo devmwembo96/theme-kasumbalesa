@@ -310,10 +310,12 @@ class CX_Live {
 					'payload'      => (string) wp_json_encode( $data, JSON_UNESCAPED_UNICODE ),
 				)
 			);
+			// Calculateur XAU à l'arrêt (pertes, plancher) : le signal reste suivi, mais ne se prend pas.
+			$note = CX_Repo::text( $in['note'] ?? '', 200 );
 			if ( $send ) {
 				CX_Telegram::send(
 					sprintf(
-						"%s <b>%s</b> — %s\nZone : %s\nEntrée %s · stop %s · objectif %s (%sR)\nLot : %s (stop %s $)\n" . ( 'limit' === $kind ? 'Ordre limite : valable 30 min, en attente d’un repli.' : 'Sortie partielle à 2R, puis stop au prix d’entrée.' ) . ( null === $retest ? '' : "\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ),
+						"%s <b>%s</b> — %s\nZone : %s\nEntrée %s · stop %s · objectif %s (%sR)\nLot : %s (stop %s $)\n" . ( 'limit' === $kind ? 'Ordre limite : valable 30 min, en attente d’un repli.' : 'Sortie partielle à 2R, puis stop au prix d’entrée.' ) . ( null === $retest ? '' : "\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ) . ( '' === $note ? '' : "\n⛔ " . esc_html( $note ) ),
 						'sell' === $side ? '🔴' : '🟢',
 						esc_html( $label ),
 						esc_html( $acc['name'] ),
