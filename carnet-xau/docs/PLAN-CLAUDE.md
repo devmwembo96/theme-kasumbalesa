@@ -238,7 +238,9 @@ jour ; les zones du plan US du jour sont surveillées par l’EA comme les zones
 Chaque position devient une **fiche d’exécution** (onglet Aujourd’hui, Plan, Telegram) :
 attendre (`wait`) → déclencheur (`trigger`) → ordre (`entry`, `sl`, `tp`, écart et R calculés) → lot
 du compte actif (calculé par le carnet avec son risque du jour) → annulé si (`cancel`).
-`execution` ne garde que les consignes générales (ce qu’il ne faut pas faire, annonces).
+`execution` ne garde que les consignes générales (ce qu’il ne faut pas faire, annonces) ; jamais de
+BE, de trailing ni de sortie partielle imposés : l’utilisateur gère sa position, une remarque de
+gestion va dans `idea`, chiffrée sur les bougies.
 
 ## Rejeu du soir (`update.backtest`) et réglages de l’EA
 
