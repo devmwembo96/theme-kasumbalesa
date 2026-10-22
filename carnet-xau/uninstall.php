@@ -28,6 +28,10 @@ delete_option( 'cx_refusals' );
 delete_option( 'cx_once' );
 delete_option( 'cx_last_prune' );
 delete_option( 'cx_candles' );
+delete_option( 'cx_candles_ref' );
+foreach ( (array) $wpdb->get_col( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE 'cx\\_candles\\_%'" ) as $cx_opt ) { // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+	delete_option( $cx_opt );
+}
 delete_option( 'cx_calendar' );
 wp_clear_scheduled_hook( 'cx_cron' );
 

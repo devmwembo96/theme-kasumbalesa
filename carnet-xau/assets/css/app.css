@@ -132,10 +132,10 @@
 .cx-app .bar-row .n{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;font-size:13px}
 .cx-app .empty{color:var(--muted);text-align:center;padding:26px 10px;border:1px dashed var(--line);border-radius:var(--radius-lg)}
 .cx-app svg.curve{width:100%;height:150px;display:block}
-.cx-app details summary{cursor:pointer;font-weight:600;list-style:none}
-.cx-app details summary::-webkit-details-marker{display:none}
-.cx-app details summary::after{content:"＋";float:right;color:var(--muted)}
-.cx-app details[open] summary::after{content:"－"}
+.cx-app details>summary{cursor:pointer;font-weight:600;list-style:none}
+.cx-app details>summary::-webkit-details-marker{display:none}
+.cx-app details>summary::after{content:"＋";float:right;color:var(--muted)}
+.cx-app details[open]>summary::after{content:"－"}
 
 /* Version 2 : MT5, signaux, connexions */
 .cx-app .mt5-line{padding:8px 16px;font-size:13px;color:var(--muted);border-bottom:1px dashed var(--line);display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center}
@@ -299,3 +299,37 @@
 .cx-app .feu.stop{background:var(--loss-soft);color:var(--loss)}
 .cx-app .shot{display:block;margin:8px 0}
 .cx-app .shot img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:var(--radius)}
+
+/* Fiches d'exécution : attendre → déclencheur → ordre → lot → annulé si (Aujourd'hui, Plan, séances). */
+.cx-app .exec h3{margin-top:14px}
+.cx-app .xcards{display:grid;gap:10px;margin:10px 0}
+@media (min-width:760px){.cx-app .xcards{grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}}
+.cx-app .xcard{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--win);border-radius:var(--radius);padding:12px 14px}
+.cx-app .xcard.sell{border-left-color:var(--loss)}
+.cx-app .xc-head{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.cx-app .xc-side{font-weight:700;font-size:15px;margin-right:4px}
+.cx-app .xcard.buy .xc-side{color:var(--win)} .cx-app .xcard.sell .xc-side{color:var(--loss)}
+.cx-app .xc-label{margin:6px 0 0;font-weight:600}
+.cx-app .xc-steps{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:7px}
+.cx-app .xc-steps li{display:grid;grid-template-columns:92px 1fr;gap:8px;font-size:14px;line-height:1.4}
+.cx-app .xc-steps li .k{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding-top:2px}
+.cx-app .xc-steps li.order span:last-child{font-weight:700;font-variant-numeric:tabular-nums}
+.cx-app .xc-steps li.lot span:last-child{color:var(--gold-ink)}
+.cx-app .xc-steps li.ko .k{color:var(--loss)}
+@media (max-width:420px){.cx-app .xc-steps li{grid-template-columns:1fr;gap:1px}}
+.cx-app .xc-rules{margin:8px 0} .cx-app .xc-rules .k{font-weight:700;color:var(--muted);font-size:13px}
+.cx-app .xc-inv{margin:8px 0;color:var(--loss)} .cx-app .xc-inv b{color:var(--loss)}
+.cx-app .xc-idea{margin:8px 0;padding:8px 10px;border-radius:var(--radius);background:var(--gold-soft);color:var(--gold-ink)}
+.cx-app .sess{padding:4px 0 10px}
+.cx-app .sess+.sess{border-top:1px solid var(--line);padding-top:12px;margin-top:4px}
+.cx-app .sess .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cx-app details.why{margin-top:8px;font-size:14px}
+.cx-app details.why summary{font-size:13.5px;color:var(--muted)}
+.cx-app details.sday{border-top:1px solid var(--line);padding:10px 0}
+.cx-app details.sday:first-of-type{border-top:0}
+.cx-app details.sday>summary{text-transform:capitalize}
+.cx-app p.today{margin:10px 0 0;padding:8px 10px;border-radius:var(--radius);background:var(--sunk)}
+.cx-app .rules li.today{font-weight:600}
+.cx-app .errs{display:grid;gap:6px}
+.cx-app .err{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:var(--radius);background:var(--sunk);font-size:14px}
+.cx-app .err b{white-space:nowrap} .cx-app .err b.neg{color:var(--loss)}

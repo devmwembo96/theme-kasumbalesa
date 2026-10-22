@@ -76,7 +76,7 @@ class CX_Score {
 	 * @return array|null Bougies de la fenêtre.
 	 */
 	private static function window( $from, $to ) {
-		$tf = (array) ( get_option( 'cx_candles', array() )['tf'] ?? array() );
+		$tf = (array) ( CX_Live::candle_data()['tf'] ?? array() );
 		foreach ( array( 'M5' => 300, 'M15' => 900, 'H1' => 3600 ) as $k => $dur ) {
 			$rows = (array) ( $tf[ $k ] ?? array() );
 			if ( count( $rows ) < 2 || $rows[0][0] > $from || end( $rows )[0] + $dur < $to ) {

@@ -237,6 +237,8 @@ class CX_Plan {
 					'tp'           => 'num',
 					'prob'         => 'pct',
 					'invalidation' => 'text',
+					// Fiche d'exécution : ce qui doit se produire, dans l'ordre, avant de passer l'ordre.
+					'trigger'      => 'text',
 				),
 				8,
 			),
@@ -370,18 +372,25 @@ class CX_Plan {
 				),
 				6,
 			),
-			// Scénarios d'exécution dessinés avec l'outil position (graphique et Telegram).
+			// Scénarios d'exécution : fiche « attendre → déclencheur → ordre → annulé si », dessinée avec
+			// l'outil position (graphique, EA) et envoyée sur Telegram.
 			'positions' => array(
 				'list',
 				array(
-					'side'  => 'side',
-					'entry' => 'num',
-					'sl'    => 'num',
-					'tp'    => 'num',
-					'label' => 'text',
+					'side'    => 'side',
+					'entry'   => 'num',
+					'sl'      => 'num',
+					'tp'      => 'num',
+					'label'   => 'text',
+					'setup'   => 'setup',
+					'wait'    => 'text',
+					'trigger' => 'text',
+					'cancel'  => 'text',
 				),
 				3,
 			),
+			// Proposition de Claude née de cette analyse (trade, setup, gestion), facultative.
+			'idea'      => 'long',
 		);
 	}
 

@@ -113,6 +113,7 @@ class CX_Rest {
 		self::route( '/connections/telegram', 'DELETE', 'tg_disconnect' );
 		self::route( '/connections/telegram/test', 'POST', 'tg_test' );
 		self::route( '/connections/telegram/channel', 'DELETE', 'tg_channel_off' );
+		self::route( '/connections/candles', 'PUT', 'candles_ref' );
 		self::route( '/signals', 'GET', 'list_signals' );
 		self::route( '/signals', 'DELETE', 'clear_signals' );
 
@@ -442,6 +443,11 @@ class CX_Rest {
 					'url'    => rest_url( self::NS . '/claude/plans/' ),
 				),
 				'refusals'    => array_slice( CX_Guard::refusals(), 0, 20 ),
+				// Bougies : comptes dont l'EA en envoie, et celui dont Claude se sert (0 = compte actif).
+				'candles'     => array(
+					'sources' => CX_Live::candle_sources(),
+					'ref'     => (int) get_option( 'cx_candles_ref', 0 ),
+				),
 				'cron'        => wp_next_scheduled( CX_Telegram::CRON ) ? wp_date( 'H:i', wp_next_scheduled( CX_Telegram::CRON ), CX_Repo::tz() ) : null,
 			)
 		);
@@ -511,6 +517,21 @@ class CX_Rest {
 	public static function tg_disconnect() {
 		CX_Telegram::disconnect();
 		return self::out( CX_Telegram::status() );
+	}
+
+	/**
+	 * Compte dont les bougies servent à l'analyse de Claude (0 = compte actif).
+	 *
+	 * @param WP_REST_Request $req Requête {account}.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function candles_ref( WP_REST_Request $req ) {
+		$id = (int) $req->get_param( 'account' );
+		if ( $id && ! CX_Repo::account( $id ) ) {
+			return CX_Repo::invalid( 'Compte introuvable.' );
+		}
+		update_option( 'cx_candles_ref', $id, false );
+		return self::connections();
 	}
 
 	/** @return WP_REST_Response */

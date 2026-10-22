@@ -86,7 +86,7 @@ class CX_Chart {
 		}
 
 		// Bougies : M5 pour une séance (M15 si absent), H1 pour la semaine.
-		$tf    = (array) ( get_option( 'cx_candles', array() )['tf'] ?? array() );
+		$tf    = (array) ( CX_Live::candle_data()['tf'] ?? array() );
 		$order = 'week' === $kind ? array( 'H1' => 150, 'H4' => 110 ) : array( 'M5' => 156, 'M15' => 120, 'H1' => 90 );
 		$name  = '';
 		$bars  = array();

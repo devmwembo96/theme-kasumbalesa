@@ -5,8 +5,10 @@
  *                     du compte et état du jour, pour le tracé et le calcul des signaux ;
  * - POST /mt5/event   signal (BUY NOW / SELL NOW), invalidation touchée, zone cassée :
  *                     enregistrés, visibles dans le carnet et envoyés sur Telegram ;
- * - POST /mt5/candles bougies du courtier (D1, H4, H1) pour l'analyse de Claude ;
- * - GET  /candles     ces bougies, en lecture (tâche Claude, interface).
+ * - POST /mt5/candles bougies du courtier, rangées par compte (chaque courtier a ses propres prix
+ *   et ses propres bougies journalières et H4, selon l'heure de son serveur) ;
+ * - GET  /candles     les bougies du compte de référence de l'analyse (tâches Claude, interface),
+ *   ou celles d'un compte précis avec ?account=ID.
  *
  * Format texte (séparateur « | », prix avec un point décimal, heures en secondes Unix UTC) :
  *   V|empreinte|lundi|publié|mis à jour
@@ -559,11 +561,13 @@ class CX_Live {
 			$out[ $tf ] = array_slice( $rows, -self::CANDLE_MAX[ $tf ] );
 		}
 		update_option(
-			'cx_candles',
+			self::OPT . (int) $acc['id'],
 			array(
-				'at'      => CX_Repo::clock(),
-				'account' => $acc['name'],
-				'tf'      => $out,
+				'at'         => CX_Repo::clock(),
+				'account'    => $acc['name'],
+				'account_id' => (int) $acc['id'],
+				'firm'       => $acc['firm'],
+				'tf'         => $out,
 			),
 			false
 		);
@@ -576,12 +580,93 @@ class CX_Live {
 		);
 	}
 
+	const OPT = 'cx_candles_';
+
 	/**
-	 * Dernières bougies reçues du courtier.
+	 * Compte de référence de l'analyse : celui choisi dans Comptes › Connexions, sinon le compte actif.
+	 * Claude et les graphiques n'utilisent que ses bougies : deux courtiers ne sont jamais mélangés.
 	 *
+	 * @return int Identifiant du compte, 0 s'il n'y a aucun compte.
+	 */
+	public static function ref_account_id() {
+		$ref = (int) get_option( 'cx_candles_ref', 0 );
+		if ( $ref && CX_Repo::account( $ref ) ) {
+			return $ref;
+		}
+		foreach ( CX_Repo::accounts() as $a ) {
+			if ( $a['active'] ) {
+				return (int) $a['id'];
+			}
+		}
+		return 0;
+	}
+
+	/**
+	 * Bougies d'un compte (par défaut le compte de référence).
+	 *
+	 * @param int $id Compte, 0 pour le compte de référence.
+	 * @return array {at, account, account_id, firm, tf}
+	 */
+	public static function candle_data( $id = 0 ) {
+		self::migrate_candles();
+		$id = $id ? (int) $id : self::ref_account_id();
+		$d  = $id ? get_option( self::OPT . $id, array() ) : array();
+		return is_array( $d ) ? $d : array();
+	}
+
+	/**
+	 * Ancien stockage unique (le dernier EA à envoyer écrasait l'autre) : rangé sous son compte, puis supprimé.
+	 */
+	private static function migrate_candles() {
+		$old = get_option( 'cx_candles', null );
+		if ( null === $old ) {
+			return;
+		}
+		if ( is_array( $old ) && ! empty( $old['tf'] ) ) {
+			foreach ( CX_Repo::accounts() as $a ) {
+				if ( $a['name'] === ( $old['account'] ?? null ) && ! get_option( self::OPT . $a['id'] ) ) {
+					update_option( self::OPT . $a['id'], $old + array( 'account_id' => (int) $a['id'], 'firm' => $a['firm'] ), false );
+					break;
+				}
+			}
+		}
+		delete_option( 'cx_candles' );
+	}
+
+	/**
+	 * Comptes dont l'EA a envoyé des bougies, avec la référence de l'analyse.
+	 *
+	 * @return array[] {id, name, firm, at, ref}
+	 */
+	public static function candle_sources() {
+		self::migrate_candles();
+		$ref = self::ref_account_id();
+		$out = array();
+		foreach ( CX_Repo::accounts() as $a ) {
+			$d = get_option( self::OPT . $a['id'], array() );
+			if ( is_array( $d ) && ! empty( $d['tf'] ) ) {
+				$out[] = array(
+					'id'   => (int) $a['id'],
+					'name' => $a['name'],
+					'firm' => $a['firm'],
+					'at'   => $d['at'] ?? null,
+					'ref'  => (int) $a['id'] === $ref,
+				);
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Bougies du compte de référence, ou d'un compte précis (?account=ID).
+	 *
+	 * @param WP_REST_Request $req Requête.
 	 * @return WP_REST_Response
 	 */
-	public static function candles() {
-		return new WP_REST_Response( get_option( 'cx_candles', array() ), 200 );
+	public static function candles( WP_REST_Request $req ) {
+		$d            = self::candle_data( (int) $req->get_param( 'account' ) );
+		$d['ref']     = self::ref_account_id();
+		$d['sources'] = self::candle_sources();
+		return new WP_REST_Response( $d, 200 );
 	}
 }

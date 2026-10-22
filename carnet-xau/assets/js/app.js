@@ -88,9 +88,9 @@ const accName=id=>{const a=ACCOUNTS.find(x=>x.id===id);return a?a.name:"—"};
 $$(".cx-nav button").forEach(b=>b.addEventListener("click",()=>showTab(b.dataset.tab)));
 function showTab(t){
   $$(".cx-nav button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
-  ["jour","plan","suivi","journal","stats","comptes"].forEach(x=>{$("#tab-"+x).hidden=x!==t});
-  if(t==="stats"){renderStats();mcNote();loadReport();loadReliability();loadClaudeSignals()}
-  if(t==="comptes"){renderAccounts();loadConnections()}
+  ["jour","plan","journal","comptes"].forEach(x=>{$("#tab-"+x).hidden=x!==t});
+  if(t==="journal"){renderStats();loadReport();renderIdeas()}
+  if(t==="comptes"){renderAccounts();loadConnections();mcNote()}
   const top=ROOT.getBoundingClientRect().top+window.scrollY;
   if(window.scrollY>top)window.scrollTo(0,Math.max(0,top-100));
 }
@@ -115,7 +115,7 @@ $("#acct-switch").addEventListener("change",async e=>{
   const id=e.target.value;
   try{ACCOUNTS=await api("accounts/"+id+"/activate",{method:"POST"});setActive();fillAccountSelects();
     ["#jf-account","#sf-account","#tf-account","#pf-account"].forEach(s=>$(s).value=String(ACTIVE.id));
-    renderTrades();calc();if(!$("#tab-stats").hidden)renderStats();if(!$("#tab-comptes").hidden)renderAccounts();
+    renderTrades();calc();if(!$("#tab-journal").hidden)renderStats();if(!$("#tab-comptes").hidden)renderAccounts();
     toast("Compte actif : "+ACTIVE.name)}
   catch(err){toast("Changement impossible : "+errMsg(err));$("#acct-switch").value=ACTIVE?String(ACTIVE.id):""}
 });
@@ -272,6 +272,7 @@ function calc(){
   }
   $("#ticket-out").replaceChildren(...cells);
   DAY_RISK=risk;
+  renderToday();
   // Lot rapide : le seul calcul à saisir (le Calculateur XAU le fait dans MT5).
   const stop=num(QUICK_STOP), q=$("#quick-out");CALC={lot:NaN,stop:NaN};
   if(Number.isFinite(stop)&&stop>0&&risk>0){
@@ -295,18 +296,13 @@ function renderFeu(){
   const t=todayStr(), sig=LAST_SIGNALS.filter(s=>s.kind!=="retest"&&s.at.slice(0,10)===t)[0];
   const SL={ouvert:"en cours",attente:"ordre limite en attente",annule:"annulé",gagne:"gagnant",perdu:"perdant",be:"sorti à zéro"};
   out.push(el("p",null,el("span",{class:"k",text:"Dernier signal : "}),document.createTextNode(sig?sig.at.slice(11,16)+" · "+(sig.side==="sell"?"vente":"achat")+(sig.setup?" · setup "+sig.setup:"")+" · entrée "+px(sig.entry)+", stop "+px(sig.sl)+", objectif "+px(sig.tp)+" · "+(SL[sig.status]||sig.status)+(sig.r!=null?" ("+(sig.r>0?"+":"")+fmt(sig.r,1)+"R)":""):"aucun aujourd’hui")));
-  const ses=(((THIS_WEEK_PLAN||{}).content||{}).sessions||[]).filter(x=>x.date===t), O={asia:0,premarket:1,us:2}, K={asia:"session Asie",premarket:"pré-marché",us:"plan US"};
-  const last=ses.sort((a,b)=>O[b.kind]-O[a.kind])[0];
-  if(last){out.push(el("p",null,el("span",{class:"k",text:"À exécuter ("+K[last.kind]+") : "})));
-    out.push(el("ul",{class:"rules"},...(last.execution||[]).slice(0,3).map(x=>el("li",{text:x})),last.invalid?el("li",{class:"sell",text:"Annule : "+last.invalid}):null));}
-  else out.push(el("p",{class:"hint",text:"Pas encore d’analyse de séance aujourd’hui (Asie à 06:45, pré-marché et plan US l’après-midi)."}));
   $("#feu").replaceChildren(...out);
 }
 $("#btn-log").addEventListener("click",()=>{
   resetTradeForm();
   if(Number.isFinite(CALC.stop))$("#tf-stop").value=CALC.stop;
   if(Number.isFinite(CALC.lot)){$("#tf-lot").value=CALC.lot;if(Number.isFinite(CALC.stop))$("#tf-risk").value=(CALC.lot*lotCost(CALC.stop,ACTIVE.params)).toFixed(2)}
-  showTab("journal");$("#tf-r").focus();
+  showTab("journal");openTradeForm();$("#tf-r").focus();
 });
 
 /* ---------- plan de la semaine (rédigé par Claude, en lecture seule) ---------- */
@@ -324,28 +320,6 @@ function card(title,...kids){return el("div",{class:"panel"},el("h3",{text:title
 function kv(k,v,s){return el("div",{class:"kpi"},el("div",{class:"v",text:v}),el("div",{class:"k",text:k}),s?el("div",{class:"k",text:s}):null)}
 function table(heads,rows){
   return el("div",{class:"scroll-x"},el("table",{class:"ptable"},el("thead",null,el("tr",null,...heads.map(h=>el("th",{text:h})))),el("tbody",null,...rows.map(r=>el("tr",null,...r.map(c=>c instanceof Node?el("td",null,c):el("td",{text:c==null?"":String(c)})))))));
-}
-// Carte verticale : zones, niveaux, prix, range attendu et invalidation.
-function levelMap(c){
-  const p=c.prediction||{}, refs=c.refs||{}, zones=c.zones||[], levels=c.levels||[];
-  const vals=[...zones.flatMap(z=>[z.low,z.high]),...levels.map(l=>l.price),refs.price,p.range_high,p.range_low,p.invalidation].map(num).filter(Number.isFinite);
-  if(vals.length<2)return null;
-  let mn=Math.min(...vals),mx=Math.max(...vals);const pad=(mx-mn)*0.06||5;mn-=pad;mx+=pad;
-  const W=640,H=Math.max(360,Math.min(640,120+28*(zones.length+levels.length))),T=10,B=10,Y=v=>T+(mx-v)*(H-T-B)/(mx-mn);
-  const ns="http://www.w3.org/2000/svg",s=document.createElementNS(ns,"svg");s.setAttribute("viewBox","0 0 "+W+" "+H);s.setAttribute("class","lvmap");s.setAttribute("role","img");s.setAttribute("aria-label","Carte des zones et niveaux de la semaine");
-  const add=(tag,a,txt)=>{const n=document.createElementNS(ns,tag);for(const k in a)n.setAttribute(k,a[k]);if(txt!=null)n.textContent=txt;s.append(n);return n};
-  if(Number.isFinite(num(p.range_low))&&Number.isFinite(num(p.range_high)))add("rect",{x:W-34,y:Y(num(p.range_high)),width:10,height:Math.max(2,Y(num(p.range_low))-Y(num(p.range_high))),rx:3,fill:"var(--gold-soft)",stroke:"var(--gold)"});
-  zones.forEach(z=>{const lo=num(z.low),hi=num(z.high);if(!Number.isFinite(lo)||!Number.isFinite(hi))return;const buy=z.side!=="vente";
-    const dead=z.state==="cassee";
-    add("rect",{x:150,y:Y(hi),width:W-200,height:Math.max(3,Y(lo)-Y(hi)),rx:4,fill:dead?"var(--sunk)":buy?"var(--win-soft)":"var(--loss-soft)",stroke:dead?"var(--line)":buy?"var(--win)":"var(--loss)","stroke-opacity":z.state==="testee"?".4":"1","stroke-dasharray":dead?"4 3":"0"});
-    add("text",{x:160,y:(Y(hi)+Y(lo))/2+4,"font-size":"12",fill:buy?"var(--win)":"var(--loss)"},(z.type||"Zone")+" "+(z.tf||"")+" "+"★".repeat(z.strength||0));
-  });
-  const labels=[];
-  levels.forEach(l=>{const v=num(l.price);if(!Number.isFinite(v))return;add("line",{x1:110,x2:W-46,y1:Y(v),y2:Y(v),stroke:"var(--muted)","stroke-dasharray":"4 4"});labels.push({y:Y(v),t:px(v)+"  "+(l.type||""),c:"var(--ink)"})});
-  if(Number.isFinite(num(p.invalidation))){const v=num(p.invalidation);add("line",{x1:110,x2:W-46,y1:Y(v),y2:Y(v),stroke:"var(--loss)","stroke-width":"1.5","stroke-dasharray":"8 4"});labels.push({y:Y(v),t:px(v)+"  invalidation",c:"var(--loss)"})}
-  if(Number.isFinite(num(refs.price))){const v=num(refs.price);add("line",{x1:110,x2:W-46,y1:Y(v),y2:Y(v),stroke:"var(--gold)","stroke-width":"2.5"});labels.push({y:Y(v),t:px(v)+"  prix",c:"var(--gold-ink)",b:1})}
-  labels.sort((a,b)=>a.y-b.y);let last=-99;labels.forEach(l=>{let y=Math.max(l.y,last+14);last=y;add("text",{x:4,y:y+4,"font-size":"11.5",fill:l.c,"font-weight":l.b?"700":"400"},l.t)});
-  return s;
 }
 // Graphique en bougies du courtier (EA MT5) avec les zones et niveaux du plan.
 let CANDLES=null,CANDLES_AT=0,CHART_TF="H4";
@@ -460,23 +434,66 @@ function backtestView(bt){
     bt.tuning?el("p",null,el("span",{class:"k",text:"Réglage : "}),document.createTextNode(bt.tuning)):null);
 }
 // Réglages de l'EA ajustés par Claude (bornes fixes ; risque et plage de stop exclus).
-async function eaParamsCard(){
+async function eaParamsBody(){
   let d;try{d=await api("ea-params")}catch(e){return null}
   const rows=Object.keys(d.params).map(k=>{const p=d.params[k],v=d.values[k];return [p.label,fmt(v,k==="fvg"||k==="slbuf"?2:0)+(v!==p.default?" (défaut "+fmt(p.default,k==="fvg"||k==="slbuf"?2:0)+")":""),fmt(p.min,k==="fvg"||k==="slbuf"?2:0)+" – "+fmt(p.max,k==="fvg"||k==="slbuf"?2:0)]});
-  return card("Réglages de l’EA",table(["Réglage","Valeur","Bornes"],rows),
+  return el("div",{style:"margin-top:10px"},table(["Réglage","Valeur","Bornes"],rows),
     (d.history||[]).length?el("div",null,el("h4",{class:"sub",text:"Ajustements de Claude"}),table(["Date","Réglage","Changement","Raison"],d.history.slice(0,10).map(h=>[new Date(h.at.replace(" ","T")).toLocaleDateString("fr-FR",{day:"numeric",month:"short"}),(d.params[h.key]||{}).label||h.key,fmt(h.from,2)+" → "+fmt(h.to,2)+(h.revert?" (retour)":""),h.reason]))):el("p",{class:"hint",text:"Aucun ajustement pour l’instant : Claude en propose au plus un par jour, après le rejeu de 23:20."}));
 }
-// Séances d'une journée : Asie (06:45), pré-marché (08:33 New York) et plan US (09:15 New York).
-function sessionsCard(date,list){
-  const K={asia:"Session Asie",premarket:"Pré-marché US (Asie et Londres)",us:"Plan de la session US"},O={asia:0,premarket:1,us:2},BI={h:"haussier",b:"baissier",n:"neutre"};
-  return card("Séances du "+new Date(date+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}),el("div",{class:"ideas"},...list.slice().sort((a,b)=>O[a.kind]-O[b.kind]).map(x=>el("div",{class:"idea sess "+x.kind},
-    el("div",{class:"row"},el("b",{text:K[x.kind]||x.kind}),x.bias?el("span",{class:"tag",text:"biais "+BI[x.bias]}):null,x.at?el("span",{class:"k",text:x.at.slice(11,16)}):null),
-    x.summary?el("p",{text:x.summary}):null,
-    x.chart?el("a",{href:x.chart,target:"_blank",rel:"noopener",class:"shot"},el("img",{src:x.chart,alt:"Graphique de la séance : zones et scénarios",loading:"lazy"})):null,
-    ...[["facts","Faits"],["liquidity","Liquidité"],["execution","Exécution"]].filter(([k])=>(x[k]||[]).length).map(([k,h])=>el("div",null,el("p",null,el("span",{class:"k",text:h})),el("ul",{class:"rules"},...x[k].map(t=>el("li",{text:t}))))),
-    (x.zones||[]).length?el("ul",{class:"rules"},...x.zones.map(z=>el("li",{class:z.side==="vente"?"sell":"buy",text:(z.type||"Zone")+" "+px(z.low)+" – "+px(z.high)+(z.note?" : "+z.note:"")}))):null,
-    x.invalid?el("p",null,el("span",{class:"k",text:"Annule le plan : "}),document.createTextNode(x.invalid)):null,
-    scoreLine(x.score)))));
+// Fiche d'exécution, la même partout (Aujourd'hui, Plan, Telegram) : attendre → déclencheur → ordre → lot → annulé si.
+// Le lot est celui du compte actif, avec son risque du jour (onglet Aujourd'hui).
+function entryOf(v){
+  if(typeof v==="number")return {v,txt:px(v),range:false};
+  const ns=(String(v||"").replace(/[\s  ]/g,"").replace(/,/g,".").match(/\d+(?:\.\d+)?/g)||[]).map(Number).filter(x=>x>100);
+  if(!ns.length)return {v:NaN,txt:String(v||"—"),range:false};
+  const lo=Math.min(...ns),hi=Math.max(...ns);
+  return {v:(lo+hi)/2,txt:String(v),range:hi-lo>0.001};
+}
+function execCard(x,i){
+  const sell=x.side==="vente", en=entryOf(x.entry), sl=num(x.sl), tp=num(x.tp), ap=en.range?"≈ ":"";
+  const stop=Number.isFinite(en.v)&&Number.isFinite(sl)?Math.abs(en.v-sl):NaN, rr=stop>0&&Number.isFinite(tp)?Math.abs(tp-en.v)/stop:NaN;
+  const step=(k,v,cls)=>el("li",cls?{class:cls}:null,el("span",{class:"k",text:k}),el("span",{text:v}));
+  const head=el("div",{class:"xc-head"},el("span",{class:"xc-side",text:(i!=null?(i+1)+". ":"")+(sell?"Vente":"Achat")}),
+    x.setup?el("span",{class:"tag",text:"setup "+x.setup}):null,Number.isFinite(num(x.prob))?el("span",{class:"tag",text:x.prob+" %"}):null);
+  const ol=el("ol",{class:"xc-steps"});
+  if(x.wait)ol.append(step("Attendre",x.wait));
+  if(x.trigger)ol.append(step("Déclencheur",x.trigger));
+  ol.append(step("Ordre",(sell?"Vente ":"Achat ")+(en.range?"dans ":"")+en.txt+(Number.isFinite(sl)?" · stop "+px(sl)+(Number.isFinite(stop)&&!en.range?" ("+fmt(stop,2)+" $)":""):"")+(Number.isFinite(tp)?" · objectif "+px(tp)+(Number.isFinite(rr)?" ("+ap+fmt(rr,1)+"R)":""):""),"order"));
+  const p=ACTIVE?ACTIVE.params:null;
+  // Entrée en fourchette (scénario de la semaine) : l'ordre exact se décide au déclenchement.
+  if(p&&en.range)ol.append(step("Lot","Au déclenchement : stop derrière la mèche (1,50 – 8,00 $), "+(DAY_RISK>0?money2(DAY_RISK)+" de risque ; le Calculateur XAU donne le lot.":"mais une limite du jour est atteinte : pas de trade."),"lot"));
+  else if(p&&stop>0){
+    let t;
+    if(!(DAY_RISK>0))t="Pas de trade : une limite du jour est atteinte.";
+    else{const lot=Math.floor(DAY_RISK/lotCost(stop,p)*100+1e-9)/100;t=lot>=0.01?ap+fmt(lot,2)+" lot pour "+money2(DAY_RISK)+" de risque ("+ACTIVE.name+")":"Stop trop large pour le risque du jour : passe ton tour."}
+    if(stop<1.5||stop>8)t+=" Écart hors de 1,50 – 8,00 $ : ordre limite au prix où le stop revient à 8,00 $, sinon passer.";
+    ol.append(step("Lot",t,"lot"));
+  }
+  if(x.cancel)ol.append(step("Annulé si",x.cancel,"ko"));
+  return el("div",{class:"xcard "+(sell?"sell":"buy")},head,x.label?el("p",{class:"xc-label",text:x.label}):null,ol);
+}
+const posCard=q=>({side:q.side,setup:q.setup,label:q.label,wait:q.wait,trigger:q.trigger,entry:num(q.entry),sl:q.sl,tp:q.tp,cancel:q.cancel});
+const scnCard=s=>({side:s.side,setup:s.setup,prob:s.prob,label:s.then,wait:s.if?"Si "+s.if:"",trigger:s.trigger,entry:s.entry,sl:s.sl,tp:s.tp,cancel:s.invalidation});
+const SES_K={asia:"Session Asie",premarket:"Pré-marché US (Asie et Londres)",us:"Plan de la session US"},SES_O={asia:0,premarket:1,us:2},SES_B={h:"haussier",b:"baissier",n:"neutre"};
+// Une analyse de séance : résumé, fiches à exécuter, consignes, ce qui annule ; le « pourquoi » est replié.
+function sessionBlock(x){
+  const b=el("div",{class:"sess "+x.kind},el("div",{class:"row"},el("b",{text:SES_K[x.kind]||x.kind}),x.bias?el("span",{class:"bias "+x.bias,text:"biais "+SES_B[x.bias]}):null,x.at?el("span",{class:"k",text:"publiée à "+x.at.slice(11,16)}):null));
+  if(x.summary)b.append(el("p",{text:x.summary}));
+  const pos=(x.positions||[]).filter(q=>Number.isFinite(num(q.entry)));
+  b.append(pos.length?el("div",{class:"xcards"},...pos.map((q,i)=>execCard(posCard(q),i))):el("p",{class:"hint",text:"Aucun scénario exécutable : on ne force pas de trade."}));
+  if((x.execution||[]).length)b.append(el("div",{class:"xc-rules"},el("span",{class:"k",text:"Consignes"}),el("ul",{class:"rules"},...x.execution.map(t=>el("li",{text:t})))));
+  if(x.invalid)b.append(el("p",{class:"xc-inv"},el("b",{text:"Annule le plan : "}),document.createTextNode(x.invalid)));
+  if(x.idea)b.append(el("p",{class:"xc-idea"},el("b",{text:"Idée de Claude : "}),document.createTextNode(x.idea)));
+  if(x.chart)b.append(el("a",{href:x.chart,target:"_blank",rel:"noopener",class:"shot"},el("img",{src:x.chart,alt:"Graphique de la séance : zones et scénarios",loading:"lazy"})));
+  const why=[["facts","Faits"],["liquidity","Liquidité"]].filter(([k])=>(x[k]||[]).length);
+  if(why.length||(x.zones||[]).length){
+    const d=el("details",{class:"why"},el("summary",{text:"Pourquoi : faits, liquidité et zones"}));
+    why.forEach(([k,h])=>d.append(el("p",null,el("span",{class:"k",text:h})),el("ul",{class:"rules"},...x[k].map(t=>el("li",{text:t})))));
+    if((x.zones||[]).length)d.append(el("p",null,el("span",{class:"k",text:"Zones"})),el("ul",{class:"rules"},...x.zones.map(z=>el("li",{class:z.side==="vente"?"sell":"buy",text:(z.type||"Zone")+" "+px(z.low)+" – "+px(z.high)+(z.note?" : "+z.note:"")}))));
+    b.append(d);
+  }
+  const sc=scoreLine(x.score);if(sc)b.append(sc);
+  return b;
 }
 // Note d'une analyse par le carnet : biais annoncé contre mouvement réel jusqu'à la fin de la séance visée.
 function scoreLine(sc){
@@ -517,65 +534,36 @@ function renderPlanView(p){
   }
   const live=p.content.live||{};
   if(live.invalidated)out.push(el("div",{class:"alert stop",style:"margin-bottom:12px",text:"Invalidation touchée (EA MT5) le "+new Date(live.invalidated.at.replace(" ","T")).toLocaleString("fr-FR",{weekday:"long",hour:"2-digit",minute:"2-digit"})+(live.invalidated.price!=null?" à "+px(live.invalidated.price):"")+" : plus de signal dans le sens du biais jusqu’à la prochaine relecture de Claude."}));
-  if(p.content.chart)out.push(el("a",{href:p.content.chart,target:"_blank",rel:"noopener",class:"shot",style:"margin-bottom:12px"},el("img",{src:p.content.chart,alt:"Graphique du plan de la semaine",loading:"lazy"})));
-  out.push(el("p",{class:"hint byline",text:(p.publishedAt?"Rédigé par Claude":"Bilan rédigé par Claude")+(p.publishedAt?" le "+new Date(p.publishedAt.replace(" ","T")).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+" à "+p.publishedAt.slice(11,16):"")+"."}));
-  // 1. Prévision (absente d’une semaine qui n’a qu’un bilan)
+  // 1. La semaine en bref : biais, résumé, invalidation, range, et ce que la journée demande.
   const hasPred=[pr.bull,pr.bear,pr.range].some(x=>x>0)||pr.summary;
-  const pv=card("Prévision de la semaine",probBar(pr));
-  if(pr.summary)pv.append(el("p",{class:"lead",text:pr.summary}));
-  const g=el("div",{class:"grid g2"});
-  if(pr.main)g.append(el("div",{class:"scn main"},el("div",{class:"k",text:"Scénario principal"}),el("p",{text:pr.main})));
-  if(pr.alt)g.append(el("div",{class:"scn"},el("div",{class:"k",text:"Scénario alternatif"}),el("p",{text:pr.alt})));
-  if(g.childNodes.length)pv.append(g);
-  const kp=el("div",{class:"kpis",style:"margin:12px 0 0"});
-  if(pr.range_low!=null||pr.range_high!=null)kp.append(kv("Range attendu",px(pr.range_low)+" – "+px(pr.range_high)));
-  if(pr.invalidation!=null)kp.append(kv("Invalidation",px(pr.invalidation)));
-  if(kp.childNodes.length)pv.append(kp);
-  if(hasPred)out.push(pv);
-  // 2. Repères
-  const rk=[["Prix de référence",refs.price],["Ouverture hebdo",refs.week_open],["Haut semaine passée",refs.prev_week_high],["Bas semaine passée",refs.prev_week_low],["Haut mois passé",refs.prev_month_high],["Bas mois passé",refs.prev_month_low],["ATR journalier",refs.atr_d],["ATR hebdo",refs.atr_w]].filter(x=>x[1]!=null);
-  if(rk.length)out.push(card("Repères de prix",el("div",{class:"kpis"},...rk.map(([k,v])=>kv(k,(k.startsWith("ATR")?"":"")+px(v)+(k.startsWith("ATR")?" $":""))))));
-  // 6. Carte
-  const chart=chartCard(c,p.week);
-  if(chart)out.push(chart);
-  const map=chart?null:levelMap(c);if(map)out.push(card("Carte des niveaux",map,el("p",{class:"hint",style:"margin-top:8px",text:"Vert : zone d’achat · rouge : zone de vente · trait doré : prix · tirets rouges : invalidation · barre dorée à droite : range attendu."})));
-  // À tracer
-  const draws=[...(c.zones||[]).map(z=>({k:"z",o:z})),...(c.levels||[]).map(l=>({k:"l",o:l}))].filter(x=>x.o.draw||x.o.origin);
-  if(draws.length)out.push(card("À tracer sur le graphique",el("div",{class:"draws"},...draws.map(({k,o})=>el("div",{class:"draw "+(k==="z"?(o.side==="vente"?"sell":"buy"):"lvl")},
-    el("div",{class:"row"},el("b",{text:k==="z"?(o.type||"Zone")+" "+(o.tf||""):(o.type||"Niveau")}),el("span",{class:"spacer"}),el("span",{class:"num",text:k==="z"?px(o.low)+" – "+px(o.high):px(o.price)})),
-    el("div",{class:"k",text:k==="z"?"Rectangle "+(o.side==="vente"?"rouge (vente)":"vert (achat)"):"Ligne horizontale"}),
-    o.origin?el("div",{class:"k",text:"Origine : "+o.origin}):null,o.draw?el("p",{text:o.draw}):null))),
-    el("p",{class:"hint",style:"margin-top:8px",text:"Tracez sur l’unité de temps indiquée, à partir de la bougie d’origine, puis prolongez vers la droite."})));
-  // 3. Structure
-  if((c.structure||[]).length)out.push(card("Structure par unité de temps",table(["UT","Tendance","Dernier BoS / ChoCh","Zone","Note"],c.structure.map(s=>[s.tf,el("span",{class:"bias "+({h:"h",b:"b",r:"n"}[s.trend]||"n"),text:TREND_L[s.trend]||"—"}),s.last,PD_L[s.pd]||"",s.note]))));
-  // 4. Zones
-  if((c.zones||[]).length)out.push(card("Zones",table(["Zone","Type","UT","Réaction","Force","État","Note"],c.zones.slice().sort((a,b)=>num(b.high)-num(a.high)).map(z=>[px(z.low)+" – "+px(z.high),z.type,z.tf,el("span",{class:"bias "+(z.side==="vente"?"b":"h"),text:z.side==="vente"?"Vente":"Achat"}),"★".repeat(z.strength||0),{testee:"Testée",cassee:"Cassée"}[z.state]||"Vierge",z.note]))));
-  // 5. Niveaux de liquidité
-  if((c.levels||[]).length)out.push(card("Niveaux de liquidité",table(["Prix","Type","Note"],c.levels.slice().sort((a,b)=>num(b.price)-num(a.price)).map(l=>[px(l.price),l.type,l.note]))));
-  // 7. Fondamentaux
-  if((c.fundamentals||[]).length||c.fund_notes){const f=card("Fondamentaux");
-    if((c.fundamentals||[]).length)f.append(el("div",{class:"kpis"},...c.fundamentals.map(x=>el("div",{class:"kpi"},el("div",{class:"k",text:x.label||FUND_L[x.key]||x.key}),el("div",{class:"eff "+(x.effect||""),text:EFFECT_L[x.effect]||"—"}),x.value?el("div",{class:"k",text:x.value}):null,x.note?el("div",{class:"k",text:x.note}):null))));
-    if(c.fund_notes)f.append(el("p",{class:"pre",style:"margin-top:10px",text:c.fund_notes}));out.push(f)}
-  // 8. Annonces
-  if((c.calendar||[]).length)out.push(card("Annonces (zones de non-trade : 15 min avant, 30 min après)",table(["Jour","Heure","Annonce","Impact","Prévision","Précédent"],c.calendar.map(e=>[e.day,e.time,e.event,el("span",{class:"imp "+(e.impact||""),text:{high:"Fort",medium:"Moyen",low:"Faible"}[e.impact]||"—"}),e.forecast,e.previous]))));
-  // 9. Jour par jour
-  if((c.days||[]).length){const t=todayFr();out.push(card("Plan jour par jour",el("div",{class:"days"},...c.days.map(d=>el("div",{class:"day"+(d.day===t?" today":"")},
-    el("div",{class:"row"},el("b",{text:d.day.charAt(0).toUpperCase()+d.day.slice(1)}),el("span",{class:"bias "+(d.bias||"n"),text:BIAS_L[d.bias]||""}),d.day===t?el("span",{class:"tag",text:"aujourd’hui"}):null),
-    d.session?el("div",{class:"k",text:"Session : "+d.session}):null,d.focus?el("p",{text:d.focus}):null)))))}
-  // 10. Scénarios
-  if((c.scenarios||[]).length)out.push(card("Scénarios",el("div",{class:"trades"},...c.scenarios.map(s=>el("div",{class:"scn"},
-    el("div",{class:"row"},el("b",{text:"Si "}),el("span",{text:s.if}),el("span",{class:"spacer"}),s.prob!=null?el("span",{class:"tag",text:s.prob+" %"}):null),
-    el("div",null,el("b",{text:"Alors "}),el("span",{text:s.then})),
-    el("div",{class:"k",text:[s.setup?"Setup "+s.setup:"",s.side?(s.side==="vente"?"Vente":"Achat"):"",s.entry?"entrée "+s.entry:"",s.sl!=null?"stop "+px(s.sl):"",s.tp!=null?"objectif "+px(s.tp):""].filter(Boolean).join(" · ")}),
-    s.invalidation?el("div",{class:"k",text:"Invalidation : "+s.invalidation}):null)))));
-  // 11. Règles
+  if(hasPred){
+    const h=card("La semaine en bref",probBar(pr));
+    if(pr.summary)h.append(el("p",{class:"lead",text:pr.summary}));
+    const kp=el("div",{class:"kpis",style:"margin:12px 0 0"});
+    if(pr.invalidation!=null)kp.append(kv("Invalidation",px(pr.invalidation)));
+    if(pr.range_low!=null||pr.range_high!=null)kp.append(kv("Range attendu",px(pr.range_low)+" – "+px(pr.range_high)));
+    if(refs.atr_d!=null)kp.append(kv("ATR journalier",px(refs.atr_d)+" $"));
+    if(kp.childNodes.length)h.append(kp);
+    const day=(c.days||[]).find(d=>d.day===todayFr());
+    if(day&&day.focus)h.append(el("p",{class:"today"},el("b",{text:"Aujourd’hui"+(day.bias?" ("+(BIAS_L[day.bias]||"").toLowerCase()+")":"")+" : "}),document.createTextNode(day.focus)));
+    if(p.publishedAt)h.append(el("p",{class:"hint byline",text:"Rédigé par Claude le "+new Date(p.publishedAt.replace(" ","T")).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+" à "+p.publishedAt.slice(11,16)+"."}));
+    out.push(h);
+  }
+  // 2. Graphique de Claude (le même que sur Telegram)
+  if(p.content.chart)out.push(el("a",{href:p.content.chart,target:"_blank",rel:"noopener",class:"shot",style:"margin-bottom:14px"},el("img",{src:p.content.chart,alt:"Graphique du plan de la semaine",loading:"lazy"})));
+  // 3. Scénarios : une fiche d'exécution chacun
+  if((c.scenarios||[]).length)out.push(card("Scénarios de la semaine",el("div",{class:"xcards"},...c.scenarios.map((x,i)=>execCard(scnCard(x),i)))));
+  // 4. Séances de la semaine, la plus récente ouverte
+  const ses=p.content.sessions||[], dates=[...new Set(ses.map(x=>x.date))].sort().reverse();
+  if(dates.length)out.push(card("Séances de la semaine",...dates.map((d,n)=>{const l=ses.filter(x=>x.date===d).sort((a,b)=>SES_O[b.kind]-SES_O[a.kind]);
+    const det=el("details",{class:"sday"},el("summary",{text:new Date(d+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+" · "+l.map(x=>({asia:"Asie",premarket:"pré-marché",us:"plan US"}[x.kind]||x.kind)).join(", ")}),...l.map(sessionBlock));
+    if(!n)det.open=true;return det})));
+  // 5. Zones et niveaux, du plus haut au plus bas
+  const zl=[...(c.zones||[]).map(z=>({v:num(z.high),r:[px(z.low)+" – "+px(z.high),(z.type||"Zone")+" "+(z.tf||""),el("span",{class:"bias "+(z.side==="vente"?"b":"h"),text:z.side==="vente"?"Vente":"Achat"}),{testee:"Testée",cassee:"Cassée"}[z.state]||"Vierge",z.note]})),
+    ...(c.levels||[]).map(l=>({v:num(l.price),r:[px(l.price),l.type||"Niveau",el("span",{class:"bias n",text:"Liquidité"}),"",l.note]}))].sort((a,b)=>b.v-a.v);
+  if(zl.length)out.push(card("Zones et niveaux",table(["Prix","Zone ou niveau","Rôle","État","Note"],zl.map(x=>x.r))));
+  // 6. Règles de la semaine
   if((c.rules||[]).length)out.push(card("Règles de la semaine",el("ul",{class:"rules"},...c.rules.map(r=>el("li",{text:r})))));
-  // Propositions d'amélioration de Claude : faille repérée, solution, et comment la tester.
-  if((c.ideas||[]).length)out.push(card("Propositions de Claude",el("div",{class:"ideas"},...c.ideas.map(x=>el("div",{class:"idea"},
-    el("div",{class:"row"},el("b",{text:x.title||"Proposition"}),x.area?el("span",{class:"tag",text:x.area}):null),
-    x.flaw?el("p",null,el("span",{class:"k",text:"Faille : "}),document.createTextNode(x.flaw)):null,
-    x.solution?el("p",null,el("span",{class:"k",text:"Solution : "}),document.createTextNode(x.solution)):null,
-    x.test?el("p",null,el("span",{class:"k",text:"Test : "}),document.createTextNode(x.test)):null)))));
   // 12. Bilan et verdict
   const rv=c.review;
   if(rv&&(rv.verdict||rv.text||rv.score!=null)){
@@ -598,46 +586,78 @@ function renderPlanView(p){
     if(rv.text)bl.append(el("p",{class:"pre",text:rv.text}));
     out.push(bl);
   }
-  if(c.sources)out.push(el("p",{class:"hint",text:"Sources : "+c.sources}));
-  box.replaceChildren(...out);
-}
-/* ---------- suivi : séances, relectures et rejeu, réglages de l'EA ---------- */
-function renderSuivi(p){
-  const box=$("#suivi-view"),out=[];
-  $("#sv-label").textContent=weekLabel(PLAN_WEEK);
-  const c=(p&&p.content)||{},ses=c.sessions||[],updates=c.updates||[];
-  const dates=[...new Set(ses.map(x=>x.date))].sort().reverse();
-  dates.forEach(d=>out.push(sessionsCard(d,ses.filter(x=>x.date===d))));
-  if(updates.length)out.push(card("Relectures quotidiennes",el("div",{class:"trades"},...updates.slice().reverse().map(u=>el("div",{class:"upd "+(u.status==="mis_a_jour"?"chg":"keep")},
+  // 8. Le reste, replié : utile pour comprendre, pas pour exécuter.
+  const det=el("details",{class:"panel"},el("summary",{text:"Détails de l’analyse : structure, fondamentaux, annonces, relectures"}));
+  const sub=(t,...k)=>det.append(el("h4",{class:"sub",text:t}),...k);
+  if(pr.main||pr.alt)sub("Scénario principal et alternatif",...[pr.main?el("p",null,el("b",{text:"Principal : "}),document.createTextNode(pr.main)):null,pr.alt?el("p",null,el("b",{text:"Alternatif : "}),document.createTextNode(pr.alt)):null].filter(Boolean));
+  const rk=[["Prix de référence",refs.price],["Ouverture hebdo",refs.week_open],["Haut semaine passée",refs.prev_week_high],["Bas semaine passée",refs.prev_week_low],["Haut mois passé",refs.prev_month_high],["Bas mois passé",refs.prev_month_low],["ATR hebdo",refs.atr_w]].filter(x=>x[1]!=null);
+  if(rk.length)sub("Repères de prix",el("div",{class:"kpis"},...rk.map(([k,v])=>kv(k,px(v)))));
+  if((c.structure||[]).length)sub("Structure par unité de temps",table(["UT","Tendance","Dernier BoS / ChoCh","Zone","Note"],c.structure.map(x=>[x.tf,el("span",{class:"bias "+({h:"h",b:"b",r:"n"}[x.trend]||"n"),text:TREND_L[x.trend]||"—"}),x.last,PD_L[x.pd]||"",x.note])));
+  if((c.fundamentals||[]).length||c.fund_notes){sub("Fondamentaux");if((c.fundamentals||[]).length)det.append(el("div",{class:"kpis"},...c.fundamentals.map(x=>el("div",{class:"kpi"},el("div",{class:"k",text:x.label||FUND_L[x.key]||x.key}),el("div",{class:"eff "+(x.effect||""),text:EFFECT_L[x.effect]||"—"}),x.value?el("div",{class:"k",text:x.value}):null))));if(c.fund_notes)det.append(el("p",{class:"pre",text:c.fund_notes}))}
+  if((c.calendar||[]).length)sub("Annonces de la semaine (pas de trade 15 min avant, 30 min après)",table(["Jour","Heure","Annonce","Impact","Prévision","Précédent"],c.calendar.map(e=>[e.day,e.time,e.event,el("span",{class:"imp "+(e.impact||""),text:{high:"Fort",medium:"Moyen",low:"Faible"}[e.impact]||"—"}),e.forecast,e.previous])));
+  if((c.days||[]).length)sub("Plan jour par jour",el("ul",{class:"rules"},...c.days.map(d=>el("li",{class:d.day===todayFr()?"today":""},el("b",{text:d.day.charAt(0).toUpperCase()+d.day.slice(1)+(d.bias?" ("+(BIAS_L[d.bias]||"").toLowerCase()+")":"")+" : "}),document.createTextNode((d.session?d.session+" — ":"")+(d.focus||""))))));
+  const chart=chartCard(c,p.week);if(chart){chart.classList.remove("panel");sub("Graphique interactif",chart)}
+  if(updates.length)sub("Relectures du soir et rejeu de l’EA",el("div",{class:"trades"},...updates.slice().reverse().map(u=>el("div",{class:"upd "+(u.status==="mis_a_jour"?"chg":"keep")},
     el("div",{class:"row"},el("b",{text:new Date(u.date+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"short"})}),el("span",{class:"spacer"}),el("span",{class:"tag "+(u.status==="mis_a_jour"?"bad":""),text:u.status==="mis_a_jour"?"Mis à jour":"Maintenu"})),
     u.reason?el("p",{class:"k",text:u.reason}):null,u.summary?el("p",{text:u.summary}):null,
     (u.changes||[]).length?el("ul",{class:"rules"},...u.changes.map(x=>el("li",{text:x}))):null,
     u.trades?el("p",null,el("b",{text:"Vos trades : "}),document.createTextNode(u.trades)):null,
     u.tomorrow?el("p",null,el("b",{text:"Lendemain : "}),document.createTextNode(u.tomorrow)):null,
-    u.backtest?backtestView(u.backtest):null)))));
-  if(!out.length)out.push(el("div",{class:"empty",text:p?"Pas encore d’analyse de séance ni de relecture cette semaine : Claude publie la session Asie à 06:45, le pré-marché et le plan US l’après-midi, la relecture et le rejeu à 23:20.":"Le plan de cette semaine n’a pas encore été publié par Claude."}));
+    u.backtest?backtestView(u.backtest):null))));
+  if(c.sources)det.append(el("p",{class:"hint",style:"margin-top:10px",text:"Sources : "+c.sources}));
+  out.push(det);
   box.replaceChildren(...out);
   const gen=box._g=(box._g||0)+1;
-  Promise.all([scoreCard(),eaParamsCard()]).then(([a,b])=>{if(box._g!==gen)return;if(a)box.prepend(a);if(b)box.append(b)});
+  scoreCard().then(sc=>{if(box._g!==gen||!sc)return;sc.classList.remove("panel");sub("Fiabilité des analyses de séance",sc)});
 }
-/* ---------- plan miniature (onglet Jour) ---------- */
-function renderPlanMini(){
-  const p=THIS_WEEK_PLAN, box=$("#planmini");box.replaceChildren();
-  box.append(el("h3",{text:"Plan de la semaine"}));
-  if(!p){box.append(el("p",{class:"hint",text:"Le plan de cette semaine n’a pas encore été publié par Claude."}));return}
-  const c=p.content, t=todayFr();
-  if(c&&c.prediction){box.append(probBar(c.prediction));if(c.prediction.summary)box.append(el("p",{style:"margin:8px 0 0",text:c.prediction.summary}))}
-  else box.append(el("div",null,"Biais : ",el("span",{class:"bias "+(p.bias||"n"),text:BIAS_L[p.bias]||"Non défini"})));
-  const day=c&&(c.days||[]).find(d=>d.day===t);
-  if(day&&day.focus)box.append(el("p",{style:"margin:8px 0 0"},el("b",{text:"Aujourd’hui : "}),document.createTextNode(day.focus)));
-  const zs=c?(c.zones||[]).slice().sort((a,b)=>num(b.high)-num(a.high)):[];
-  const lv=(c?c.levels:p.levels||[]).filter(x=>x.price);
-  if(zs.length||lv.length){const w=el("div",{style:"margin-top:6px"});
-    zs.forEach(z=>w.append(el("span",{class:"lv "+(z.side==="vente"?"sell":"buy"),text:px(z.low)+"–"+px(z.high)+" · "+(z.type||"zone")})));
-    lv.slice().sort((a,b)=>num(b.price)-num(a.price)).forEach(x=>w.append(el("span",{class:"lv",text:px(x.price)+" · "+(x.type||"niveau")})));box.append(w)}
-  const news=(p.cal||[]).filter(x=>(x.day||"").toLowerCase()===t);
-  if(news.length)box.append(el("div",{class:"alert warn",style:"margin-top:10px",text:"Aujourd’hui : "+news.map(n=>(n.time||"")+" "+(n.event||"")).join(" · ")+". Pas de trade 15 min avant, 30 min après."}));
-  const b=el("button",{type:"button",class:"btn ghost sm",style:"margin-top:10px",text:"Voir le plan complet"});b.addEventListener("click",()=>{PLAN_WEEK=planWeek();loadPlan();showTab("plan")});box.append(b);
+/* ---------- aujourd'hui : ce qu'il faut exécuter maintenant ---------- */
+function renderToday(){
+  const box=$("#execnow");if(!box)return;
+  const p=THIS_WEEK_PLAN,c=p&&p.content,t=todayStr(),out=[];
+  if(!c){box.replaceChildren(el("h3",{text:"À exécuter"}),el("p",{class:"hint",text:"Le plan de cette semaine n’a pas encore été publié par Claude."}));return}
+  const live=c.live||{};
+  if(live.invalidated)out.push(el("div",{class:"alert stop",style:"margin-bottom:10px",text:"Invalidation du plan de la semaine touchée"+(live.invalidated.price!=null?" à "+px(live.invalidated.price):"")+" : plus de signal dans le sens du biais jusqu’à la prochaine relecture de Claude."}));
+  const ses=(c.sessions||[]).filter(x=>x.date===t).sort((a,b)=>SES_O[b.kind]-SES_O[a.kind]);
+  if(ses.length){
+    out.push(el("h3",{text:"À exécuter maintenant"}),sessionBlock(ses[0]));
+    if(ses.length>1)out.push(el("p",{class:"hint",style:"margin-top:8px",text:"Analyses précédentes du jour : onglet Plan, Séances de la semaine."}));
+  }else{
+    const day=(c.days||[]).find(d=>d.day===todayFr()), sc=(c.scenarios||[]).slice(0,3);
+    out.push(el("h3",{text:"À exécuter : plan de la semaine"}));
+    if(day&&day.focus)out.push(el("p",{class:"lead"},el("b",{text:"Aujourd’hui : "}),document.createTextNode(day.focus)));
+    if(sc.length)out.push(el("div",{class:"xcards"},...sc.map((x,i)=>execCard(scnCard(x),i))));
+    out.push(el("p",{class:"hint",style:"margin-top:8px",text:"Claude publie l’analyse de la séance Asie à 06:45 (Lubumbashi), puis le pré-marché à 08:33 et le plan US à 09:15 (New York) : elles remplacent ces scénarios."}));
+  }
+  box.replaceChildren(...out);
+}
+/* ---------- journal : propositions de Claude et erreurs repérées ---------- */
+function renderIdeas(){
+  const box=$("#ideas");if(!box)return;
+  const c=(THIS_WEEK_PLAN&&THIS_WEEK_PLAN.content)||{}, ideas=c.ideas||[];
+  const tips=(c.sessions||[]).filter(x=>x.idea).sort((a,b)=>(b.date+SES_O[b.kind]).localeCompare(a.date+SES_O[a.kind])).slice(0,3);
+  if(!ideas.length&&!tips.length){box.replaceChildren(el("p",{class:"hint",text:"Claude publie ses propositions avec le plan du dimanche et les complète à chaque relecture du soir."}));return}
+  const out=[];
+  if(ideas.length)out.push(el("div",{class:"ideas"},...ideas.map(x=>el("div",{class:"idea"},
+    el("div",{class:"row"},el("b",{text:x.title||"Proposition"}),x.area?el("span",{class:"tag",text:x.area}):null),
+    x.flaw?el("p",null,el("span",{class:"k",text:"Faille : "}),document.createTextNode(x.flaw)):null,
+    x.solution?el("p",null,el("span",{class:"k",text:"Solution : "}),document.createTextNode(x.solution)):null,
+    x.test?el("p",null,el("span",{class:"k",text:"Test : "}),document.createTextNode(x.test)):null))));
+  if(tips.length)out.push(el("p",{style:"margin-top:12px"},el("span",{class:"k",text:"Idées nées des séances"})),el("ul",{class:"rules"},...tips.map(x=>el("li",null,el("b",{text:new Date(x.date+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long"})+" · "+({asia:"Asie",premarket:"pré-marché",us:"plan US"}[x.kind]||x.kind)+" : "}),document.createTextNode(x.idea)))));
+  box.replaceChildren(...out);
+}
+// Ce qui coûte dans le journal, en R : ce qu'il faut corriger en premier.
+function renderErrors(T){
+  const box=$("#errors");if(!box)return;
+  const p=ACTIVE?ACTIVE.params:{}, byDay={};T.forEach(t=>{(byDay[t.date]=byDay[t.date]||[]).push(t)});
+  const over=Object.values(byDay).filter(l=>l.length>(p.maxtrades||99)||l.filter(t=>num(t.r)<=-0.5).length>(p.maxloss||99));
+  const rows=[["Trades hors règles",T.filter(t=>!t.rules)],["Trades hors setup",T.filter(t=>t.setup==="hors")],
+    ["Émotion « pressé », « revanche » ou « fatigue »",T.filter(t=>t.emotion&&t.emotion!=="calme")],
+    ["Jours au-delà des limites ("+(p.maxtrades||"?")+" trades ou "+(p.maxloss||"?")+" pertes)",over.flat()],
+    ["Trades MT5 à compléter (setup, émotion, règles)",T.filter(t=>t.toComplete)]].filter(([,l])=>l.length);
+  if(!T.length){box.replaceChildren(el("p",{class:"hint",text:"Pas encore de trade dans le journal."}));return}
+  if(!rows.length){box.replaceChildren(el("p",{class:"hint",text:"Aucune erreur repérée sur les "+T.length+" trades : continuez ainsi."}));return}
+  box.replaceChildren(el("div",{class:"errs"},...rows.map(([l,list])=>{const r=list.reduce((a,t)=>a+(num(t.r)||0),0);
+    return el("div",{class:"err"},el("span",{text:l}),el("b",{class:r<0?"neg":"",text:list.length+" trade"+(list.length>1?"s":"")+" · "+(r>=0?"+":"−")+fmt(Math.abs(r),1)+"R"}))})));
 }
 /* ---------- calendrier économique (ForexFactory, USD fort et moyen impact) ---------- */
 let CAL=null,CAL_SKEW=0;
@@ -686,16 +706,14 @@ setInterval(()=>{if(!document.hidden)loadCalendar()},1800000);
 $("#wk-prev").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()-7);loadPlan()});
 $("#wk-next").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()+7);loadPlan()});
 $("#wk-today").addEventListener("click",()=>{PLAN_WEEK=planWeek();loadPlan()});
-$("#sv-prev").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()-7);loadPlan()});
-$("#sv-next").addEventListener("click",()=>{PLAN_WEEK.setDate(PLAN_WEEK.getDate()+7);loadPlan()});
-$("#sv-today").addEventListener("click",()=>{PLAN_WEEK=planWeek();loadPlan()});
 async function loadPlan(){
   $("#wk-label").textContent=weekLabel(PLAN_WEEK);
   const wid=weekId(PLAN_WEEK);
   let p=null;try{p=await api("plans/"+wid)}catch(e){toast("Lecture du plan impossible : "+errMsg(e))}
   if(wid!==weekId(PLAN_WEEK))return; // semaine changée entre-temps
   await loadCandles();if(wid!==weekId(PLAN_WEEK))return;
-  CUR_PLAN=p;VIEW_INITIAL=false;renderPlanView(p);renderSuivi(p);
+  CUR_PLAN=p;VIEW_INITIAL=false;renderPlanView(p);
+  if(wid===weekId(planWeek())){THIS_WEEK_PLAN=p;renderToday();renderIdeas()}
 }
 
 /* ---------- journal ---------- */
@@ -716,8 +734,10 @@ $("#tf-file").addEventListener("change",async e=>{
 });
 $("#tf-file-clear").addEventListener("click",()=>setCapture(null));
 let pnlTouched=false;
+function openTradeForm(){$("#trade-form").hidden=false;$("#trade-form").scrollIntoView({behavior:"smooth",block:"start"})}
+$("#tf-open").addEventListener("click",()=>{resetTradeForm();openTradeForm()});
 function resetTradeForm(){
-  EDIT_ID=null;pnlTouched=false;$("#tf-title").textContent="Nouveau trade";$("#tf-cancel").hidden=true;$("#tf-save").textContent="Enregistrer le trade";
+  EDIT_ID=null;pnlTouched=false;$("#tf-title").textContent="Nouveau trade";$("#tf-cancel").hidden=false;$("#tf-cancel").textContent="Fermer";$("#tf-save").textContent="Enregistrer le trade";
   if(ACTIVE)$("#tf-account").value=String(ACTIVE.id);
   $("#tf-date").value=todayStr();$("#tf-time").value=nowTime();$("#tf-dir").value="achat";$("#tf-setup").value="1";$("#tf-level").value="EQL";$("#tf-emotion").value="";
   ["stop","lot","risk","r","pnl","link","notes"].forEach(k=>$("#tf-"+k).value="");
@@ -728,7 +748,7 @@ function resetTradeForm(){
 $("#tf-pnl").addEventListener("input",()=>{pnlTouched=true});
 function autoPnl(){const r=num($("#tf-r").value),k=num($("#tf-risk").value);if(!pnlTouched&&Number.isFinite(r)&&Number.isFinite(k))$("#tf-pnl").value=(r*k).toFixed(2)}
 $("#tf-r").addEventListener("input",autoPnl);$("#tf-risk").addEventListener("input",autoPnl);
-$("#tf-cancel").addEventListener("click",resetTradeForm);
+$("#tf-cancel").addEventListener("click",()=>{resetTradeForm();$("#trade-form").hidden=true});
 $("#tf-save").addEventListener("click",async()=>{
   const t={accountId:parseInt($("#tf-account").value,10),date:$("#tf-date").value,time:$("#tf-time").value,dir:$("#tf-dir").value,setup:$("#tf-setup").value,level:$("#tf-level").value,
     stop:$("#tf-stop").value,lot:$("#tf-lot").value,risk:$("#tf-risk").value,r:$("#tf-r").value,pnl:$("#tf-pnl").value,
@@ -741,7 +761,7 @@ $("#tf-save").addEventListener("click",async()=>{
   try{
     const saved=await api(editing?"trades/"+editing:"trades",{method:editing?"PUT":"POST",body:t});
     const i=TRADES.findIndex(x=>x.id===saved.id);if(i>=0)TRADES[i]=saved;else TRADES.push(saved);
-    toast(editing?"Trade modifié":"Trade enregistré");resetTradeForm();refreshAll();
+    toast(editing?"Trade modifié":"Trade enregistré");resetTradeForm();$("#trade-form").hidden=true;refreshAll();
   }catch(e){toast("Enregistrement impossible : "+errMsg(e))}
   btn.disabled=false;
 });
@@ -781,7 +801,7 @@ function renderTrades(){
   }));
 }
 function editTrade(t){
-  EDIT_ID=t.id;$("#tf-title").textContent="Modifier le trade";$("#tf-cancel").hidden=false;$("#tf-save").textContent="Enregistrer les modifications";
+  EDIT_ID=t.id;$("#tf-title").textContent="Modifier le trade";$("#tf-cancel").hidden=false;$("#tf-cancel").textContent="Annuler la modification";$("#tf-save").textContent="Enregistrer les modifications";$("#trade-form").hidden=false;
   $("#tf-account").value=String(t.accountId);
   $("#tf-date").value=t.date||"";$("#tf-time").value=t.time||"";$("#tf-dir").value=t.dir||"achat";$("#tf-setup").value=t.setup||"1";$("#tf-level").value=t.level||"Autre";$("#tf-emotion").value=t.emotion||"";
   ["stop","lot","risk","r","pnl"].forEach(k=>$("#tf-"+k).value=t[k]!=null&&Number.isFinite(num(t[k]))?t[k]:"");
@@ -806,12 +826,14 @@ function bars(id,groups){
 }
 function hourBucket(t){const h=parseInt((t.time||"").slice(0,2),10);if(!Number.isFinite(h))return "?";if(h<9)return "asie";if(h<14)return "londres";if(h<18)return "ny";return "soir"}
 $("#sf-account").addEventListener("change",()=>{renderStats();mcNote();loadReport()});
+$("#detail-stats").addEventListener("toggle",e=>{if(e.target.open){loadReliability();loadClaudeSignals()}});
 function renderStats(){
   const acc=$("#sf-account").value, T=TRADES.filter(t=>!acc||String(t.accountId)===acc);
   const a=agg(T);
   const k=[["Trades",String(a.n)],["Réussite",a.n?fmt(a.wr*100,0)+" %":"—"],["R moyen",a.n?(a.avg>=0?"+":"−")+fmt(Math.abs(a.avg),2):"—"],["Résultat",money(a.pnl)]];
   if(a.n)k.push(["Facteur de profit",a.pf===Infinity?"∞":fmt(a.pf,2)],["Total en R",(a.sum>=0?"+":"−")+fmt(Math.abs(a.sum),1)]);
   $("#kpis").replaceChildren(...k.map(([l,v])=>el("div",{class:"kpi"},el("div",{class:"v",text:v}),el("div",{class:"k",text:l}))));
+  renderErrors(T);
   const list=T.slice().sort((x,y)=>tradeKey(x).localeCompare(tradeKey(y)));
   const cv=$("#curve");
   if(list.length<2){cv.replaceChildren(el("div",{class:"empty",text:"La courbe apparaît à partir de deux trades."}))}
@@ -1178,10 +1200,22 @@ async function loadConnections(){
     $("#tg-channel-state").textContent=tg.channel?"Chaîne « "+tg.channel+" » : tous les messages du carnet y sont aussi publiés.":tg.linked?"Chaîne Telegram : ajoutez @"+tg.bot+" comme administrateur de votre chaîne (droit « Publier des messages ») ; elle sera reliée automatiquement.":"";
     $("#tg-channel-off").hidden=!tg.channel;
   }
+  // Bougies de l'analyse : un seul courtier, celui choisi ici (par défaut le compte actif).
+  const cs=CONN.candles||{sources:[],ref:0}, src=new Map((cs.sources||[]).map(x=>[x.id,x])), sel=$("#candles-ref");
+  const when=at=>at?new Date(at.replace(" ","T")).toLocaleString("fr-FR",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"";
+  sel.replaceChildren(el("option",{value:"0",text:"Le compte actif"+(ACTIVE?" ("+ACTIVE.name+")":"")}),...ACCOUNTS.map(a=>{const x=src.get(a.id);return el("option",{value:String(a.id),text:a.name+(a.firm?" · "+a.firm:"")+(x?" · reçues le "+when(x.at):" · aucune bougie reçue")})}));
+  sel.value=String(cs.ref||0);
+  const cur=(cs.sources||[]).find(x=>x.ref);
+  $("#candles-hint").textContent=cur?"Claude analyse les bougies de « "+cur.name+" »"+(cur.firm?" ("+cur.firm+")":"")+", reçues le "+when(cur.at)+". Chaque courtier a ses propres prix et ses propres bougies journalières (heure de son serveur) : un seul sert à l’analyse, jamais un mélange.":"Aucune bougie reçue de ce compte : l’EA Carnet doit tourner sur son MT5 (envoi toutes les 15 minutes).";
+  eaParamsBody().then(b=>{$("#ea-params").replaceChildren(b||el("p",{class:"hint",text:"Réglages indisponibles."}))});
   const rf=CONN.refusals||[];
   $("#refusals-box summary").textContent="Accès refusés aux points d’entrée ("+rf.length+")";
   $("#refusals").replaceChildren(...(rf.length?rf.map(r=>el("div",{class:"t2",style:"font-size:13px;color:var(--muted);margin-top:4px",text:r.time+" · "+r.entry+" · "+r.reason+" · "+r.ip})):[el("p",{class:"hint",style:"margin-top:8px",text:"Aucun refus."})]));
 }
+$("#candles-ref").addEventListener("change",async e=>{
+  try{CONN=await api("connections/candles",{method:"PUT",body:{account:parseInt(e.target.value,10)||0}});CANDLES=null;loadConnections();toast("Bougies de l’analyse : "+e.target.selectedOptions[0].textContent.split(" · ")[0])}
+  catch(err){toast("Impossible : "+errMsg(err));loadConnections()}
+});
 $("#tv-rotate").addEventListener("click",async()=>{
   if(CONN&&CONN.tradingview.active&&!confirm("Générer une nouvelle adresse ? L’ancienne cessera de fonctionner."))return;
   try{const r=await api("connections/tradingview",{method:"POST"});
@@ -1222,7 +1256,7 @@ setInterval(async()=>{
 
 function refreshAll(){
   renderTrades();calc();
-  if(!$("#tab-stats").hidden)renderStats();
+  if(!$("#tab-journal").hidden)renderStats();
   if(!$("#tab-comptes").hidden)renderAccounts();
 }
 
@@ -1249,7 +1283,9 @@ async function start(){
   }catch(e){toast("Chargement impossible : "+errMsg(e));setStatus("err","Hors ligne")}
   setActive();fillAccountSelects();resetTradeForm();resetPayoutForm();
   try{THIS_WEEK_PLAN=await api("plans/"+weekId(planWeek()))}catch(e){THIS_WEEK_PLAN=null}
-  renderPlanMini();loadPlan();renderTrades();calc();loadFeuSignals();setInterval(loadFeuSignals,120000);
+  renderToday();loadPlan();renderTrades();calc();loadFeuSignals();setInterval(loadFeuSignals,120000);
+  // Les analyses de séance arrivent dans la journée (06:45, 08:33 et 09:15 New York) : relecture toutes les 5 minutes.
+  setInterval(async()=>{if(document.hidden)return;try{THIS_WEEK_PLAN=await api("plans/"+weekId(planWeek()));renderToday();if(weekId(PLAN_WEEK)===weekId(planWeek())&&!$("#tab-plan").hidden)renderPlanView(THIS_WEEK_PLAN)}catch(e){}},300000);
   loadCalendar();
   lockReadOnly();
   if("serviceWorker" in navigator&&CFG.sw&&window.isSecureContext){navigator.serviceWorker.register(CFG.sw,{scope:CFG.scope||"/"}).catch(()=>{})}

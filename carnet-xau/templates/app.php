@@ -14,11 +14,9 @@ defined( 'ABSPATH' ) || exit;
 		<label class="acct"><span class="sr">Compte actif</span><select id="acct-switch" aria-label="Compte actif"></select></label>
 		<div class="status" id="status"><i></i><span>Connexion…</span></div>
 		<nav class="cx-nav" role="tablist">
-			<button type="button" role="tab" data-tab="jour" aria-selected="true">Jour</button>
+			<button type="button" role="tab" data-tab="jour" aria-selected="true">Aujourd’hui</button>
 			<button type="button" role="tab" data-tab="plan" aria-selected="false">Plan</button>
-			<button type="button" role="tab" data-tab="suivi" aria-selected="false">Suivi</button>
 			<button type="button" role="tab" data-tab="journal" aria-selected="false">Journal</button>
-			<button type="button" role="tab" data-tab="stats" aria-selected="false">Stats</button>
 			<button type="button" role="tab" data-tab="comptes" aria-selected="false">Comptes</button>
 		</nav>
 	</div>
@@ -27,6 +25,12 @@ defined( 'ABSPATH' ) || exit;
 <div class="cx-main">
 <!-- ============ JOUR ============ -->
 <section id="tab-jour">
+	<div class="panel exec" id="feu-panel">
+		<div id="feu"></div>
+		<div id="execnow"></div>
+		<div class="row" style="margin-top:12px"><button type="button" class="btn gold" id="btn-log">Noter un trade dans le journal</button></div>
+	</div>
+
 	<div class="ticket">
 		<div class="ticket-head">
 			<span class="phase" id="t-phase">Phase 1</span>
@@ -39,15 +43,6 @@ defined( 'ABSPATH' ) || exit;
 			<div class="quick-out" id="quick-out"></div>
 		</div>
 		<div class="alerts" id="alerts"></div>
-	</div>
-
-	<div class="grid g2">
-		<div class="panel" id="feu-panel">
-			<h3>Feu du jour</h3>
-			<div id="feu"></div>
-			<div class="row" style="margin-top:12px"><button type="button" class="btn gold" id="btn-log">Noter un trade dans le journal</button></div>
-		</div>
-		<div class="panel planmini" id="planmini"></div>
 	</div>
 
 	<div class="panel news" id="news-panel">
@@ -110,21 +105,47 @@ defined( 'ABSPATH' ) || exit;
 	<div id="plan-view"></div>
 </section>
 
-<!-- ============ SUIVI ============ -->
-<section id="tab-suivi" hidden>
-	<div class="weeknav">
-		<button type="button" class="btn ghost sm" id="sv-prev" aria-label="Semaine précédente">‹</button>
-		<strong id="sv-label"></strong>
-		<button type="button" class="btn ghost sm" id="sv-next" aria-label="Semaine suivante">›</button>
-		<span class="spacer"></span>
-		<button type="button" class="btn ghost sm" id="sv-today">Cette semaine</button>
-	</div>
-	<div id="suivi-view"></div>
-</section>
-
 <!-- ============ JOURNAL ============ -->
 <section id="tab-journal" hidden>
-	<div class="panel" id="trade-form">
+	<div class="row" style="margin-bottom:10px">
+		<h2 style="margin:0">Progrès</h2><span class="spacer"></span>
+		<select id="sf-account" class="auto" aria-label="Compte analysé"></select>
+	</div>
+	<div class="kpis" id="kpis"></div>
+	<div class="panel" id="errors-panel"><h3>Erreurs repérées dans le journal</h3><div id="errors"></div></div>
+	<div class="panel" id="ideas-panel"><h3>Améliorations proposées par Claude</h3><div id="ideas"></div></div>
+	<div class="panel" id="report-panel">
+		<h3>Bilan de la semaine</h3>
+		<div class="weeknav">
+			<button type="button" class="btn ghost sm" id="rp-prev" aria-label="Semaine précédente">‹</button>
+			<strong id="rp-label"></strong>
+			<button type="button" class="btn ghost sm" id="rp-next" aria-label="Semaine suivante">›</button>
+		</div>
+		<div id="report"></div>
+	</div>
+	<div class="grid g2">
+		<div class="panel"><h3>Courbe des résultats (R cumulés)</h3><div id="curve"></div></div>
+		<div class="panel"><h3>Par setup</h3><p class="hint">Barre = taux de réussite. Le trait marque 33 %, le seuil de rentabilité à 2R.</p><div class="bars" id="by-setup"></div></div>
+	</div>
+	<details class="panel" id="detail-stats">
+		<summary>Analyse détaillée</summary>
+		<div class="grid g2" style="margin-top:12px">
+			<div><h4 class="sub">Discipline</h4><div class="bars" id="by-rules"></div></div>
+			<div><h4 class="sub">Filtres du plan</h4><div class="bars" id="by-filter"></div></div>
+			<div><h4 class="sub">Par niveau ou déclencheur</h4><div class="bars" id="by-level"></div></div>
+			<div><h4 class="sub">Par moment de la journée (Lubumbashi)</h4><div class="bars" id="by-hour"></div></div>
+			<div><h4 class="sub">Par jour de la semaine</h4><div class="bars" id="by-day"></div></div>
+			<div><h4 class="sub">Par émotion</h4><div class="bars" id="by-emotion"></div></div>
+		</div>
+		<h4 class="sub">Fiabilité des plans de Claude</h4><div id="reliability"></div>
+		<h4 class="sub">Signaux de l’EA suivis comme des trades virtuels</h4><p class="hint">50 % à 2R puis stop au prix d’entrée. Résultats séparés de vos trades.</p><div id="csignals"></div>
+	</details>
+
+	<div class="row" style="margin:18px 0 10px">
+		<h2 style="margin:0">Trades</h2><span class="spacer"></span>
+		<button type="button" class="btn gold sm" id="tf-open">Noter un trade</button>
+	</div>
+	<div class="panel" id="trade-form" hidden>
 		<h3 id="tf-title">Nouveau trade</h3>
 		<div class="grid g4">
 			<label class="f">Compte<select id="tf-account"></select></label>
@@ -163,7 +184,7 @@ defined( 'ABSPATH' ) || exit;
 		</div>
 	</div>
 	<div class="row" style="margin-bottom:10px">
-		<h2 style="margin:0">Trades</h2><span class="spacer"></span>
+		<span class="spacer"></span>
 		<select id="jf-account" class="auto" aria-label="Filtrer par compte"></select>
 		<select id="jf-setup" class="auto" aria-label="Filtrer par setup"><option value="">Tous les setups</option><option value="1">Setup 1</option><option value="2">Setup 2</option><option value="3">Setup 3 (iFVG)</option><option value="hors">Hors setup</option><option value="todo">MT5 à compléter</option></select>
 		<button type="button" class="btn ghost sm" id="btn-csv">Exporter en CSV</button>
@@ -178,46 +199,6 @@ defined( 'ABSPATH' ) || exit;
 	</details>
 </section>
 
-<!-- ============ STATS ============ -->
-<section id="tab-stats" hidden>
-	<div class="row" style="margin-bottom:12px">
-		<h2 style="margin:0">Statistiques</h2><span class="spacer"></span>
-		<select id="sf-account" class="auto" aria-label="Compte analysé"></select>
-	</div>
-	<div class="kpis" id="kpis"></div>
-	<div class="panel" id="report-panel">
-		<h3>Rapport de la semaine</h3>
-		<div class="weeknav">
-			<button type="button" class="btn ghost sm" id="rp-prev" aria-label="Semaine précédente">‹</button>
-			<strong id="rp-label"></strong>
-			<button type="button" class="btn ghost sm" id="rp-next" aria-label="Semaine suivante">›</button>
-		</div>
-		<div id="report"></div>
-	</div>
-	<div class="panel"><h3>Fiabilité des prévisions de Claude</h3><div id="reliability"></div></div>
-	<div class="panel"><h3>Signaux Claude (EA MT5)</h3><p class="hint">Chaque signal est suivi comme un trade virtuel, pris ou non : 50 % à 2R puis stop au prix d’entrée. Résultats séparés de vos trades.</p><div id="csignals"></div></div>
-	<div class="panel" id="mc-panel">
-		<h3>Simulateur de challenge (Monte-Carlo)</h3>
-		<p class="hint">Rejoue des milliers de challenges avec vos résultats et les règles du compte actif : objectif, perte journalière, perte maximale, jours minimum, trades et pertes maximum par jour, risque réduit.</p>
-		<div class="grid g4">
-			<label class="f">Résultats utilisés<select id="mc-src"><option value="trades">Mes trades</option><option value="hyp">Hypothèse</option></select></label>
-			<label class="f">Réussite (%)<input id="mc-wr" type="number" value="40" min="1" max="99" step="1" inputmode="numeric"></label>
-			<label class="f">Gain moyen d’un trade gagnant (R)<input id="mc-avg" type="number" value="2" min="0.1" step="0.1" inputmode="decimal"></label>
-			<label class="f">Trades par jour<input id="mc-tpd" type="number" value="2" min="1" step="1" inputmode="numeric"></label>
-		</div>
-		<p class="hint" id="mc-note" style="margin-top:10px"></p>
-		<div class="row"><button type="button" class="btn gold" id="mc-run">Lancer la simulation</button></div>
-		<div id="mc-out"></div>
-	</div>
-	<div class="panel"><h3>Courbe des résultats (en R cumulés)</h3><div id="curve"></div></div>
-	<div class="panel"><h3>Par setup</h3><p class="hint">Barre = taux de réussite. Le trait marque 33 %, le seuil de rentabilité à 2R.</p><div class="bars" id="by-setup"></div></div>
-	<div class="panel"><h3>Par niveau ou déclencheur</h3><div class="bars" id="by-level"></div></div>
-	<div class="panel"><h3>Par moment de la journée (heure de Lubumbashi)</h3><div class="bars" id="by-hour"></div></div>
-	<div class="panel"><h3>Par jour de la semaine</h3><div class="bars" id="by-day"></div></div>
-	<div class="panel"><h3>Filtres du plan</h3><div class="bars" id="by-filter"></div></div>
-	<div class="panel"><h3>Discipline</h3><div class="bars" id="by-rules"></div></div>
-	<div class="panel"><h3>Par émotion</h3><div class="bars" id="by-emotion"></div></div>
-</section>
 
 <!-- ============ COMPTES ============ -->
 <section id="tab-comptes" hidden>
@@ -274,6 +255,20 @@ defined( 'ABSPATH' ) || exit;
 		</div>
 	</div>
 
+	<details class="panel" id="mc-panel">
+		<summary>Simulateur de challenge (Monte-Carlo)</summary>
+		<p class="hint">Rejoue des milliers de challenges avec vos résultats et les règles du compte actif : objectif, perte journalière, perte maximale, jours minimum, trades et pertes maximum par jour, risque réduit.</p>
+		<div class="grid g4">
+			<label class="f">Résultats utilisés<select id="mc-src"><option value="trades">Mes trades</option><option value="hyp">Hypothèse</option></select></label>
+			<label class="f">Réussite (%)<input id="mc-wr" type="number" value="40" min="1" max="99" step="1" inputmode="numeric"></label>
+			<label class="f">Gain moyen d’un trade gagnant (R)<input id="mc-avg" type="number" value="2" min="0.1" step="0.1" inputmode="decimal"></label>
+			<label class="f">Trades par jour<input id="mc-tpd" type="number" value="2" min="1" step="1" inputmode="numeric"></label>
+		</div>
+		<p class="hint" id="mc-note" style="margin-top:10px"></p>
+		<div class="row"><button type="button" class="btn gold" id="mc-run">Lancer la simulation</button></div>
+		<div id="mc-out"></div>
+	</details>
+
 	<div class="panel" id="payouts-panel">
 		<h3>Retraits</h3>
 		<div class="grid g4">
@@ -305,6 +300,9 @@ defined( 'ABSPATH' ) || exit;
 			</ol>
 			<p class="hint">Prise de position : <a id="calc-link" download="CalculateurXAU.mq5">CalculateurXAU.mq5</a>. Lot selon le palier du capital (fonds propres) ou risque fixe (prop firm), stop de 1,50 à 8,00 $, limites du jour, de la semaine et plancher. À glisser sur un second graphique XAUUSD.</p>
 			<div class="secret" id="mt5-key-box" hidden></div>
+			<label class="f" style="margin-top:10px">Bougies utilisées par Claude pour l’analyse<select id="candles-ref"></select></label>
+			<p class="hint" id="candles-hint"></p>
+			<details id="ea-params-box"><summary>Réglages de l’EA ajustés par Claude</summary><div id="ea-params"></div></details>
 		</div>
 		<div class="conn">
 			<h4>TradingView</h4>

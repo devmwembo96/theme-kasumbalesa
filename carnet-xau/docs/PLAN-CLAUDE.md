@@ -130,7 +130,8 @@ Prix en dollars, avec deux décimales au plus. Heures en heure de Lubumbashi (UT
     { "day": "lundi", "bias": "h", "session": "Londres", "focus": "Attendre le balayage de l’EQL 4 135, pas de vente." }
   ],
   "scenarios": [
-    { "if": "le prix balaie l’EQL 4 135 puis donne un gros triangle d’achat", "then": "setup 1 en achat dans l’OB H4",
+    { "if": "le prix balaie l’EQL 4 135 et revient dans l’OB H4 4 140–4 148", "then": "setup 1 en achat dans l’OB H4",
+      "trigger": "Clôture M1 au-dessus du dernier sommet pivot après la mèche",
       "setup": "1", "side": "achat", "entry": "4 140–4 148", "sl": 4132.0, "tp": 4205.0, "prob": 45,
       "invalidation": "Clôture H4 sous 4 118" }
   ],
@@ -170,12 +171,12 @@ Prix en dollars, avec deux décimales au plus. Heures en heure de Lubumbashi (UT
 | `effect` | `up` (soutient l’or), `down` (pèse sur l’or), `neutral` |
 | `impact` | `high`, `medium`, `low` |
 | `days[].bias` | `h`, `b`, `n` |
-| `setup` | `1` (liquidité), `2` (continuation) |
+| `setup` | `1` (liquidité), `2` (continuation), `3` (iFVG) |
 | `review.score` | 0 à 10 |
 | `review.verdict` | `bonne`, `partielle`, `mauvaise` |
 | `bias_ok`, `range_held`, `invalidation_hit`, `reached`, `reacted`, `triggered` | `true`, `false` ou `null` (inconnu) |
 | `update.status` | `maintenu`, `mis_a_jour` (avec `update.date` = jour relu, `AAAA-MM-JJ`) |
-| `origin`, `draw` (zones et niveaux) | où tracer : bougie d’origine et consigne de tracé |
+| `origin` (zones et niveaux) | bougie d’origine « jj/mm hh:mm » : point de départ du tracé (le graphique et l’EA dessinent eux-mêmes) |
 
 Limites : 6 lignes de structure, 12 zones, 15 niveaux, 8 fondamentaux, 25 annonces, 5 jours, 8 scénarios, 10 règles. Les valeurs hors format sont ignorées.
 
@@ -200,8 +201,16 @@ concrète et testable, sans contredire ce qui existe. Liste complète renvoyée 
 ]
 ```
 
-`area` : entrée, zones, horaires, sorties, discipline, outil. Affichage : carte « Propositions de
-Claude » de l’onglet Plan ; les deux premières partent aussi sur Telegram.
+`area` : entrée, zones, horaires, sorties, discipline, outil. Affichage : « Améliorations proposées
+par Claude » dans l’onglet Journal ; les deux premières partent aussi sur Telegram.
+
+## Bougies
+
+`GET /candles` renvoie les bougies du **compte de référence de l’analyse** (Comptes › Connexions,
+par défaut le compte actif), avec `account`, `firm`, `at` et la liste `sources` des comptes dont l’EA
+envoie des bougies. Chaque courtier a ses propres prix et ses propres bougies D1 et H4 (heure de son
+serveur) : tous les prix d’un plan viennent d’un seul courtier, jamais d’un mélange.
+`GET /candles?account=ID` lit celles d’un autre compte.
 
 ## Analyses de séance (`session`)
 
@@ -211,13 +220,25 @@ jour ; les zones du plan US du jour sont surveillées par l’EA comme les zones
 
 ```json
 "session": { "date": "2026-10-20", "kind": "us", "bias": "b",
-  "summary": "Faits chiffrés en 2 à 4 phrases.",
+  "summary": "Deux phrases chiffrées : ce que le marché a fait, ce qu’on attend.",
   "facts": ["Plus bas de l’Asie 4 136,59 à 04:40, sous l’EQL 4 146,9"],
   "liquidity": ["EQL 4 146,9 pris", "PDL 4 136,6 intact"],
-  "execution": ["Vente sur retour 4 158–4 162, stop 4 166, objectif 4 140"],
+  "execution": ["Pas de vente sous 4 140 : place insuffisante jusqu’au PDL"],
   "zones": [ { "type": "FVG M15", "low": 4158, "high": 4162, "side": "vente", "note": "…" } ],
-  "invalid": "Clôture M15 au-dessus de 4 166" }
+  "levels": [ { "price": 4136.6, "type": "PDL" } ],
+  "positions": [ { "side": "vente", "setup": "1", "label": "retour FVG M15 de 13:15",
+    "wait": "Le prix revient dans 4 158–4 162 après avoir pris le haut de Londres 4 156,80",
+    "trigger": "Clôture M1 sous le dernier creux pivot après la mèche",
+    "entry": 4160.0, "sl": 4166.3, "tp": 4137.0,
+    "cancel": "Clôture M15 au-dessus de 4 166,30" } ],
+  "invalid": "Clôture M15 au-dessus de 4 166",
+  "idea": "Facultatif : une idée de trade, de setup ou de gestion née de l’analyse." }
 ```
+
+Chaque position devient une **fiche d’exécution** (onglet Aujourd’hui, Plan, Telegram) :
+attendre (`wait`) → déclencheur (`trigger`) → ordre (`entry`, `sl`, `tp`, écart et R calculés) → lot
+du compte actif (calculé par le carnet avec son risque du jour) → annulé si (`cancel`).
+`execution` ne garde que les consignes générales (ce qu’il ne faut pas faire, annonces).
 
 ## Rejeu du soir (`update.backtest`) et réglages de l’EA
 
