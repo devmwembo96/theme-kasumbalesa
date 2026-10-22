@@ -10,6 +10,7 @@
 //   AJOUT 1 : EQH / EQL seuls (SMC LuxAlgo)
 //   AJOUT 2 : IMFVG (LuxAlgo) — zone, moyenne et repère ▲▼ seuls
 //   AJOUT 6 : Liquidity Defense Zones (LDZ) by JPT — intact, tous ses réglages (converti v6 → v5)
+//   AJOUT 7 : FVG Sessions (LuxAlgo) — sans la ligne verticale de séparation des sessions
 //  Retirés : Order Blocks et FVG TradingFinder (remplacés par LDZ), Highs & Lows MTF et
 //            Premium/Discount (doublons de l'écran 1), TP/SL, trailing stop et coloration des
 //            bougies de l'IMFVG, FDAM (ajout 3), FVG Screener (ajout 4), Liquidity Trendline (ajout 5).
@@ -2013,3 +2014,180 @@ alertcondition(
      ldz_enableAlerts and ldz_sellSignal,
      title="Bearish Liquidity Reversal",
      message="LDZ [JPT]: Bearish liquidity reversal confirmed.")
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//  AJOUT 7 — FVG Sessions [LuxAlgo]  © LuxAlgo (CC BY-NC-SA 4.0)
+//  Code intact sauf : ligne pointillée verticale de séparation des sessions retirée.
+//  Variables préfixées fs_ pour éviter les collisions (n, bullCss, bearCss… existent déjà).
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+
+//------------------------------------------------------------------------------
+//Settings
+//-----------------------------------------------------------------------------{
+fs_bullCss          = input.color(color.teal, 'FVG Level'               , inline = 'fs_bull', group = 'FVG Sessions')
+fs_bullAreaCss      = input.color(color.new(color.teal, 50), 'Area'     , inline = 'fs_bull', group = 'FVG Sessions')
+fs_bullMitigatedCss = input.color(color.new(color.teal, 80), 'Mitigated', inline = 'fs_bull', group = 'FVG Sessions')
+
+fs_bearCss          = input.color(color.red, 'FVG Level'                , inline = 'fs_bear', group = 'FVG Sessions')
+fs_bearAreaCss      = input.color(color.new(color.red, 50), 'Area'      , inline = 'fs_bear', group = 'FVG Sessions')
+fs_bearMitigatedCss = input.color(color.new(color.red, 80), 'Mitigated' , inline = 'fs_bear', group = 'FVG Sessions')
+
+//-----------------------------------------------------------------------------}
+//UDT's
+//-----------------------------------------------------------------------------{
+type fs_fvg
+    float top
+    float btm
+    bool  mitigated
+    bool  isnew
+    bool  isbull
+    line  lvl
+    box   fs_area
+
+type fs_session_range
+    line fs_max
+    line fs_min
+
+//-----------------------------------------------------------------------------}
+//Methods
+//-----------------------------------------------------------------------------{
+fs_n = bar_index
+
+//Method for setting fair value gaps
+method fs_set_fvg(fs_fvg id, offset, bg_css, l_css)=>
+    fs_avg = math.avg(id.top, id.btm)
+
+    fs_area  = box.new(fs_n - offset, id.top, fs_n, id.btm, na, bgcolor = bg_css)
+    fs_avg_l = line.new(fs_n - offset, fs_avg, fs_n, fs_avg, color = l_css, style = line.style_dashed)
+
+    id.lvl := fs_avg_l
+    id.fs_area := fs_area
+
+//Method for setting session range maximum/minimum
+method fs_set_range(fs_session_range id)=>
+    fs_max = math.max(high, id.fs_max.get_y2())
+    fs_min = math.min(low, id.fs_min.get_y2())
+
+    id.fs_max.set_xy2(fs_n, fs_max)
+    id.fs_max.set_y1(fs_max)
+
+    id.fs_min.set_xy2(fs_n, fs_min)
+    id.fs_min.set_y1(fs_min)
+
+//-----------------------------------------------------------------------------}
+//Variables
+//-----------------------------------------------------------------------------{
+var fs_chartCss = color.new(chart.fg_color, 50)
+
+var fs_fvg fs_sfvg = fs_fvg.new(na, na, na, true, na)
+var fs_session_range fs_sesr = na
+
+var box fs_area = na
+var line fs_avg = na
+
+fs_bull_fvg = low > high[2] and close[1] > high[2]
+fs_bear_fvg = high < low[2] and close[1] < low[2]
+
+//Alert conditions
+fs_bull_isnew      = false
+fs_bear_isnew      = false
+fs_bull_mitigated  = false
+fs_bear_mitigated  = false
+fs_within_bull_fvg = false
+fs_within_bear_fvg = false
+
+//-----------------------------------------------------------------------------}
+//New session
+//-----------------------------------------------------------------------------{
+fs_dtf = timeframe.change('D')
+
+//On new session
+if fs_dtf
+    //Set new range
+    fs_sesr := fs_session_range.new(
+      line.new(fs_n, high, fs_n, high, color = fs_chartCss)
+      , line.new(fs_n, low, fs_n, low, color = fs_chartCss))
+
+    fs_sfvg.isnew := true
+
+    //Set prior session fvg right coordinates
+    if not na(fs_sfvg.lvl)
+        fs_sfvg.lvl.set_x2(fs_n-2)
+        fs_sfvg.fs_area.set_right(fs_n-2)
+
+//Set range
+else if not na(fs_sesr)
+    fs_sesr.fs_set_range()
+
+    //Set range lines color
+    fs_sesr.fs_max.set_color(fs_sfvg.isbull ? fs_bullCss : fs_bearCss)
+    fs_sesr.fs_min.set_color(fs_sfvg.isbull ? fs_bullCss : fs_bearCss)
+
+//-----------------------------------------------------------------------------}
+//Set FVG
+//-----------------------------------------------------------------------------{
+//New session bullish fvg
+if fs_bull_fvg and fs_sfvg.isnew
+    fs_sfvg := fs_fvg.new(low, high[2], false, false, true)
+    fs_sfvg.fs_set_fvg(2, fs_bullAreaCss, fs_bullCss)
+
+    fs_bull_isnew := true
+
+//New session bearish fvg
+else if fs_bear_fvg and fs_sfvg.isnew
+    fs_sfvg := fs_fvg.new(low[2], high, false, false, false)
+    fs_sfvg.fs_set_fvg(2, fs_bearAreaCss, fs_bearCss)
+
+    fs_bear_isnew := true
+
+//Change object transparencies if mitigated
+if not fs_sfvg.mitigated
+    //If session fvg is bullish
+    if fs_sfvg.isbull and close < fs_sfvg.btm
+        fs_sfvg.fs_set_fvg(1, fs_bullMitigatedCss, fs_bullCss)
+
+        fs_sfvg.mitigated := true
+        fs_bull_mitigated := true
+
+    //If session fvg is bearish
+    else if not fs_sfvg.isbull and close > fs_sfvg.top
+        fs_sfvg.fs_set_fvg(1, fs_bearMitigatedCss, fs_bearCss)
+
+        fs_sfvg.mitigated := true
+        fs_bear_mitigated := true
+
+//Set fvg right coordinates to current bar
+if not fs_sfvg.isnew
+    fs_sfvg.lvl.set_x2(fs_n)
+    fs_sfvg.fs_area.set_right(fs_n)
+
+//-----------------------------------------------------------------------------}
+//Alerts
+//-----------------------------------------------------------------------------{
+//On new session fvg
+alertcondition(fs_bull_isnew, 'Bullish FVG', 'New session bullish fvg')
+alertcondition(fs_bear_isnew, 'Bearish FVG', 'New session bearish fvg')
+
+//On fvg mitigation
+alertcondition(fs_bull_mitigated, 'Mitigated Bullish FVG', 'Session bullish fvg has been mitigated')
+alertcondition(fs_bear_mitigated, 'Mitigated Bearish FVG', 'Session bearish fvg has been mitigated')
+
+//If within fvg
+alertcondition(close >= fs_sfvg.btm and close <= fs_sfvg.top and fs_sfvg.isbull and not fs_sfvg.isnew
+  , 'Price Within Bullish FVG'
+  , 'Price is within bullish fvg')
+
+alertcondition(close >= fs_sfvg.btm and close <= fs_sfvg.top and not fs_sfvg.isbull and not fs_sfvg.isnew
+  , 'Price Within Bearish FVG'
+  , 'Price is within bearish fvg')
+
+//On fvg average cross
+alertcondition(ta.cross(close, math.avg(fs_sfvg.top, fs_sfvg.btm)) and fs_sfvg.isbull and not fs_sfvg.isnew
+  , 'Bullish FVG AVG Cross'
+  , 'Price crossed bullish fvg average')
+
+alertcondition(ta.cross(close, math.avg(fs_sfvg.top, fs_sfvg.btm)) and not fs_sfvg.isbull and not fs_sfvg.isnew
+  , 'Bearish FVG AVG Cross'
+  , 'Price crossed bearish fvg average')
+
+//-----------------------------------------------------------------------------}
