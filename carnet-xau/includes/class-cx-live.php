@@ -485,6 +485,171 @@ class CX_Live {
 		return new WP_REST_Response( array( 'ok' => true ), 200 );
 	}
 
+	/** Durée de suivi d'un trade virtuel par l'EA (TRACK_MAX_HOURS), en heures. */
+	const TRACK_HOURS = 24;
+
+	/**
+	 * Signaux que l'EA n'a pas soldés (EA arrêté, changement de compte sur le même terminal, fichier de
+	 * suivi perdu). Passé 25 h, l'EA les aurait clôturés : le carnet les rejoue sur les bougies de leur
+	 * compte, sinon du compte de référence, avec la gestion de l'EA. Colonne cloture_carnet = unité rejouée.
+	 *
+	 * @param DateTimeImmutable|null $now Instant (par défaut maintenant).
+	 * @return int Signaux clôturés.
+	 */
+	public static function settle_orphans( $now = null ) {
+		global $wpdb;
+		$t    = CX_Install::table( 'csignals' );
+		$tz   = CX_Repo::tz();
+		$now  = $now ?? new DateTimeImmutable( 'now', $tz );
+		$cut  = $now->modify( '-' . ( self::TRACK_HOURS + 1 ) . ' hours' )->format( 'Y-m-d H:i:s' );
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $t WHERE statut IN ('ouvert','attente') AND signale_le < %s ORDER BY signale_le LIMIT 20", $cut ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+		$lim  = (int) CX_Tuning::values()['limitmin'];
+		$done = 0;
+		$old  = $now->modify( '-8 days' )->format( 'Y-m-d H:i:s' );
+		foreach ( $rows as $r ) {
+			$out = self::replay_signal( $r, $lim, $tz );
+			if ( ! $out && $r->signale_le < $old ) {
+				// Plus aucune bougie pour le rejouer (l'EA rattrape 7 jours au plus) : issue inconnue.
+				$out = array(
+					'statut'         => 'inconnu',
+					'ferme_le'       => $r->signale_le,
+					'cloture_carnet' => '—',
+				);
+			}
+			if ( $out ) {
+				$wpdb->update( $t, $out, array( 'id' => (int) $r->id ) );
+				++$done;
+			}
+		}
+		return $done;
+	}
+
+	/**
+	 * Rejeu d'un signal : bougies de son compte puis du compte de référence, de la plus fine (M1) à la
+	 * plus large (H1) qui couvre son heure.
+	 *
+	 * @param object       $r   Ligne du signal.
+	 * @param int          $lim Validité d'un ordre limite (min).
+	 * @param DateTimeZone $tz  Fuseau du carnet.
+	 * @return array|null Colonnes à mettre à jour, null tant que les bougies ne donnent pas d'issue.
+	 */
+	private static function replay_signal( $r, $lim, $tz ) {
+		$e  = (float) $r->entree;
+		$sl = (float) $r->stop_prix;
+		$tp = (float) $r->objectif;
+		if ( $e <= 0 || $sl <= 0 || $tp <= 0 || abs( $e - $sl ) <= 0 ) {
+			// Signal incomplet : impossible à rejouer, retiré des signaux en cours.
+			return array(
+				'statut'         => 'inconnu',
+				'ferme_le'       => $r->signale_le,
+				'cloture_carnet' => '—',
+			);
+		}
+		$start = ( new DateTimeImmutable( $r->signale_le, $tz ) )->getTimestamp();
+		$ids   = array_unique( array_filter( array( (int) $r->account_id, self::ref_account_id() ) ) );
+		foreach ( $ids as $id ) {
+			$tf = (array) ( self::candle_data( $id )['tf'] ?? array() );
+			foreach ( array( 'M1' => 60, 'M5' => 300, 'M15' => 900, 'H1' => 3600 ) as $k => $sec ) {
+				$bars = (array) ( $tf[ $k ] ?? array() );
+				if ( ! $bars || (int) $bars[0][0] > $start ) {
+					continue;
+				}
+				$out = self::replay_bars( $r, $bars, $sec, $start, $lim, $tz );
+				if ( $out ) {
+					return $out + array( 'cloture_carnet' => $k );
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Gestion de l'EA (ProcessBar), bougie par bougie : ordre limite déclenché ou annulé au bout de
+	 * $lim minutes, stop vérifié en premier, 50 % à 2R puis stop à l'entrée, objectif, clôture au
+	 * dernier cours au bout de 24 h.
+	 *
+	 * @param object       $r     Ligne du signal.
+	 * @param array        $bars  Bougies [unix UTC, ouverture, haut, bas, clôture].
+	 * @param int          $sec   Durée d'une bougie (s).
+	 * @param int          $start Heure du signal (unix).
+	 * @param int          $lim   Validité d'un ordre limite (min).
+	 * @param DateTimeZone $tz    Fuseau du carnet.
+	 * @return array|null
+	 */
+	private static function replay_bars( $r, $bars, $sec, $start, $lim, $tz ) {
+		$at      = fn( $ts ) => ( new DateTimeImmutable( '@' . $ts ) )->setTimezone( $tz )->format( 'Y-m-d H:i:s' );
+		$buy     = 'buy' === $r->sens;
+		$e       = (float) $r->entree;
+		$tp      = (float) $r->objectif;
+		$st      = $r->stop_usd > 0 ? (float) $r->stop_usd : abs( $e - (float) $r->stop_prix );
+		$rr_tp   = abs( $tp - $e ) / $st;
+		$pending = 'attente' === $r->statut;
+		// Entrée : heure du signal (au marché) ou clôture de la bougie qui a déclenché l'ordre limite.
+		$opened  = $pending ? 0 : ( $r->ouvert_le ? ( new DateTimeImmutable( $r->ouvert_le, $tz ) )->getTimestamp() : $start );
+		$from    = $pending ? $start : $opened;
+		$fill    = null;
+		$hit     = false;
+		$mfe     = 0.0;
+		$mae     = 0.0;
+		foreach ( $bars as $b ) {
+			$o = (int) $b[0];
+			if ( $o < $from ) {
+				continue;
+			}
+			$t  = $o + $sec;
+			$hi = (float) $b[2];
+			$lo = (float) $b[3];
+			if ( $pending ) {
+				if ( $o >= $start + $lim * 60 ) {
+					return array(
+						'statut'   => 'annule',
+						'ferme_le' => $at( $start + $lim * 60 ),
+					);
+				}
+				if ( $buy ? $lo <= $e : $hi >= $e ) {
+					$pending = false;
+					$opened  = $o;
+					$fill    = $at( $o );
+				}
+				continue;
+			}
+			$up    = $buy ? ( $hi - $e ) / $st : ( $e - $lo ) / $st;
+			$down  = $buy ? ( $lo - $e ) / $st : ( $e - $hi ) / $st;
+			$mfe   = max( $mfe, $up );
+			$mae   = min( $mae, $down );
+			$close = null;
+			if ( ! $hit ) {
+				if ( $down <= -1.0 ) {
+					$close = -1.0;
+				} elseif ( $up >= 2.0 ) {
+					$hit = true;
+					if ( $up >= $rr_tp ) {
+						$close = 1.0 + 0.5 * $rr_tp;
+					}
+				}
+			} elseif ( $up >= $rr_tp ) {
+				$close = 1.0 + 0.5 * $rr_tp;
+			} elseif ( $down <= 0 ) {
+				$close = 1.0;
+			}
+			if ( null === $close && $t - $opened > self::TRACK_HOURS * 3600 ) {
+				$now   = $buy ? ( (float) $b[4] - $e ) / $st : ( $e - (float) $b[4] ) / $st;
+				$close = $hit ? 1.0 + 0.5 * $now : $now;
+			}
+			if ( null !== $close ) {
+				return array(
+					'statut'     => $close > 0.05 ? 'gagne' : ( $close < -0.05 ? 'perdu' : 'be' ),
+					'ferme_le'   => $at( $t ),
+					'resultat_r' => round( $close, 2 ),
+					'atteint_2r' => $hit ? 1 : 0,
+					'mfe_r'      => round( $mfe, 2 ),
+					'mae_r'      => round( $mae, 2 ),
+				) + ( $fill ? array( 'ouvert_le' => $fill ) : array() );
+			}
+		}
+		return null;
+	}
+
 	/**
 	 * Signaux Claude (trades virtuels), du plus récent au plus ancien, avec les trades du
 	 * journal pris dans les 15 minutes, dans le même sens (« pris par vous »).
@@ -527,6 +692,9 @@ class CX_Live {
 				'mfe'      => null === $r->mfe_r ? null : (float) $r->mfe_r,
 				'mae'      => null === $r->mae_r ? null : (float) $r->mae_r,
 				'taken'    => $taken,
+				'account'  => (int) $r->account_id,
+				// Unité rejouée par le carnet quand l'EA n'a pas soldé le signal, vide sinon.
+				'settled'  => (string) ( $r->cloture_carnet ?? '' ),
 			);
 		}
 		return new WP_REST_Response( $out, 200 );

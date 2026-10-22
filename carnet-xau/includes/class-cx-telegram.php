@@ -136,6 +136,7 @@ class CX_Telegram {
 		if ( empty( $c['token'] ) || empty( $c['chat'] ) ) {
 			return new WP_Error( 'cx_tg', 'Bot non relié à un chat : envoyez /start et le code au bot.' );
 		}
+		$text = self::nb( $text );
 		$to = array( $c['chat'] );
 		if ( ! $reply && ! empty( $c['channel'] ) ) {
 			$to[] = $c['channel'];
@@ -148,6 +149,16 @@ class CX_Telegram {
 			}
 		}
 		return $err ?? true;
+	}
+
+	/**
+	 * Espace des milliers insécable : « 4 044,70 » n'est jamais coupé en fin de ligne sur le téléphone.
+	 *
+	 * @param string $s Texte.
+	 * @return string
+	 */
+	private static function nb( $s ) {
+		return (string) preg_replace( '/(\d)[ \x{00A0}](?=\d{3}(?!\d))/u', "\$1\u{202F}", (string) $s );
 	}
 
 	/**
@@ -169,7 +180,7 @@ class CX_Telegram {
 			$body = '';
 			foreach ( array(
 				'chat_id'    => (string) $chat,
-				'caption'    => mb_substr( $caption, 0, 1024 ),
+				'caption'    => mb_substr( self::nb( $caption ), 0, 1024 ),
 				'parse_mode' => 'HTML',
 			) as $k => $v ) {
 				$body .= "--$b\r\nContent-Disposition: form-data; name=\"$k\"\r\n\r\n$v\r\n";
@@ -1015,6 +1026,7 @@ class CX_Telegram {
 			}
 			self::morning();
 		}
+		CX_Live::settle_orphans();
 		self::prune();
 	}
 

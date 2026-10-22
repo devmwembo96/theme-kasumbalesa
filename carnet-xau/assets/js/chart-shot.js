@@ -116,6 +116,7 @@
           });
         } else {
           // Trajet simulé du scénario principal : du prix actuel à l'entrée, puis à l'objectif.
+          const placed = [], keep = b => placed.push({ x: b.x0 + b.w / 2, y: b.y, w: b.w, h: b.h, tag: true });
           pos.forEach((p, k) => {
             const x0 = X(n - 1), xa = X(n - 1 + p.at + 2), xb = X(n - 1 + p.at + p.len - 3);
             const y0 = Y(last.close), ye = Y(p.entry), yt = Y(p.tp); if ([x0, xa, xb, y0, ye, yt].some(v => v == null)) return;
@@ -127,27 +128,29 @@
             }
             // Étiquettes de l'outil position : objectif en haut (ou en bas), stop à l'opposé, entrée au milieu.
             const buy = p.tp > p.entry, xm = (X(n - 1 + p.at) + X(n - 1 + p.at + p.len)) / 2, gap = 11 * vr;
-            tag(ctx, xm, buy ? yt - gap : yt + gap, "Objectif " + fr(p.tp, 2) + " · " + fr(p.rr, 1) + "R", C.up, "#fff", vr);
-            tag(ctx, xm, buy ? Y(p.sl) + gap : Y(p.sl) - gap, "Stop " + fr(p.sl, 2) + " · " + fr(p.stop, 2) + " $", C.down, "#fff", vr);
-            tag(ctx, xm, ye, (buy ? "Achat " : "Vente ") + fr(p.entry, 2) + (p.lot ? " · " + fr(p.lot, 2) + " lot" : ""), "#ffffff", C.text, vr);
+            const yo = buy ? yt - gap : yt + gap, ysl = buy ? Y(p.sl) + gap : Y(p.sl) - gap;
+            keep({ y: yo, ...tag(ctx, xm, yo, "Objectif " + fr(p.tp, 2) + " · " + fr(p.rr, 1) + "R", C.up, "#fff", vr) });
+            keep({ y: ysl, ...tag(ctx, xm, ysl, "Stop " + fr(p.sl, 2) + " · " + fr(p.stop, 2) + " $", C.down, "#fff", vr) });
+            keep({ y: ye, ...tag(ctx, xm, ye, (buy ? "Achat " : "Vente ") + fr(p.entry, 2) + (p.lot ? " · " + fr(p.lot, 2) + " lot" : ""), "#ffffff", C.text, vr) });
           });
           // Noms en petites capitales au milieu du trait (le trait s'interrompt sous le texte), comme
-          // les outils de TradingView ; deux noms trop proches en hauteur sont décalés en largeur.
+          // les outils de TradingView ; un nom qui toucherait un autre nom ou une étiquette de l'outil
+          // position est décalé en largeur. Trait né dans les dernières bougies : nom juste avant son début.
           const xEnd = X(n - 1) || sz.width * 0.7, items = [];
           zones.forEach(z => { const y1 = Y(z.high), y2 = Y(z.low); if (y1 != null && y2 != null) items.push({ y: (y1 + y2) / 2, x0: Math.max(0, X(z.from) || 0), t: z.label, c: z.text, bg: z.solid, at: 0.62 }); });
           levels.forEach(l => { const y = Y(l.price); if (y != null) items.push({ y: y, x0: Math.max(0, X(l.from) || 0), t: l.label, c: l.color, bg: C.bg, at: 0.5 }); });
           items.sort((a, b) => a.y - b.y);
           ctx.font = "600 " + Math.round(9.5 * vr) + "px " + C.font; ctx.textBaseline = "middle"; ctx.textAlign = "center";
-          const placed = [];
           items.forEach(it => {
-            const w = ctx.measureText(it.t).width + 10 * hr, span = Math.max(w + 10 * hr, xEnd - it.x0);
-            let x = it.x0 + span * it.at;
-            for (let k = 0; k < 4 && placed.some(p => Math.abs(p.y - it.y) < 12 * vr && Math.abs(p.x - x) < (p.w + w) / 2 + 6 * hr); k++)
-              x = it.x0 + span * [0.25, 0.78, 0.12, 0.9][k];
+            const w = ctx.measureText(it.t).width + 10 * hr, h = 13 * vr, room = xEnd - it.x0;
+            const spots = room >= w + 10 * hr ? [it.at, 0.25, 0.78, 0.12, 0.9].map(f => it.x0 + room * f) : [it.x0 - w / 2 - 4 * hr, it.x0 - w * 1.5 - 12 * hr];
+            // Écart vertical minimal : 12 px entre deux noms, la demi-hauteur des deux avec une étiquette de l'outil position.
+            const free = x => !placed.some(p => Math.abs(p.y - it.y) < (p.tag ? (p.h + h) / 2 + vr : 12 * vr) && Math.abs(p.x - x) < (p.w + w) / 2 + 6 * hr);
+            let x = spots.find(free); x = x === undefined ? spots[0] : x;
             x = Math.min(Math.max(x, w / 2 + 2 * hr), sz.width - w / 2 - 2 * hr);
-            ctx.fillStyle = it.bg; ctx.fillRect(x - w / 2, it.y - 6.5 * vr, w, 13 * vr);
+            ctx.fillStyle = it.bg; ctx.fillRect(x - w / 2, it.y - h / 2, w, h);
             ctx.fillStyle = it.c; ctx.fillText(it.t, x, it.y + 0.5 * vr);
-            placed.push({ x: x, y: it.y, w: w });
+            placed.push({ x: x, y: it.y, w: w, h: h });
           });
         }
         ctx.restore();
@@ -157,15 +160,16 @@
   ser.attachPrimitive(prim);
 
   // Prix sur l'échelle de droite, sur fond de la couleur du tracé, comme TradingView : plus haut et plus
-  // bas de chaque zone, chaque niveau, et le scénario principal.
-  const axis = (price, color) => ser.createPriceLine({ price: price, color: color, lineVisible: false, axisLabelVisible: true, axisLabelColor: color, axisLabelTextColor: "#ffffff", title: "" });
-  zones.forEach(z => { axis(z.high, z.axis); axis(z.low, z.axis); });
-  levels.forEach(l => axis(l.price, l.color));
-  pos.slice(0, 1).forEach(p => {
-    ser.createPriceLine({ price: p.tp, color: C.up, lineVisible: false, axisLabelVisible: true, title: "" });
-    ser.createPriceLine({ price: p.sl, color: C.down, lineVisible: false, axisLabelVisible: true, title: "" });
-    ser.createPriceLine({ price: p.entry, color: C.muted, lineVisible: false, axisLabelVisible: true, title: "" });
-  });
+  // bas de chaque zone, chaque niveau, et le scénario principal. Un prix n'a qu'une étiquette : celle de
+  // l'invalidation, puis du scénario, puis du niveau, puis de la zone.
+  const tags = [], axis = (price, color, rank) => {
+    const t = tags.find(t => Math.abs(t.price - price) < 0.05);
+    if (!t) tags.push({ price: price, color: color, rank: rank }); else if (rank > t.rank) { t.color = color; t.rank = rank; }
+  };
+  zones.forEach(z => { axis(z.high, z.axis, 1); axis(z.low, z.axis, 1); });
+  levels.forEach(l => axis(l.price, l.color, l.label === "INVALIDATION" ? 4 : 2));
+  pos.slice(0, 1).forEach(p => { axis(p.tp, C.up, 3); axis(p.sl, C.down, 3); axis(p.entry, C.muted, 3); });
+  tags.forEach(t => ser.createPriceLine({ price: t.price, color: t.color, lineVisible: false, axisLabelVisible: true, axisLabelColor: t.color, axisLabelTextColor: "#ffffff", title: "" }));
   chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, bars.length - (D.visible || 120)), to: bars.length - 1 + (D.rightOffset || 40) });
   // Deux images pour que les dessins soient en place avant la capture.
   requestAnimationFrame(() => requestAnimationFrame(() => done("")));

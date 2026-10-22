@@ -17,7 +17,9 @@ const dateStr=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const todayStr=()=>dateStr(new Date());
 const nowTime=()=>{const d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes())};
 function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),2600)}
-function el(tag,attrs,...kids){const e=document.createElement(tag);for(const k in (attrs||{})){if(k==="class")e.className=attrs[k];else if(k==="text")e.textContent=attrs[k];else e.setAttribute(k,attrs[k])}kids.forEach(c=>c!=null&&e.append(c));return e}
+// Espace des milliers insécable (« 4 044,70 » jamais coupé en fin de ligne sur téléphone).
+const nb=s=>typeof s==="string"?s.replace(/(\d)[  ](?=\d{3}(?!\d))/g,"$1 "):s;
+function el(tag,attrs,...kids){const e=document.createElement(tag);for(const k in (attrs||{})){if(k==="class")e.className=attrs[k];else if(k==="text")e.textContent=nb(attrs[k]);else e.setAttribute(k,attrs[k])}kids.forEach(c=>c!=null&&e.append(nb(c)));return e}
 const errMsg=e=>(e&&e.message)||"erreur";
 
 /* ---------- semaines ---------- */
@@ -904,11 +906,15 @@ async function loadReliability(){
 }
 
 /* ---------- signaux Claude (trades virtuels de l’EA) ---------- */
-const CS_STATUS={attente:"Limite en attente",ouvert:"En cours",gagne:"Gagné",perdu:"Perdu",be:"À zéro",annule:"Annulé"};
+const CS_STATUS={attente:"Limite en attente",ouvert:"En cours",gagne:"Gagné",perdu:"Perdu",be:"À zéro",annule:"Annulé",inconnu:"Issue inconnue"};
 async function loadClaudeSignals(){
   const box=$("#csignals");let list=[];
   try{list=await api("claude-signals")}catch(e){box.replaceChildren(el("div",{class:"empty",text:"Lecture impossible : "+errMsg(e)}));return}
   if(!list.length){box.replaceChildren(el("div",{class:"empty",text:"Aucun signal pour l’instant : ils arriveront quand l’EA tournera sur MT5."}));return}
+  // Deux EA (deux comptes) voient les mêmes zones : un même signal, à 3 minutes près, n'est compté qu'une fois.
+  const tms=s=>new Date(s.at.replace(" ","T")).getTime(), uniq=[];
+  list.forEach(s=>{if(!uniq.some(u=>u.account!==s.account&&u.side===s.side&&u.kind===s.kind&&u.zone===s.zone&&Math.abs(tms(u)-tms(s))<=180000))uniq.push(s)});
+  list=uniq;
   // Les signaux « retour FVG » sont une variante d'entrée des mêmes signaux : comptés à part.
   const closed=list.filter(s=>["gagne","perdu","be"].includes(s.status)),done=closed.filter(s=>s.kind!=="retest"),ret=closed.filter(s=>s.kind==="retest");
   list=list.filter(s=>s.kind!=="retest");
@@ -927,8 +933,8 @@ async function loadClaudeSignals(){
       new Date(s.at.replace(" ","T")).toLocaleString("fr-FR",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}),
       el("span",{class:"bias "+(s.side==="sell"?"b":"h"),text:(s.side==="sell"?"SELL ":"BUY ")+(s.kind==="limit"?"LIMIT":"NOW")+(s.setup?" · S"+s.setup:"")}),
       s.zone,px(s.entry)+" / "+px(s.sl)+" / "+px(s.tp),CS_STATUS[s.status]||s.status,
-      s.r==null?"—":rs(s.r)+(s.hit2r?" (2R)":""),s.taken?"Oui":"Non"])),
-    el("p",{class:"hint",style:"margin-top:8px",text:"Taux de réussite calculé sur les signaux clôturés (gagnés et perdus) ; les limites annulées n’en font pas partie. « Entrée au retour FVG » : les mêmes signaux, entrés par un ordre limite au bord du FVG (même stop, même objectif), pour comparer avec l’entrée au marché. « Pris » : un trade de votre journal dans le même sens, à 15 minutes près. Fiable à partir d’une trentaine de signaux."}));
+      s.r==null?"—":rs(s.r)+(s.hit2r?" (2R)":"")+(s.settled&&s.settled!=="—"?" · rejoué "+s.settled:""),s.taken?"Oui":"Non"])),
+    el("p",{class:"hint",style:"margin-top:8px",text:"Taux de réussite calculé sur les signaux clôturés (gagnés et perdus) ; les limites annulées n’en font pas partie. « Entrée au retour FVG » : les mêmes signaux, entrés par un ordre limite au bord du FVG (même stop, même objectif), pour comparer avec l’entrée au marché. « Pris » : un trade de votre journal dans le même sens, à 15 minutes près. « Rejoué M5 » : signal que l’EA n’a pas soldé (EA arrêté, changement de compte), rejoué par le carnet sur les bougies avec la même gestion. Fiable à partir d’une trentaine de signaux."}));
 }
 
 /* ---------- simulateur Monte-Carlo ---------- */

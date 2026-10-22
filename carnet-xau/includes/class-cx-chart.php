@@ -118,6 +118,14 @@ class CX_Chart {
 			if ( 'cassee' === $state || ! $near( (float) $z['low'], (float) $z['high'] ) ) {
 				continue;
 			}
+			// Même zone que l'analyse (recouvrement d'au moins 80 % de la plus grande) : un seul rectangle.
+			$same = array_filter(
+				$zones,
+				fn( $x ) => min( $x['high'], (float) $z['high'] ) - max( $x['low'], (float) $z['low'] ) >= 0.8 * max( $x['high'] - $x['low'], (float) $z['high'] - (float) $z['low'] )
+			);
+			if ( $same ) {
+				continue;
+			}
 			$zones[] = array(
 				'low'   => (float) $z['low'],
 				'high'  => (float) $z['high'],

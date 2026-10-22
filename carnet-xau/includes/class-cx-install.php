@@ -244,6 +244,7 @@ CREATE TABLE $csig (
   atteint_2r tinyint(1) NOT NULL DEFAULT 0,
   mfe_r decimal(6,2) DEFAULT NULL,
   mae_r decimal(6,2) DEFAULT NULL,
+  cloture_carnet varchar(4) NOT NULL DEFAULT '',
   PRIMARY KEY  (id),
   UNIQUE KEY account_ref (account_id,ref),
   KEY signale_le (signale_le)

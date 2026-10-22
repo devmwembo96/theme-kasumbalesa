@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.27.0
+Stable tag: 2.27.1
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -127,6 +127,12 @@ Signaux Claude : trades virtuels et taux de réussite (version 2.5)
 * L’EA garde son suivi dans le fichier CarnetXAU_signaux.csv (redémarrage de MT5 sans perte)
   et envoie chaque changement (POST /mt5/event, type signal_update) ; Telegram annonce la
   clôture. Un signal renvoyé n’est jamais compté deux fois (référence unique).
+* Signal que l’EA n’a pas soldé 25 h après son heure (EA arrêté, changement de compte sur le même
+  terminal : le fichier de suivi est commun) : le carnet le rejoue sur les bougies de son compte,
+  sinon du compte de référence (M1, sinon M5, M15 ou H1), avec la même gestion ; colonne
+  cloture_carnet = unité rejouée, « rejoué M5 » dans le journal (version 2.27.1). Sans bougies
+  au bout de 8 jours : « issue inconnue », hors statistiques. Deux EA sur deux comptes : un même
+  signal (sens, type, zone, à 3 min près) n’est compté qu’une fois.
 * Onglet Stats › Signaux Claude (EA MT5) : taux de réussite, R moyen et total, 2R atteint,
   en cours, limites annulées, part des signaux pris par vous (trade du journal dans le même
   sens à 15 min près), détail par setup, type et sens, 30 derniers signaux.
