@@ -169,10 +169,15 @@ function replaceAccount(a){const i=ACCOUNTS.findIndex(x=>x.id===a.id);if(i>=0)AC
 
 /* ---------- ticket du jour : tout vient du compte sélectionné (MT5 et journal) ---------- */
 function accTrades(id){return TRADES.filter(t=>t.accountId===id)}
-function todaySnap(){const s=ACTIVE&&SNAPS[ACTIVE.id];return s&&s.at.slice(0,10)===todayStr()?s:null}
+// Envoi MT5 faussé par un dépôt ou un retrait du jour (EA jusqu'à 2.11 : compte financé aujourd'hui,
+// solde du matin à 0) : solde du matin sous le plancher alors que l'équité est au-dessus, le journal prend le relais.
+function snapSkewed(s){const floor=isOwn(ACTIVE)?0:ACTIVE.size*(1-ACTIVE.params.max/100);return s.equity+s.dailyLoss<=floor&&s.equity>floor}
+function todaySnap(){const s=ACTIVE&&SNAPS[ACTIVE.id];return s&&s.at.slice(0,10)===todayStr()&&!snapSkewed(s)?s:null}
 function renderMt5Line(){
-  const box=$("#mt5-line"), s=ACTIVE&&SNAPS[ACTIVE.id];
+  const box=$("#mt5-line");let s=ACTIVE&&SNAPS[ACTIVE.id];
   if(!s){box.hidden=true;return}
+  // Dépôt du jour compté par l'EA : le résultat du jour vient du journal.
+  if(snapSkewed(s))s=Object.assign({},s,{dailyLoss:-todayTrades().reduce((a,x)=>a+(num(x.pnl)||0),0)});
   const mins=Math.max(0,Math.round((Date.now()-new Date(s.at.replace(" ","T")).getTime())/60000));
   const ago=mins<1?"à l’instant":mins<60?"il y a "+mins+" min":mins<1440?"il y a "+Math.round(mins/60)+" h":"le "+new Date(s.at.replace(" ","T")).toLocaleDateString("fr-FR");
   box.replaceChildren(el("span",null,"MT5 "),el("span",null,"solde ",el("b",{text:money2(s.balance)})),el("span",null,"équité ",el("b",{text:money2(s.equity)})),
@@ -588,6 +593,8 @@ function renderPlanView(p){
     if(rv.text)bl.append(el("p",{class:"pre",text:rv.text}));
     out.push(bl);
   }
+  // 7. Job list de Claude, à la fin, en lignes courtes.
+  const jobs=jobList(c);if(jobs)out.push(card("Ce que fait Claude",jobs));
   // 8. Le reste, replié : utile pour comprendre, pas pour exécuter.
   const det=el("details",{class:"panel"},el("summary",{text:"Détails de l’analyse : structure, fondamentaux, annonces, relectures"}));
   const sub=(t,...k)=>det.append(el("h4",{class:"sub",text:t}),...k);
@@ -633,17 +640,22 @@ function renderToday(){
   box.replaceChildren(...out);
 }
 /* ---------- journal : propositions de Claude et erreurs repérées ---------- */
+const IDEA_ST={proposee:"proposée",test:"en test",appliquee:"appliquée",abandonnee:"abandonnée"};
+// Job list de Claude : ce qu'il fait ou applique maintenant, en lignes courtes (fin du plan et Journal).
+function jobList(c){const j=(c&&c.jobs)||[];return j.length?el("div",{class:"jobs"},el("b",{text:"Job list de Claude"}),el("ol",null,...j.map(t=>el("li",{text:t})))):null}
 function renderIdeas(){
   const box=$("#ideas");if(!box)return;
   const c=(THIS_WEEK_PLAN&&THIS_WEEK_PLAN.content)||{}, ideas=c.ideas||[];
   const tips=(c.sessions||[]).filter(x=>x.idea).sort((a,b)=>(b.date+SES_O[b.kind]).localeCompare(a.date+SES_O[a.kind])).slice(0,3);
-  if(!ideas.length&&!tips.length){box.replaceChildren(el("p",{class:"hint",text:"Claude publie ses propositions avec le plan du dimanche et les complète à chaque relecture du soir."}));return}
+  if(!ideas.length&&!tips.length&&!(c.jobs||[]).length){box.replaceChildren(el("p",{class:"hint",text:"Claude publie ses propositions avec le plan du dimanche et les complète à chaque relecture du soir."}));return}
   const out=[];
+  const jobs=jobList(c);if(jobs)out.push(jobs);
   if(ideas.length)out.push(el("div",{class:"ideas"},...ideas.map(x=>el("div",{class:"idea"},
-    el("div",{class:"row"},el("b",{text:x.title||"Proposition"}),x.area?el("span",{class:"tag",text:x.area}):null),
+    el("div",{class:"row"},el("b",{text:x.title||"Proposition"}),x.area?el("span",{class:"tag",text:x.area}):null,x.status?el("span",{class:"tag st-"+x.status,text:IDEA_ST[x.status]}):null),
     x.flaw?el("p",null,el("span",{class:"k",text:"Faille : "}),document.createTextNode(x.flaw)):null,
     x.solution?el("p",null,el("span",{class:"k",text:"Solution : "}),document.createTextNode(x.solution)):null,
-    x.test?el("p",null,el("span",{class:"k",text:"Test : "}),document.createTextNode(x.test)):null))));
+    x.test?el("p",null,el("span",{class:"k",text:"Test : "}),document.createTextNode(x.test)):null,
+    x.result?el("p",null,el("span",{class:"k",text:"Résultat : "}),document.createTextNode(x.result)):null))));
   if(tips.length)out.push(el("p",{style:"margin-top:12px"},el("span",{class:"k",text:"Idées nées des séances"})),el("ul",{class:"rules"},...tips.map(x=>el("li",null,el("b",{text:new Date(x.date+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long"})+" · "+({asia:"Asie",premarket:"pré-marché",us:"plan US"}[x.kind]||x.kind)+" : "}),document.createTextNode(x.idea)))));
   box.replaceChildren(...out);
 }

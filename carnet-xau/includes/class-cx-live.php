@@ -728,10 +728,18 @@ class CX_Live {
 			usort( $rows, fn( $a, $b ) => $a[0] <=> $b[0] );
 			$out[ $tf ] = array_slice( $rows, -self::CANDLE_MAX[ $tf ] );
 		}
+		// « at » = heure des données : clôture de la dernière bougie M1 si elle est plus ancienne que la
+		// réception (terminal déconnecté du courtier : l'EA renvoie de vieilles bougies). « received » = réception.
+		$now = CX_Repo::clock();
+		$at  = $now;
+		if ( ! empty( $out['M1'] ) ) {
+			$at = min( $now, ( new DateTimeImmutable( '@' . ( $out['M1'][ count( $out['M1'] ) - 1 ][0] + 60 ) ) )->setTimezone( CX_Repo::tz() )->format( 'Y-m-d H:i:s' ) );
+		}
 		update_option(
 			self::OPT . (int) $acc['id'],
 			array(
-				'at'         => CX_Repo::clock(),
+				'at'         => $at,
+				'received'   => $now,
 				'account'    => $acc['name'],
 				'account_id' => (int) $acc['id'],
 				'firm'       => $acc['firm'],

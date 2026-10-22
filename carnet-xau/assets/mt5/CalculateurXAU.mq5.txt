@@ -44,7 +44,7 @@
 //|  Les boutons et le calendrier économique ne fonctionnent pas     |
 //|  dans le testeur de stratégie : tester l'outil sur compte démo.  |
 //+------------------------------------------------------------------+
-#property version     "3.00"
+#property version     "3.01"
 #property description "Carnet XAU : déclenchement, lot selon le palier du capital, stop 1,50-8,00 $, limites jour, semaine et plancher."
 
 #include <Trade\Trade.mqh>
@@ -692,6 +692,9 @@ double EstimateBalanceAt(const datetime fromTime, bool &hadDeals)
          continue;
       if((datetime)HistoryDealGetInteger(d, DEAL_TIME) < fromTime)
          continue;
+      long dtype = HistoryDealGetInteger(d, DEAL_TYPE);
+      if(dtype == DEAL_TYPE_BALANCE || dtype == DEAL_TYPE_CREDIT || dtype == DEAL_TYPE_BONUS)
+         continue;   // dépôt (compte financé aujourd'hui), retrait de gains, crédit : la référence du jour reste le solde
       sum += HistoryDealGetDouble(d, DEAL_PROFIT) + HistoryDealGetDouble(d, DEAL_COMMISSION)
            + HistoryDealGetDouble(d, DEAL_SWAP)   + HistoryDealGetDouble(d, DEAL_FEE);
       hadDeals = true;

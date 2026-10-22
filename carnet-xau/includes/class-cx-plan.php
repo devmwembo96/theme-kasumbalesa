@@ -94,6 +94,7 @@ class CX_Plan {
 			'verdict' => array( 'bonne', 'partielle', 'mauvaise' ),
 			'status'  => array( 'maintenu', 'mis_a_jour' ),
 			'kind'    => array( 'asia', 'premarket', 'us' ),
+			'istate'  => array( 'proposee', 'test', 'appliquee', 'abandonnee' ),
 		);
 		switch ( $type ) {
 			case 'bool':
@@ -287,9 +288,14 @@ class CX_Plan {
 					'flaw'     => 'long',
 					'solution' => 'long',
 					'test'     => 'long',
+					// Où en est la proposition : proposée, en test, appliquée par Claude, abandonnée.
+					'status'   => 'istate',
+					'result'   => 'long',
 				),
 				5,
 			),
+			// Job list de Claude : ce qu'il fait ou applique maintenant, en lignes courtes.
+			'jobs'         => array( 'list', 'text', 5 ),
 			'sources'      => 'long',
 		);
 	}

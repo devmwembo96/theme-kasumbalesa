@@ -905,17 +905,30 @@ class CX_Telegram {
 		return implode( "\n", $lines );
 	}
 
+	/** Statut d'une proposition de Claude. */
+	const IDEA_STATES = array(
+		'proposee'   => 'proposée',
+		'test'       => 'en test',
+		'appliquee'  => 'appliquée',
+		'abandonnee' => 'abandonnée',
+	);
+
 	/**
-	 * Propositions d'amélioration de Claude, en tête de liste.
+	 * Fin des messages : la job list de Claude, en lignes courtes ; à défaut, le titre et le statut de
+	 * ses propositions (le détail est dans le Journal).
 	 *
 	 * @param array    $c Contenu du plan.
 	 * @param callable $e Échappement HTML.
 	 * @return string[]
 	 */
 	private static function ideas_lines( $c, $e ) {
+		$jobs = array_slice( (array) ( $c['jobs'] ?? array() ), 0, 5 );
+		if ( $jobs ) {
+			return array_merge( array( '', '📋 <b>Job list de Claude</b>' ), array_map( fn( $j ) => '• ' . $e( $j ), $jobs ) );
+		}
 		$out = array();
-		foreach ( array_slice( (array) ( $c['ideas'] ?? array() ), 0, 2 ) as $x ) {
-			$out[] = '💡 <b>' . $e( $x['title'] ?? 'Proposition' ) . '</b>' . ( empty( $x['solution'] ) ? '' : ' : ' . $e( $x['solution'] ) );
+		foreach ( array_slice( (array) ( $c['ideas'] ?? array() ), 0, 3 ) as $x ) {
+			$out[] = '💡 ' . $e( $x['title'] ?? 'Proposition' ) . ( empty( $x['status'] ) ? '' : ' (' . self::IDEA_STATES[ $x['status'] ] . ')' );
 		}
 		return $out ? array_merge( array( '' ), $out ) : array();
 	}

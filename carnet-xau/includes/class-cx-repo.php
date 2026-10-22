@@ -310,6 +310,20 @@ class CX_Repo {
 	}
 
 	/**
+	 * Envoi MT5 faussé par un dépôt ou un retrait du jour : jusqu'à l'EA 2.11, la perte du jour comptait
+	 * ces mouvements (compte financé aujourd'hui : solde du matin à 0, donc « −6 000 $ »). Solde du matin
+	 * sous le plancher alors que l'équité est au-dessus : impossible, le journal prend le relais.
+	 *
+	 * @param array $a    Compte.
+	 * @param array $snap Envoi MT5 {equity, dailyLoss}.
+	 * @return bool
+	 */
+	public static function snap_skewed( $a, $snap ) {
+		$floor = 'propre' === ( $a['params']['kind'] ?? 'propfirm' ) ? 0.0 : (float) $a['size'] * ( 1 - (float) $a['params']['max'] / 100 );
+		return (float) $snap['equity'] + (float) $snap['dailyLoss'] <= $floor && (float) $snap['equity'] > $floor;
+	}
+
+	/**
 	 * Limites du jour d'un compte prop firm, comme l'onglet Jour : risque (réduit sous le seuil), perte
 	 * journalière de la firme (sur la taille ou sur le solde du début de journée), arrêt personnel en R
 	 * et perte maximale fixe.
@@ -321,7 +335,7 @@ class CX_Repo {
 	public static function prop_limits( $a, $snap = null ) {
 		$pa   = $a['params'];
 		$size = (float) $a['size'];
-		if ( $snap && substr( (string) $snap['at'], 0, 10 ) === self::clock( 'Y-m-d' ) ) {
+		if ( $snap && substr( (string) $snap['at'], 0, 10 ) === self::clock( 'Y-m-d' ) && ! self::snap_skewed( $a, $snap ) ) {
 			$morning = (float) $snap['equity'] + (float) $snap['dailyLoss'];
 		} else {
 			$from    = $a['phaseStart'] ?? '0000-00-00';
