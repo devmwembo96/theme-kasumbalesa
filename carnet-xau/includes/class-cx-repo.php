@@ -167,6 +167,16 @@ class CX_Repo {
 	 */
 	private static function account_out( $r ) {
 		$params = json_decode( (string) $r->parametres, true );
+		$params = is_array( $params ) ? $params : array();
+		// Comptes créés avant le risque en % : on déduit les % des montants enregistrés.
+		$size = (float) $r->taille;
+		if ( ! isset( $params['riskp'] ) && $size > 0 ) {
+			foreach ( array( 'risk' => array( 'riskp', 10 ), 'riskred' => array( 'riskredp', 10 ), 'redat' => array( 'redatp', 100 ) ) as $usd => $pct ) {
+				if ( isset( $params[ $usd ] ) ) {
+					$params[ $pct[0] ] = min( $pct[1], max( 0.01, round( 100 * (float) $params[ $usd ] / $size, 2 ) ) );
+				}
+			}
+		}
 		return array(
 			'id'           => (int) $r->id,
 			'name'         => $r->nom,
@@ -177,7 +187,7 @@ class CX_Repo {
 			'status'       => $r->statut,
 			'purchaseDate' => $r->date_achat,
 			'phaseStart'   => $r->phase_debut,
-			'params'       => array_merge( CX_Install::DEFAULT_PARAMS, is_array( $params ) ? $params : array() ),
+			'params'       => array_merge( CX_Install::DEFAULT_PARAMS, $params ),
 			'active'       => (bool) $r->actif,
 			'mt5'          => ! empty( $r->mt5_cle ),
 		);
@@ -210,21 +220,23 @@ class CX_Repo {
 	/**
 	 * Paramètres de risque validés.
 	 *
-	 * @param mixed $in Paramètres reçus.
+	 * @param mixed $in   Paramètres reçus.
+	 * @param float $size Taille du compte : les risques en $ sont recalculés à partir des %.
 	 * @return array|WP_Error
 	 */
-	private static function params_in( $in ) {
+	private static function params_in( $in, $size ) {
 		$in     = is_array( $in ) ? $in : array();
 		$ranges = array(
 			't1'        => array( 0.1, 100 ),
 			't2'        => array( 0.1, 100 ),
-			'tf'        => array( 0.1, 100 ),
+			'tf'        => array( 0, 100 ),
 			'daily'     => array( 0.1, 100 ),
 			'max'       => array( 0.1, 100 ),
 			'mindays'   => array( 0, 365 ),
-			'risk'      => array( 0, 1e6 ),
-			'riskred'   => array( 0, 1e6 ),
-			'redat'     => array( 0, 1e7 ),
+			'riskp'     => array( 0.01, 10 ),
+			'riskredp'  => array( 0.01, 10 ),
+			'redatp'    => array( 0.1, 100 ),
+			'commission' => array( 0, 100 ),
 			'maxtrades' => array( 1, 100 ),
 			'maxloss'   => array( 1, 100 ),
 			'spreadmax' => array( 1, 100 ),
@@ -245,9 +257,25 @@ class CX_Repo {
 			}
 			$out[ $k ] = in_array( $k, array( 'mindays', 'maxtrades', 'maxloss', 'budget', 'weekloss' ), true ) ? (int) $v : $v;
 		}
+		$out['dailybase'] = self::pick( $in['dailybase'] ?? CX_Install::DEFAULT_PARAMS['dailybase'], array( 'initial', 'daystart' ), 'initial' );
 		if ( 'propre' === $out['kind'] && $out['floor'] >= $out['start'] ) {
 			return self::invalid( 'Le plancher doit être sous le capital de départ.' );
 		}
+		if ( 'propfirm' === $out['kind'] ) {
+			if ( $out['riskredp'] > $out['riskp'] ) {
+				return self::invalid( 'Le risque réduit doit être inférieur ou égal au risque normal.' );
+			}
+			if ( $out['riskp'] * $out['daystopr'] > $out['daily'] ) {
+				return self::invalid( sprintf( 'Risque trop élevé : %s R à %s %% dépassent la perte journalière de la firme (%s %%).', $out['daystopr'], $out['riskp'], $out['daily'] ) );
+			}
+			if ( $out['redatp'] >= $out['max'] ) {
+				return self::invalid( 'Le seuil de réduction du risque doit être sous la perte maximale.' );
+			}
+		}
+		// Montants en $ déduits des % : lus par l'EA, Telegram et les graphiques.
+		$out['risk']    = round( $size * $out['riskp'] / 100, 2 );
+		$out['riskred'] = round( $size * $out['riskredp'] / 100, 2 );
+		$out['redat']   = round( $size * $out['redatp'] / 100, 2 );
 		return $out;
 	}
 
@@ -282,6 +310,38 @@ class CX_Repo {
 	}
 
 	/**
+	 * Limites du jour d'un compte prop firm, comme l'onglet Jour : risque (réduit sous le seuil), perte
+	 * journalière de la firme (sur la taille ou sur le solde du début de journée), arrêt personnel en R
+	 * et perte maximale fixe.
+	 *
+	 * @param array      $a    Compte.
+	 * @param array|null $snap Dernier envoi MT5 du jour, ou null.
+	 * @return array {risk, reduced, morning, firm_daily, day_stop, floor}
+	 */
+	public static function prop_limits( $a, $snap = null ) {
+		$pa   = $a['params'];
+		$size = (float) $a['size'];
+		if ( $snap && substr( (string) $snap['at'], 0, 10 ) === self::clock( 'Y-m-d' ) ) {
+			$morning = (float) $snap['equity'] + (float) $snap['dailyLoss'];
+		} else {
+			$from    = $a['phaseStart'] ?? '0000-00-00';
+			$today   = self::clock( 'Y-m-d' );
+			$morning = $size + array_sum( array_map( fn( $t ) => (float) $t['pnl'], array_filter( self::trades( $a['id'] ), fn( $t ) => $t['date'] >= $from && $t['date'] < $today ) ) );
+		}
+		$reduced = ( $morning - $size ) <= - $size * (float) $pa['redatp'] / 100;
+		$risk    = $reduced ? (float) $pa['riskred'] : (float) $pa['risk'];
+		$base    = 'daystart' === ( $pa['dailybase'] ?? 'initial' ) ? $morning : $size;
+		return array(
+			'risk'       => $risk,
+			'reduced'    => $reduced,
+			'morning'    => round( $morning, 2 ),
+			'firm_daily' => round( $base * (float) $pa['daily'] / 100, 2 ),
+			'day_stop'   => round( (float) $pa['daystopr'] * (float) $pa['risk'], 2 ),
+			'floor'      => round( $size * ( 1 - (float) $pa['max'] / 100 ), 2 ),
+		);
+	}
+
+	/**
 	 * Crée ou modifie un compte.
 	 *
 	 * @param array    $in Données de l'interface.
@@ -303,7 +363,7 @@ class CX_Repo {
 		if ( null === $size ) {
 			return self::invalid( 'Taille du compte invalide.' );
 		}
-		$params = self::params_in( array_merge( $old['params'] ?? array(), is_array( $in['params'] ?? null ) ? $in['params'] : array() ) );
+		$params = self::params_in( array_merge( $old['params'] ?? array(), is_array( $in['params'] ?? null ) ? $in['params'] : array() ), $size );
 		if ( is_wp_error( $params ) ) {
 			return $params;
 		}

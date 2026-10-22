@@ -22,9 +22,17 @@ class CX_Install {
 		'daily'     => 5,
 		'max'       => 10,
 		'mindays'   => 5,
+		// Prop firm : risque en % de la taille du compte (les montants en $ en sont déduits à l'enregistrement).
+		'riskp'     => 0.5,
+		'riskredp'  => 0.25,
+		'redatp'    => 3,
 		'risk'      => 50,
-		'riskred'   => 35,
+		'riskred'   => 25,
 		'redat'     => 300,
+		// Base de la perte journalière : initial (taille du compte) ou daystart (solde du début de journée).
+		'dailybase' => 'initial',
+		// Commission aller-retour par lot ($), comptée dans le calcul du lot.
+		'commission' => 0,
 		'maxtrades' => 4,
 		'maxloss'   => 3,
 		'spreadmax' => 15,

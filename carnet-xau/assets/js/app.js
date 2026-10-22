@@ -123,17 +123,28 @@ $("#acct-switch").addEventListener("change",async e=>{
 /* ---------- paramètres du compte actif ---------- */
 const isOwn=a=>!!a&&a.params&&a.params.kind==="propre";
 const accLabel=a=>isOwn(a)?(a.status==="retire"?"Retiré":"Fonds propres"):(STATUS_L[a.status]||a.status);
-const PARAM_FIELDS=["mindays","t1","t2","tf","daily","max","contract","risk","riskred","redat","maxtrades","maxloss","spreadmax"];
+// Prop firm : champ de l'écran => paramètre. Le risque est en % de la taille ; le serveur en déduit les $.
+const PROP_FIELDS={mindays:"mindays",t1:"t1",t2:"t2",tf:"tf",daily:"daily",max:"max",contract:"contract",riskp:"riskp",riskredp:"riskredp",redatp:"redatp","daystopr-p":"daystopr",maxtrades:"maxtrades",maxloss:"maxloss",spreadmax:"spreadmax",commission:"commission"};
 // Fonds propres : champ de l'écran => paramètre (les limites communes ont leur propre champ).
-const OWN_FIELDS={start:"start",budget:"budget",floor:"floor",withdraw:"withdraw","maxloss-o":"maxloss",daystopr:"daystopr",weekloss:"weekloss",weekstopr:"weekstopr","maxtrades-o":"maxtrades","contract-o":"contract"};
+const OWN_FIELDS={start:"start",budget:"budget",floor:"floor",withdraw:"withdraw","maxloss-o":"maxloss",daystopr:"daystopr",weekloss:"weekloss",weekstopr:"weekstopr","maxtrades-o":"maxtrades","contract-o":"contract","commission-o":"commission"};
 function showKind(k){$("#set-own").hidden=k!=="propre";$("#set-prop").hidden=k==="propre"}
 function fillSettings(){
   if(!ACTIVE)return;
   const p=ACTIVE.params;$("#s-kind").value=p.kind||"propfirm";showKind($("#s-kind").value);
   $("#s-phase").value=ACTIVE.status;$("#s-size").value=ACTIVE.size;
-  PARAM_FIELDS.forEach(k=>{$("#s-"+k).value=p[k]});
+  Object.entries(PROP_FIELDS).forEach(([f,k])=>{$("#s-"+f).value=p[k]});
+  $("#s-dailybase").value=p.dailybase||"initial";
   Object.entries(OWN_FIELDS).forEach(([f,k])=>{$("#s-"+f).value=p[k]});
+  propHint();
 }
+// Équivalents en $ des % saisis, et contrôle : l'arrêt personnel doit tenir dans la perte journalière.
+function propHint(){
+  const size=num($("#s-size").value), g=k=>num($("#s-"+k).value), h=$("#s-prop-hint");
+  if(!(size>0)){h.textContent="";return}
+  const r=size*g("riskp")/100, rr=size*g("riskredp")/100, d=size*g("daily")/100, ds=g("daystopr-p")*r;
+  h.textContent="Risque "+money2(r)+" · réduit "+money2(rr)+" sous "+money(size*g("redatp")/100)+" de perte · arrêt personnel "+money2(ds)+" par jour · perte journalière de la firme "+money(d)+($("#s-dailybase").value==="daystart"?" (sur la taille ; recalculée chaque matin sur le solde)":"")+" · plancher "+money(size*(1-g("max")/100))+(ds>d?" — attention : l’arrêt personnel dépasse la limite de la firme.":"");
+}
+["#s-size","#s-riskp","#s-riskredp","#s-redatp","#s-daystopr-p","#s-daily","#s-max","#s-dailybase"].forEach(id=>$(id).addEventListener("input",propHint));
 $("#s-kind").addEventListener("change",e=>showKind(e.target.value));
 $("#btn-settings").addEventListener("click",async()=>{
   if(!ACTIVE)return;
@@ -142,7 +153,8 @@ $("#btn-settings").addEventListener("click",async()=>{
     for(const [f,k] of Object.entries(OWN_FIELDS)){params[k]=num($("#s-"+f).value);if(!Number.isFinite(params[k])){toast("Valeur manquante : vérifiez chaque champ.");return}}
     body={status:ACTIVE.status==="retire"?"retire":"finance",size:params.start,params};
   }else{
-    for(const k of PARAM_FIELDS){params[k]=num($("#s-"+k).value);if(!Number.isFinite(params[k])){toast("Valeur manquante : vérifiez chaque champ.");return}}
+    for(const [f,k] of Object.entries(PROP_FIELDS)){params[k]=num($("#s-"+f).value);if(!Number.isFinite(params[k])){toast("Valeur manquante : vérifiez chaque champ.");return}}
+    params.dailybase=$("#s-dailybase").value;
     const size=num($("#s-size").value);if(!Number.isFinite(size)||size<=0){toast("Taille du compte invalide.");return}
     body={status:$("#s-phase").value,size,params};
   }
@@ -172,7 +184,12 @@ function morningBalance(){
   return Math.round((ACTIVE.size+accTrades(ACTIVE.id).filter(x=>x.date>=from&&x.date<t).reduce((a,x)=>a+(num(x.pnl)||0),0))*100)/100;
 }
 // Capital actuel : solde MT5, sinon taille + tous les résultats.
-function currentCapital(){const sn=ACTIVE&&SNAPS[ACTIVE.id];return sn?sn.equity:ACTIVE.size+accTrades(ACTIVE.id).reduce((a,x)=>a+(num(x.pnl)||0),0)}
+// Prop firm : seuls les trades de l'étape en cours comptent (chaque étape repart de la taille du compte).
+function currentCapital(){const sn=ACTIVE&&SNAPS[ACTIVE.id];if(sn)return sn.equity;
+  const from=isOwn(ACTIVE)?"0000-00-00":(ACTIVE.phaseStart||"0000-00-00");
+  return ACTIVE.size+accTrades(ACTIVE.id).filter(x=>x.date>=from).reduce((a,x)=>a+(num(x.pnl)||0),0)}
+// Coût d'un lot pour un stop : mouvement × contrat + commission aller-retour.
+const lotCost=(stop,p)=>stop*p.contract+(num(p.commission)||0);
 // Jours tradés de l'étape : un jour compte dès qu'il porte un trade, aujourd'hui compris.
 function tradedDays(){const from=ACTIVE.phaseStart||"0000-00-00";return new Set(accTrades(ACTIVE.id).filter(x=>x.date>=from).map(x=>x.date))}
 // Risque du palier (fonds propres), comme le Calculateur XAU : départ ÷ N jusqu'à 500 $, puis 4, 2 et 1 %.
@@ -217,35 +234,49 @@ function calc(){
     if(cap<=p.floor)alerts.push(["stop","Plancher de "+money(p.floor)+" atteint : plus de trade réel, retour en démo."]);
     else if(toFloor<=2*risk)alerts.push(["warn","Plus que "+Math.max(0,Math.floor(toFloor/risk))+" perte(s) avant le plancher."]);
   }else{
+    // Prop firm. Tout est en % de la taille du compte, pour qu'un compte de 6 000 $ et un de 100 000 $
+    // se calculent chacun avec leurs propres montants.
     const size=ACTIVE.size, phase=S.phase, pct=phase==="1"?p.t1:phase==="2"?p.t2:p.tf;
-    const target=size*pct/100, floor=size*(1-p.max/100), dailyLim=size*p.daily/100;
+    const sn=todaySnap(), lossToday=sn?sn.dailyLoss:-netToday; // > 0 : perte du jour (MT5 : flottant compris)
+    const cur=currentCapital(), floor=size*(1-p.max/100), maxLeft=cur-floor;
+    const firmDaily=(p.dailybase==="daystart"?bal:size)*p.daily/100, firmLeft=firmDaily-lossToday;
+    const baseRisk=size*p.riskp/100, reduced=bal-size<=-size*p.redatp/100;
+    risk=reduced?size*p.riskredp/100:baseRisk;
+    const dayStop=p.daystopr*baseRisk, personalLeft=dayStop-Math.max(0,lossToday);
+    // Plafond : une perte pleine ne doit jamais toucher la limite du jour ni la perte max (10 % de marge pour glissement et spread).
+    const room=Math.min(firmLeft,maxLeft), capped=risk>0.9*room;if(capped)risk=Math.max(0,0.9*room);
+    const target=size*pct/100, profit=cur-size, remaining=target-profit, hasTarget=pct>0;
     const days=tradedDays(), daysDone=days.size, daysBefore=[...days].filter(d=>d<todayStr()).length;
-    const daysLeft=phase==="f"?1:Math.max(1,p.mindays-daysBefore);
-    const profit=bal-size, remaining=target-profit, dayTarget=remaining>0?remaining/daysLeft:0;
-    const reduced=profit<=-p.redat;risk=reduced?p.riskred:p.risk;
-    const margin=currentCapital()-floor;if(risk>margin-5)risk=Math.max(0,margin-5);
-    $("#t-meta").textContent="Compte "+money(size)+" · objectif "+fmt(pct,1)+" % ("+money(target)+") · plancher "+money(floor);
-    cells.push(cellEl("Risque par trade",money2(risk),reduced?"Risque réduit : compte à "+money(profit):"Risque normal","hero"));
-    cells.push(cellEl("Objectif de l’étape",remaining>0?money(remaining):"Atteint",remaining>0?"Progression "+money(profit)+" sur "+money(target):"Micro-trades jusqu’au jour minimum"));
-    cells.push(cellEl("Objectif du jour",remaining>0?money(dayTarget):"—",remaining>0?"Sur "+daysLeft+" jour"+(daysLeft>1?"s":"")+" restant"+(daysLeft>1?"s":""):""));
+    const daysLeft=Math.max(1,p.mindays-daysBefore), dayTarget=hasTarget?Math.max(0,(target-(bal-size))/daysLeft):0;
+    $("#t-meta").textContent=[ACTIVE.firm,ACTIVE.model].filter(Boolean).join(" ")+" · "+money(size)+(hasTarget?" · objectif "+fmt(pct,1)+" % ("+money(target)+")":" · pas d’objectif")+" · plancher "+money(floor);
+    cells.push(cellEl("Risque par trade",money2(risk),capped?"Plafonné par la marge restante":fmt(100*risk/size,2)+" % de la taille"+(reduced?" · risque réduit":""),"hero"));
+    if(hasTarget){
+      cells.push(cellEl("Objectif de l’étape",remaining>0?money(remaining):"Atteint",remaining>0?"Progression "+(profit>=0?"+":"−")+money(Math.abs(profit))+" sur "+money(target):"Micro-trades jusqu’au jour minimum"));
+      cells.push(cellEl("Objectif du jour",remaining>0?money(dayTarget):"—",remaining>0?"Reste de l’objectif ÷ "+daysLeft+" jour"+(daysLeft>1?"s":"")+(p.mindays-daysBefore>0?" minimum restant"+(daysLeft>1?"s":""):""):""));
+    }else cells.push(cellEl("Résultat du cycle",(profit>=0?"+":"−")+money2(Math.abs(profit)),"Compte financé : pas d’objectif"));
     cells.push(cellEl("Jours tradés",phase==="f"?String(daysDone):daysDone+" / "+p.mindays,tt.length?"Aujourd’hui compté":"Compté au premier trade du jour"));
-    cells.push(cellEl("Marge avant perte max",money(margin),"≈ "+(risk>0?Math.floor(margin/(risk+5)):0)+" pertes · limite du jour "+money(dailyLim+Math.min(0,netToday))));
+    cells.push(cellEl("Perte du jour (firme)","reste "+money(Math.max(0,firmLeft)),"Limite "+money(firmDaily)+(p.dailybase==="daystart"?" sur le solde du matin":" sur la taille")+" · "+(lossToday>0?"perdu ":"gagné ")+money2(Math.abs(lossToday))+(sn?" (MT5)":" (journal)")));
+    cells.push(cellEl("Arrêt personnel","reste "+money(Math.max(0,personalLeft)),fmt(p.daystopr,1)+" R = "+money(dayStop)+" par jour"));
+    cells.push(cellEl("Marge avant perte max",money(maxLeft),"Plancher "+money(floor)+" · ≈ "+(risk>0?Math.max(0,Math.floor(maxLeft/risk)):0)+" pertes pleines"));
     cells.push(cellEl("Aujourd’hui",(netToday>=0?"+":"−")+money2(Math.abs(netToday)),tt.length+"/"+p.maxtrades+" trades · "+lossesToday+"/"+p.maxloss+" pertes"));
-    if(remaining<=0)alerts.push(["go","Objectif de l’étape atteint. Faites seulement des micro-trades jusqu’au nombre de jours minimum."]);
-    if(reduced)alerts.push(["warn","Le compte est à "+money(profit)+" : risque réduit à "+money(p.riskred)+" par trade."]);
-    if(margin<=p.risk)alerts.push(["stop","Marge presque épuisée : un seul trade de plus peut faire perdre le compte."]);
+    if(hasTarget&&remaining<=0)alerts.push(["go",daysDone>=p.mindays?"Objectif de l’étape atteint et jours minimum faits : demandez le passage à l’étape suivante.":"Objectif de l’étape atteint. Faites seulement des micro-trades jusqu’au nombre de jours minimum ("+daysDone+"/"+p.mindays+")."]);
+    if(reduced)alerts.push(["warn","Le compte est à "+money(bal-size)+" : risque réduit à "+fmt(p.riskredp,2)+" % ("+money2(size*p.riskredp/100)+")."]);
+    if(maxLeft<=0)alerts.push(["stop","Perte maximale atteinte : le compte est perdu selon les règles de la firme."]);
+    else if(firmLeft<=0)alerts.push(["stop","Limite de perte journalière de la firme atteinte : plus aucun trade aujourd’hui."]);
+    else if(capped&&risk<baseRisk*0.5)alerts.push(["stop","Marge trop faible pour un trade normal aujourd’hui : une perte ferait toucher une limite de la firme."]);
+    else if(lossToday>=firmDaily*0.8)alerts.push(["stop","Vous êtes à plus de 80 % de la perte journalière de la firme."]);
+    if(personalLeft<=0)alerts.push(["stop","Arrêt personnel atteint ("+fmt(p.daystopr,1)+" R) : arrêt jusqu’à demain."]);
     if(lossesToday>=p.maxloss)alerts.push(["stop","Arrêt pour aujourd’hui : "+lossesToday+" pertes."]);
     else if(tt.length>=p.maxtrades)alerts.push(["stop","Limite de "+p.maxtrades+" trades atteinte pour aujourd’hui."]);
-    if(remaining>0&&netToday>=dayTarget&&tt.length>0)alerts.push(["go","Objectif du jour atteint : arrêtez de trader aujourd’hui."]);
-    if(-netToday>=dailyLim*0.8)alerts.push(["stop","Vous approchez de la limite de perte journalière."]);
+    if(hasTarget&&remaining>0&&netToday>=dayTarget&&tt.length>0)alerts.push(["go","Objectif du jour atteint : arrêtez de trader aujourd’hui."]);
   }
   $("#ticket-out").replaceChildren(...cells);
   DAY_RISK=risk;
   // Lot rapide : le seul calcul à saisir (le Calculateur XAU le fait dans MT5).
   const stop=num(QUICK_STOP), q=$("#quick-out");CALC={lot:NaN,stop:NaN};
   if(Number.isFinite(stop)&&stop>0&&risk>0){
-    const lot=Math.floor(risk/(stop*p.contract)*100+1e-9)/100;CALC={lot,stop};
-    q.replaceChildren(el("b",{text:fmt(lot,2)+" lot"}),document.createTextNode(" · risque réel "+money2(lot*stop*p.contract)+" · 2R à "+fmt(stop*2,2)+" $ de mouvement"));
+    const lot=Math.floor(risk/lotCost(stop,p)*100+1e-9)/100;CALC={lot,stop};
+    q.replaceChildren(el("b",{text:fmt(lot,2)+" lot"}),document.createTextNode(" · risque réel "+money2(lot*lotCost(stop,p))+((num(p.commission)||0)>0?" commission comprise":"")+" · 2R à "+fmt(stop*2,2)+" $ de mouvement"));
     if(lot<0.01)alerts.push(["stop","Stop trop large pour ce risque : le lot tombe sous 0,01."]);
     if(stop<1.5||stop>8)alerts.push(["warn","Stop hors de la plage 1,50 – 8,00 $ : passez votre tour ou attendez l’ordre limite."]);
   }else q.textContent="Risque "+money2(risk)+" par trade : saisissez la distance du stop pour le lot.";
@@ -274,7 +305,7 @@ function renderFeu(){
 $("#btn-log").addEventListener("click",()=>{
   resetTradeForm();
   if(Number.isFinite(CALC.stop))$("#tf-stop").value=CALC.stop;
-  if(Number.isFinite(CALC.lot)){$("#tf-lot").value=CALC.lot;if(Number.isFinite(CALC.stop))$("#tf-risk").value=(CALC.lot*CALC.stop*ACTIVE.params.contract).toFixed(2)}
+  if(Number.isFinite(CALC.lot)){$("#tf-lot").value=CALC.lot;if(Number.isFinite(CALC.stop))$("#tf-risk").value=(CALC.lot*lotCost(CALC.stop,ACTIVE.params)).toFixed(2)}
   showTab("journal");$("#tf-r").focus();
 });
 
@@ -692,7 +723,7 @@ function resetTradeForm(){
   ["stop","lot","risk","r","pnl","link","notes"].forEach(k=>$("#tf-"+k).value="");
   ["onlevel","bias","rules"].forEach(k=>$("#tf-"+k).checked=false);
   setCapture(null);
-  if(ACTIVE)$("#tf-risk").value=S.risk;
+  if(ACTIVE)$("#tf-risk").value=Number.isFinite(DAY_RISK)?DAY_RISK.toFixed(2):S.risk;
 }
 $("#tf-pnl").addEventListener("input",()=>{pnlTouched=true});
 function autoPnl(){const r=num($("#tf-r").value),k=num($("#tf-risk").value);if(!pnlTouched&&Number.isFinite(r)&&Number.isFinite(k))$("#tf-pnl").value=(r*k).toFixed(2)}
@@ -907,11 +938,12 @@ function mcPhase(o,pct,risk,draw){
     const dayTarget=remaining/Math.max(1,o.mindays-days);
     let pnl=0,losses=0;
     for(let t=0;t<o.tpd;t++){
-      let rk=bal-size<=-o.redat?o.riskred:risk;const margin=bal-floor;if(rk>margin-5)rk=Math.max(0,margin-5);
-      if(rk<=0)return {ok:false,days};
+      let rk=bal-pnl-size<=-size*o.redatp/100?risk*o.riskredp/o.riskp:risk;const room=Math.min(bal-floor,dailyLim+pnl);if(rk>0.9*room)rk=Math.max(0,0.9*room);
+      if(rk<=0)break;
       const r=draw(),p=r*rk;bal+=p;pnl+=p;
       if(bal<=floor||-pnl>=dailyLim)return {ok:false,days:days+1};
       if(r<0&&++losses>=o.maxloss)break;
+      if(-pnl>=o.daystopr*risk)break;
       if(pnl>=dayTarget)break;
     }
     days++;
@@ -926,7 +958,9 @@ $("#mc-run").addEventListener("click",()=>{
   if(hyp&&!(wr>0&&wr<1&&avg>0)){toast("Indiquez une réussite entre 1 et 99 % et un gain moyen positif.");return}
   const draw=hyp?()=>Math.random()<wr?avg:-1:()=>rs[Math.floor(Math.random()*rs.length)];
   const o=Object.assign({},S,{tpd:Math.min(tpd,S.maxtrades)});
-  const funded=S.phase==="f", risks=[...new Set([25,35,50,75,100,S.risk])].sort((a,b)=>a-b);
+  const funded=S.phase==="f", risks=[...new Set([0.25,0.5,0.75,1,1.5,2].map(x=>Math.round(S.size*x)/100).concat(S.risk))].sort((a,b)=>a-b);
+  if(!funded&&!((S.phase==="2"?S.t2:S.t1)>0)){toast("Objectif de l’étape à 0 % : rien à simuler.");return}
+  if(funded&&!(S.tf>0)){toast("Compte financé sans objectif : la simulation demande un objectif par cycle.");return}
   const rows=risks.map(risk=>{
     let p1=0,both=0,lost=0;const d1=[];
     for(let i=0;i<MC_RUNS;i++){
@@ -945,7 +979,7 @@ $("#mc-run").addEventListener("click",()=>{
   const head=el("tr",null,el("th",{text:"Risque par trade"}),el("th",{text:"Réussite "+(funded?"du cycle":S.phase==="2"?"phase 2":"phase 1")}));
   if(S.phase==="1")head.append(el("th",{text:"Deux phases"}));
   head.append(el("th",{text:funded?"Compte perdu":S.phase==="2"?"Perdu en phase 2":"Perdu en phase 1"}),el("th",{text:"Jours (médiane)"}));
-  const body=rows.map(r=>{const tr=el("tr",{class:r.risk===S.risk?"cur":""},el("td",{text:money(r.risk)+(r.risk===S.risk?" (actuel)":"")}),el("td",{class:"ok",text:pc(r.p1)}));
+  const body=rows.map(r=>{const tr=el("tr",{class:r.risk===S.risk?"cur":""},el("td",{text:money(r.risk)+" ("+fmt(100*r.risk/S.size,2)+" %)"+(r.risk===S.risk?" (actuel)":"")}),el("td",{class:"ok",text:pc(r.p1)}));
     if(S.phase==="1")tr.append(el("td",{class:"ok",text:pc(r.both)}));
     tr.append(el("td",{class:"ko",text:pc(r.lost)}),el("td",{text:Number.isFinite(r.days)?String(r.days):"—"}));return tr});
   $("#mc-out").replaceChildren(sum,el("div",{class:"scroll-x"},el("table",{class:"mc-table"},el("thead",null,head),el("tbody",null,...body))),
@@ -988,12 +1022,31 @@ function renderAccounts(){
   }));
   renderPayouts();
 }
+// Règles publiques des modèles (à vérifier sur le tableau de bord de la firme : elles changent) et gestion conseillée.
+const AF_PRESETS={
+  fn2:{model:"Stellar 2-Step",t1:8,t2:5,tf:0,daily:5,dailybase:"initial",max:10,mindays:5,riskp:0.5,riskredp:0.25,redatp:3,daystopr:2},
+  fn1:{model:"Stellar 1-Step",t1:10,t2:10,tf:0,daily:3,dailybase:"initial",max:6,mindays:2,riskp:0.5,riskredp:0.25,redatp:2,daystopr:2},
+  fnl:{model:"Stellar Lite",t1:8,t2:4,tf:0,daily:4,dailybase:"initial",max:8,mindays:5,riskp:0.5,riskredp:0.25,redatp:3,daystopr:2}};
+const AF_RULES=["t1","t2","tf","daily","max","mindays","commission","riskp","riskredp","redatp","daystopr","maxtrades","maxloss"];
+function afFill(p){AF_RULES.forEach(k=>{if(p[k]!=null)$("#af-"+k).value=p[k]});if(p.dailybase)$("#af-dailybase").value=p.dailybase;afCheck()}
+// Contrôle immédiat : montants en $ pour la taille saisie, et arrêt personnel contre la limite de la firme.
+function afCheck(){
+  const size=num($("#af-size").value), g=k=>num($("#af-"+k).value), h=$("#af-check");
+  if(!(size>0)){h.textContent="";return}
+  const r=size*g("riskp")/100, d=size*g("daily")/100, ds=g("daystopr")*r;
+  h.className="hint"+(ds>d||g("riskredp")>g("riskp")||g("redatp")>=g("max")?" warn":"");
+  h.textContent="Sur "+money(size)+" : risque "+money2(r)+" par trade, réduit à "+money2(size*g("riskredp")/100)+" sous −"+money(size*g("redatp")/100)+", arrêt personnel "+money2(ds)+" par jour, perte journalière de la firme "+money(d)+", plancher "+money(size*(1-g("max")/100))+"."+(ds>d?" L’arrêt personnel dépasse la limite de la firme : baissez le risque ou le nombre de R.":"")+(g("riskredp")>g("riskp")?" Le risque réduit dépasse le risque normal.":"")+(g("redatp")>=g("max")?" Le seuil de réduction doit être sous la perte maximale.":"");
+}
+$("#af-preset").addEventListener("change",e=>{const p=AF_PRESETS[e.target.value];if(!p)return;afFill(p);$("#af-model").value=p.model;if(!$("#af-firm").value)$("#af-firm").value="FundedNext"});
+["#af-size",...AF_RULES.map(k=>"#af-"+k)].forEach(id=>$(id).addEventListener("input",afCheck));
 function openAccForm(a){
   ACC_EDIT=a?a.id:null;$("#acc-form").hidden=false;$("#af-title").textContent=a?"Modifier le compte":"Nouveau compte";
   $("#af-kind").value=a?(isOwn(a)?"propre":"propfirm"):"propre";afKind();
   $("#af-name").value=a?a.name:"";$("#af-firm").value=a?a.firm:($("#af-kind").value==="propre"?"Deriv":"FundedNext");$("#af-model").value=a?a.model:"Stellar 2-Step";
   $("#af-size").value=a?a.size:($("#af-kind").value==="propre"?250:6000);$("#af-price").value=a?a.price:"";$("#af-status").value=a?a.status:"phase1";
   $("#af-date").value=a?(a.purchaseDate||""):todayStr();$("#af-phase").value=a?(a.phaseStart||""):todayStr();
+  $("#af-preset").value="";
+  afFill(a&&!isOwn(a)?a.params:Object.assign({commission:0,maxtrades:3,maxloss:2},AF_PRESETS.fn2));
   $("#acc-form").scrollIntoView({behavior:"smooth",block:"start"});$("#af-name").focus();
 }
 // Le formulaire s'adapte au type : courtier et capital de départ, ou prop firm, modèle, prix et étape.
@@ -1001,8 +1054,8 @@ function afKind(){const own=$("#af-kind").value==="propre";
   $$("#acc-form .af-prop").forEach(e=>{e.hidden=own});
   $("#af-firm-l").textContent=own?"Courtier":"Prop firm";$("#af-size-l").textContent=own?"Capital de départ ($)":"Taille ($)";
   $("#af-date-l").textContent=own?"Date d’ouverture":"Date d’achat";$("#af-firm").placeholder=own?"Deriv, Exness…":"FundedNext";
-  $("#af-hint").textContent=own?"Fonds propres : risque = capital de départ ÷ 12, plancher à la moitié du départ, retrait de 50 % du gain chaque mois. Modifiables dans l’onglet Jour.":"Les paramètres de risque d’un nouveau compte reprennent ceux du compte actif. Ils se modifient dans l’onglet Jour."}
-$("#af-kind").addEventListener("change",()=>{afKind();if(!ACC_EDIT){const own=$("#af-kind").value==="propre";$("#af-size").value=own?250:6000;$("#af-firm").value=own?"Deriv":"FundedNext"}});
+  $("#af-hint").textContent=own?"Fonds propres : risque = capital de départ ÷ 12, plancher à la moitié du départ, retrait de 50 % du gain chaque mois. Modifiables dans l’onglet Jour.":"Chaque compte a ses propres règles et son propre risque, en % de sa taille. Modifiables ensuite dans l’onglet Jour."}
+$("#af-kind").addEventListener("change",()=>{afKind();if(!ACC_EDIT){const own=$("#af-kind").value==="propre";$("#af-size").value=own?250:6000;$("#af-firm").value=own?"Deriv":"FundedNext";afCheck()}});
 $("#acc-new").addEventListener("click",()=>openAccForm(null));
 $("#af-cancel").addEventListener("click",()=>{$("#acc-form").hidden=true;ACC_EDIT=null});
 $("#af-save").addEventListener("click",async()=>{
@@ -1014,7 +1067,13 @@ $("#af-save").addEventListener("click",async()=>{
     const base=ACC_EDIT?(ACCOUNTS.find(x=>x.id===ACC_EDIT)||{}).params:(ACTIVE?ACTIVE.params:{});
     body.params=Object.assign({},base,{kind:"propre"},ACC_EDIT&&isOwn(ACCOUNTS.find(x=>x.id===ACC_EDIT))?{start:sz}:{start:sz,budget:12,floor:Math.round(sz/2),withdraw:50,daystopr:2,weekloss:4,weekstopr:4,maxloss:2,maxtrades:3});
     body.price=0;}
-  else{if(!ACC_EDIT&&ACTIVE)body.params=Object.assign({},ACTIVE.params,{kind:"propfirm"});else if(ACC_EDIT)body.params=Object.assign({},(ACCOUNTS.find(x=>x.id===ACC_EDIT)||{}).params,{kind:"propfirm"})}
+  else{
+    // Prop firm : les règles viennent du formulaire, jamais du compte actif.
+    const rules={kind:"propfirm",dailybase:$("#af-dailybase").value};
+    for(const k of AF_RULES){rules[k]=num($("#af-"+k).value);if(!Number.isFinite(rules[k])){toast("Règle du challenge manquante : vérifiez chaque champ.");return}}
+    const old=ACC_EDIT?(ACCOUNTS.find(x=>x.id===ACC_EDIT)||{}).params:{};
+    body.params=Object.assign({},isOwn({params:old})?{}:old,rules);
+  }
   const btn=$("#af-save");btn.disabled=true;
   try{const a=await api(ACC_EDIT?"accounts/"+ACC_EDIT:"accounts",{method:ACC_EDIT?"PUT":"POST",body});
     ACCOUNTS=await api("accounts");setActive();fillAccountSelects();$("#acc-form").hidden=true;

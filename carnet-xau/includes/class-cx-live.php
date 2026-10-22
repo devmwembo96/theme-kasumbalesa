@@ -252,7 +252,9 @@ class CX_Live {
 			$own   = CX_Repo::own_risk( $cap, $pa );
 			$out[] = 'R|' . self::n( $own['risk'] ) . '|' . self::n( $own['risk'] ) . '|' . self::n( 1e7 ) . '|' . self::n( $pa['contract'] ) . '|' . (int) $pa['maxtrades'] . '|' . (int) $pa['maxloss'] . '|' . self::n( $pa['spreadmax'] ) . '|' . self::n( self::STOP_MIN ) . '|' . self::n( self::STOP_MAX ) . '|' . self::n( $pa['daystopr'] * $own['risk'] ) . '|' . self::n( $cap ) . '|' . self::n( $pa['floor'] );
 		} else {
-			$out[] = 'R|' . self::n( $pa['risk'] ) . '|' . self::n( $pa['riskred'] ) . '|' . self::n( $pa['redat'] ) . '|' . self::n( $pa['contract'] ) . '|' . (int) $pa['maxtrades'] . '|' . (int) $pa['maxloss'] . '|' . self::n( $pa['spreadmax'] ) . '|' . self::n( self::STOP_MIN ) . '|' . self::n( self::STOP_MAX ) . '|' . self::n( $acc['size'] * $pa['daily'] / 100 ) . '|' . self::n( $acc['size'] ) . '|' . self::n( $acc['size'] * ( 1 - $pa['max'] / 100 ) );
+			// Prop firm : limite du jour = la plus basse entre la perte journalière de la firme et l'arrêt personnel en R.
+			$lim   = CX_Repo::prop_limits( $acc, ( (array) CX_Ingest::latest_snapshots() )[ $acc['id'] ] ?? null );
+			$out[] = 'R|' . self::n( $pa['risk'] ) . '|' . self::n( $pa['riskred'] ) . '|' . self::n( $pa['redat'] ) . '|' . self::n( $pa['contract'] ) . '|' . (int) $pa['maxtrades'] . '|' . (int) $pa['maxloss'] . '|' . self::n( $pa['spreadmax'] ) . '|' . self::n( self::STOP_MIN ) . '|' . self::n( self::STOP_MAX ) . '|' . self::n( min( $lim['firm_daily'], $lim['day_stop'] ) ) . '|' . self::n( $acc['size'] ) . '|' . self::n( $lim['floor'] );
 		}
 		$today = CX_Repo::clock( 'Y-m-d' );
 		$tt    = array_filter( CX_Repo::trades( $acc['id'] ), fn( $t ) => $t['date'] === $today );

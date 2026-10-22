@@ -71,6 +71,7 @@ defined( 'ABSPATH' ) || exit;
 			<label class="f">Perte max de la semaine (R)<input id="s-weekstopr" type="number" step="0.5"></label>
 			<label class="f">Trades max par jour<input id="s-maxtrades-o" type="number" step="1"></label>
 			<label class="f">Contrat or (onces par lot)<input id="s-contract-o" type="number" step="1"></label>
+			<label class="f">Commission aller-retour ($ par lot)<input id="s-commission-o" type="number" step="0.5"></label>
 		</div>
 		<div class="grid g3" id="set-prop" style="margin-top:12px">
 			<label class="f">Étape<select id="s-phase"><option value="phase1">Phase 1</option><option value="phase2">Phase 2</option><option value="finance">Compte financé</option><option value="echoue">Échoué</option><option value="retire">Retiré</option></select></label>
@@ -78,17 +79,21 @@ defined( 'ABSPATH' ) || exit;
 			<label class="f">Jours minimum par phase<input id="s-mindays" type="number" step="1"></label>
 			<label class="f">Objectif phase 1 (%)<input id="s-t1" type="number" step="0.1"></label>
 			<label class="f">Objectif phase 2 (%)<input id="s-t2" type="number" step="0.1"></label>
-			<label class="f">Objectif par cycle financé (%)<input id="s-tf" type="number" step="0.1"></label>
-			<label class="f">Perte journalière (%)<input id="s-daily" type="number" step="0.1"></label>
-			<label class="f">Perte maximale (%)<input id="s-max" type="number" step="0.1"></label>
-			<label class="f">Contrat or (onces par lot)<input id="s-contract" type="number" step="1"></label>
-			<label class="f">Risque par trade ($)<input id="s-risk" type="number" step="1"></label>
-			<label class="f">Risque réduit ($)<input id="s-riskred" type="number" step="1"></label>
-			<label class="f">Réduire si le compte est à −… ($)<input id="s-redat" type="number" step="1"></label>
+			<label class="f">Objectif compte financé (%, 0 = aucun)<input id="s-tf" type="number" step="0.1"></label>
+			<label class="f">Perte journalière de la firme (%)<input id="s-daily" type="number" step="0.1"></label>
+			<label class="f">Calculée sur<select id="s-dailybase"><option value="initial">la taille du compte</option><option value="daystart">le solde du début de journée</option></select></label>
+			<label class="f">Perte maximale fixe (%)<input id="s-max" type="number" step="0.1"></label>
+			<label class="f">Risque par trade (% de la taille)<input id="s-riskp" type="number" step="0.05"></label>
+			<label class="f">Risque réduit (% de la taille)<input id="s-riskredp" type="number" step="0.05"></label>
+			<label class="f">Réduire si le compte est à −… (%)<input id="s-redatp" type="number" step="0.5"></label>
+			<label class="f">Arrêt personnel du jour (R)<input id="s-daystopr-p" type="number" step="0.5"></label>
 			<label class="f">Trades max par jour<input id="s-maxtrades" type="number" step="1"></label>
 			<label class="f">Pertes max par jour<input id="s-maxloss" type="number" step="1"></label>
+			<label class="f">Commission aller-retour ($ par lot)<input id="s-commission" type="number" step="0.5"></label>
+			<label class="f">Contrat or (onces par lot)<input id="s-contract" type="number" step="1"></label>
 			<label class="f">Spread max (% du stop)<input id="s-spreadmax" type="number" step="1"></label>
 		</div>
+		<p class="hint" id="s-prop-hint"></p>
 		<div class="row" style="margin-top:12px"><button type="button" class="btn" id="btn-settings">Enregistrer les paramètres</button></div>
 	</details>
 </section>
@@ -236,6 +241,31 @@ defined( 'ABSPATH' ) || exit;
 			<label class="f af-prop">Statut<select id="af-status"><option value="phase1">Phase 1</option><option value="phase2">Phase 2</option><option value="finance">Financé</option><option value="echoue">Échoué</option><option value="retire">Retiré</option></select></label>
 			<label class="f"><span id="af-date-l">Date d’achat</span><input id="af-date" type="date"></label>
 			<label class="f af-prop">Début de l’étape en cours<input id="af-phase" type="date"></label>
+		</div>
+		<div class="af-prop" id="af-rules">
+			<h4 style="margin:14px 0 6px">Règles du challenge</h4>
+			<p class="hint" style="margin:0 0 8px">Choisissez un modèle pour pré-remplir, puis vérifiez chaque valeur sur le tableau de bord de la firme : les règles changent.</p>
+			<div class="grid g3">
+				<label class="f">Pré-remplir avec<select id="af-preset"><option value="">— garder les valeurs —</option><option value="fn2">FundedNext Stellar 2-Step</option><option value="fn1">FundedNext Stellar 1-Step</option><option value="fnl">FundedNext Stellar Lite</option></select></label>
+				<label class="f">Objectif phase 1 (%)<input id="af-t1" type="number" step="0.1"></label>
+				<label class="f">Objectif phase 2 (%)<input id="af-t2" type="number" step="0.1"></label>
+				<label class="f">Objectif compte financé (%, 0 = aucun)<input id="af-tf" type="number" step="0.1"></label>
+				<label class="f">Perte journalière de la firme (%)<input id="af-daily" type="number" step="0.1"></label>
+				<label class="f">Calculée sur<select id="af-dailybase"><option value="initial">la taille du compte</option><option value="daystart">le solde du début de journée</option></select></label>
+				<label class="f">Perte maximale fixe (%)<input id="af-max" type="number" step="0.1"></label>
+				<label class="f">Jours minimum par phase<input id="af-mindays" type="number" step="1"></label>
+				<label class="f">Commission aller-retour ($ par lot)<input id="af-commission" type="number" step="0.5"></label>
+			</div>
+			<h4 style="margin:14px 0 6px">Votre gestion du risque sur ce compte</h4>
+			<div class="grid g3">
+				<label class="f">Risque par trade (% de la taille)<input id="af-riskp" type="number" step="0.05"></label>
+				<label class="f">Risque réduit (% de la taille)<input id="af-riskredp" type="number" step="0.05"></label>
+				<label class="f">Réduire si le compte est à −… (%)<input id="af-redatp" type="number" step="0.5"></label>
+				<label class="f">Arrêt personnel du jour (R)<input id="af-daystopr" type="number" step="0.5"></label>
+				<label class="f">Trades max par jour<input id="af-maxtrades" type="number" step="1"></label>
+				<label class="f">Pertes max par jour<input id="af-maxloss" type="number" step="1"></label>
+			</div>
+			<p class="hint" id="af-check" style="margin-top:8px"></p>
 		</div>
 		<p class="hint" style="margin-top:10px" id="af-hint">Les paramètres de risque d’un nouveau compte reprennent ceux du compte actif. Ils se modifient dans l’onglet Jour.</p>
 		<div class="row">

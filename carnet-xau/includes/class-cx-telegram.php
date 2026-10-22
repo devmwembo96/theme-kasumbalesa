@@ -530,7 +530,10 @@ class CX_Telegram {
 		$tt    = array_filter( CX_Repo::trades( $a['id'] ), fn( $t ) => $t['date'] === $today );
 		$pnl   = array_sum( array_map( fn( $t ) => (float) $t['pnl'], $tt ) );
 		$loss  = count( array_filter( $tt, fn( $t ) => $t['r'] < 0 ) );
-		$lim   = $a['size'] * $a['params']['daily'] / 100;
+		$sn    = ( (array) CX_Ingest::latest_snapshots() )[ $a['id'] ] ?? null;
+		$lim   = 'propre' === ( $a['params']['kind'] ?? 'propfirm' )
+			? $a['params']['daystopr'] * CX_Repo::own_risk( $sn ? (float) $sn['balance'] : (float) $a['size'], $a['params'] )['risk']
+			: CX_Repo::prop_limits( $a, $sn )['firm_daily'];
 		$lines = array(
 			'<b>' . esc_html( $a['name'] ) . '</b> — ' . wp_date( 'l j F', null, CX_Repo::tz() ),
 			sprintf( 'Trades : %d/%d · pertes : %d/%d', count( $tt ), $a['params']['maxtrades'], $loss, $a['params']['maxloss'] ),
@@ -851,7 +854,8 @@ class CX_Telegram {
 			$cap  = $snap ? (float) $snap['balance'] + (float) $loss : (float) $a['size'];
 			$lim  = $pa['daystopr'] * CX_Repo::own_risk( $cap, $pa )['risk'];
 		} else {
-			$lim = $a['size'] * $pa['daily'] / 100;
+			// Prop firm : perte journalière de la firme (taille ou solde du début de journée).
+			$lim = CX_Repo::prop_limits( $a, ( (array) CX_Ingest::latest_snapshots() )[ $account_id ] ?? null )['firm_daily'];
 		}
 		if ( $lim <= 0 ) {
 			return;
