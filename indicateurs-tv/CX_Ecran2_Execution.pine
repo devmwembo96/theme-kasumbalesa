@@ -6,159 +6,27 @@
 //
 //  Tiré du script combiné « SMC TFlab + IMFVG + FDAM ». Rien n'est ajouté au calcul : on enlève.
 //   BASE    : Smart Money Concept [TradingFinder] — structure Major (BoS / ChoCh) affichée,
-//             Minor masquée ; Order Blocks raffinés ; FVG filtré ; liquidité statique / dynamique
+//             Minor masquée ; liquidité statique / dynamique. Order Blocks et FVG retirés.
 //   AJOUT 1 : EQH / EQL seuls (SMC LuxAlgo)
 //   AJOUT 2 : IMFVG (LuxAlgo) — zone, moyenne et repère ▲▼ seuls
-//  Retirés : Highs & Lows MTF et Premium/Discount (doublons de l'écran 1), TP/SL, trailing stop et
-//            coloration des bougies de l'IMFVG, FDAM (ajout 3), FVG Screener (ajout 4),
-//            Liquidity Trendline (ajout 5, doublon de la liquidité dynamique TradingFinder).
+//   AJOUT 6 : Liquidity Defense Zones (LDZ) by JPT — intact, tous ses réglages (converti v6 → v5)
+//  Retirés : Order Blocks et FVG TradingFinder (remplacés par LDZ), Highs & Lows MTF et
+//            Premium/Discount (doublons de l'écran 1), TP/SL, trailing stop et coloration des
+//            bougies de l'IMFVG, FDAM (ajout 3), FVG Screener (ajout 4), Liquidity Trendline (ajout 5).
 // ══════════════════════════════════════════════════════════════════════════════════════════════════ //
 indicator("CX Écran 2 · Exécution", 'CX Exécution', overlay = true, max_bars_back = 5000, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
 
 //import Libraries
-    //import Order Block Refiner
-import TFlab/OrderBlockRefiner_TradingFinder/2 as Refiner
-    //import Order Block Drawing  Library
-import TFlab/OrderBlockDrawing_TradingFinder/1 as Drawing
-    //import FVG  Library
-import TFlab/FVGDetectorLibrary/1 as FVG
     //import Liquidity Library
 import TFlab/LiquidityFinderLibrary/1 as Liq
-    //import Alert Sender Library
-import TFlab/AlertSenderLibrary_TradingFinder/1 as Alert
     //import Tradingview Technical Analysis Library
 import TradingView/ta/7
 
 
 //Input
 
-    //Pivot Period of Order Blocks Detector
-PP = input.int(5, 'Pivot Period of Order Blocks Detector' , group = 'Logic Parameter' , minval = 1)
-OBVaP = input.int(500, 'Order Block Validity Period (Bar)' , group = 'Logic Parameter' , maxval = 4998 , minval = 10,
- tooltip = 'You can set the validity period of each Order Block based on the number of candles that have passed since the origin of the Order Block.')
-    //Display Order Blocks
-
-ShowDmainCh = input.bool(true, 'Demand Main Zone, "ChoCh" Origin.', 
- 'Using this button, you can control whether the' + 
- '"Demand Main Order Blocks" originating to "ChoCh" are displayed.' , group = 'Order Blocks Display', inline = 'OB 1')
-
-ColorDmainCh = input.color(color.rgb(60, 176, 68, 65) , '' , group = 'Order Blocks Display', inline = 'OB 1')
-
-
-ShowDsubCh  = input.bool(true, 'Demand Sub Zone, "ChoCh" Origin..', 
- 'Using this button, you can control whether the' + 
- '"Demand Sub Order Blocks" originating to "ChoCh" are displayed.' , group ='Order Blocks Display', inline = 'OB 2')
-
-ColorDsubCh = input.color(color.rgb(123, 180, 227, 65) , '' , group = 'Order Blocks Display', inline = 'OB 2')
-
-
-ShowDBoS    = input.bool(true, 'Demand All Zone, "BoS" Origin.......', 
- 'Using this button, you can control whether the' + 
- '"Demand Order Blocks" originating to "BoS" are displayed.' , group ='Order Blocks Display', inline = 'OB 3')
-
-ColorDBoS = input.color(color.rgb(153, 237, 195, 75) , '' , group = 'Order Blocks Display', inline = 'OB 3')
-
-
-ShowSmainCh = input.bool(true, 'Supply Main Zone, "ChoCh" Origin...', 
- 'Using this button, you can control whether the' + 
- '"Supply Main Order Blocks" originating to "ChoCh" are displayed.' , group ='Order Blocks Display', inline = 'OB 4')
-
-ColorSmainCh = input.color(color.rgb(191, 10, 48 , 75) , '' , group = 'Order Blocks Display', inline = 'OB 4')
-
-
-ShowSsubCh  = input.bool(true, 'Supply Sub Zone, "ChoCh" Origin....', 
- 'Using this button, you can control whether the' + 
- '"Supply Sub Order Blocks" originating to "ChoCh" are displayed.' , group ='Order Blocks Display', inline = 'OB 5')
-
-ColorSsubCh = input.color(color.rgb(243, 189, 74, 75) , '' , group = 'Order Blocks Display', inline = 'OB 5')
-
-
-ShowSBoS    = input.bool(true, 'Supply All Zone,  "BoS"  Origin.........', 
- 'Using this button, you can control whether the' + 
- '"Supply Order Blocks" originating to "BoS" are displayed.' , group ='Order Blocks Display', inline = 'OB 6')
-
-ColorSBoS = input.color(color.rgb(255, 105, 97, 85) , '' , group = 'Order Blocks Display', inline = 'OB 6')
-
-    //Refinement Order Blocks, display and Method
-
-RefineDmainCh = input.bool(true, 'Refine Demand Main', 
- 'If you want this "Demand Main Order Block, ChoCh Origin" to be refined to display a optimal range,' +
- 'you should select "On" and if you want to see the original' +
- 'range of the block order, you should select "Off".' + 
- '\nAlso, if you are a risk taker, you can choose the "Aggressive" Refine method,' + 
- 'and if you are risk averse, you can choose the "Defensive" Refine method.'
- , group ='Order Blocks Refinement ', inline = 'Refine 1')
-
-RefineMeDmainCh = input.string('Defensive', '', ['Defensive', 'Aggressive'] , 
- group = 'Order Blocks Refinement ' , inline = 'Refine 1')
-
-RefineDsubCh  = input.bool(true, 'Refine Demand Sub.',
- 'If you want this "Demand Sub Order Block, ChoCh Origin" to be refined to display a optimal range,' +
- 'you should select "On" and if you want to see the original' +
- 'range of the block order, you should select "Off".' + 
- '\nAlso, if you are a risk taker, you can choose the "Aggressive" Refine method,' + 
- 'and if you are risk averse, you can choose the "Defensive" Refine method.' 
- , group ='Order Blocks Refinement ', inline = 'Refine 2')
-
-RefineMeDsubCh  = input.string('Defensive', '', ['Defensive', 'Aggressive'] , 
- group = 'Order Blocks Refinement ', inline = 'Refine 2')
-
-RefineDBoS    = input.bool(true, 'Refine Demand BoS.', 
- 'If you want this "Demand Order Block, BoS Origin" to be refined to display a optimal range,' +
- 'you should select "On" and if you want to see the original' +
- 'range of the block order, you should select "Off".' + '\n' +
- '\nAlso, if you are a risk taker, you can choose the "Aggressive" Refine method,' + 
- 'and if you are risk averse, you can choose the "Defensive" Refine method.'
- , group ='Order Blocks Refinement ', inline = 'Refine 3')
-
-RefineMeDBoS    =  input.string('Defensive', '', ['Defensive', 'Aggressive'] , 
- group = 'Order Blocks Refinement ', inline = 'Refine 3')
-
-RefineSmainCh = input.bool(true, 'Refine Supply Main..', 
- 'If you want this "Supply Main Order Block, ChoCh Origin" to be refined to display a optimal range,' +
- 'you should select "On" and if you want to see the original' +
- 'range of the block order, you should select "Off".' + 
- '\nAlso, if you are a risk taker, you can choose the "Aggressive" Refine method,' + 
- 'and if you are risk averse, you can choose the "Defensive" Refine method.' 
- , group ='Order Blocks Refinement ', inline = 'Refine 4')
-
-RefineMeSmainCh = input.string('Defensive', '', ['Defensive', 'Aggressive'] , 
- group = 'Order Blocks Refinement ', inline = 'Refine 4')
-
-RefineSsubCh  = input.bool(true, 'Refine Supply Sub...', 
- 'If you want this "Supply Sub Order Block, ChoCh Origin" to be refined to display a optimal range,' +
- 'you should select "On" and if you want to see the original' +
- 'range of the block order, you should select "Off".' + 
- '\nAlso, if you are a risk taker, you can choose the "Aggressive" Refine method,' + 
- 'and if you are risk averse, you can choose the "Defensive" Refine method.' 
- , group ='Order Blocks Refinement ', inline = 'Refine 5')
-
-RefineMeSsubCh  =  input.string('Defensive', '', ['Defensive', 'Aggressive'] , 
- group = 'Order Blocks Refinement ', inline = 'Refine 5')
-
-RefineSBoS    = input.bool(true, 'Refine Supply BoS...', 
- 'If you want this "Supply Order Block, BoS Origin" to be refined to display a optimal range,' +
- 'you should select "On" and if you want to see the original' +
- 'range of the block order, you should select "Off".' + '\n' +
- '\nAlso, if you are a risk taker, you can choose the "Aggressive" Refine method,' + 
- 'and if you are risk averse, you can choose the "Defensive" Refine method.' 
- , group ='Order Blocks Refinement ', inline = 'Refine 6')
-
-RefineMeSBoS    =  input.string('Defensive', '', ['Defensive', 'Aggressive'] , 
- group = 'Order Blocks Refinement ', inline = 'Refine 6')
-
-
-    //FVG
-
-PShowDeFVG = input.bool(true, ' Show Demand FVG', group = 'FVG')
-PShowSuFVG = input.bool(true, ' Show Supply FVG', group = 'FVG')
-PFVGFilter = input.bool(true, 'FVG Filter ............',  group = 'FVG' , inline = 'FVG Filter')
-PFVGFilterType = input.string('Very Defensive', '', 
- ['Very Aggressive' , 'Aggressive' , 'Defensive' , 'Very Defensive'], group = 'FVG', inline = 'FVG Filter' ,
- tooltip = 'If it is "On", this filter will filter "FVGs" based on the width of the Zone.'  + 
- 'From "Very Aggressive" to "Very Defensive" the width of the "FVG" decreases.')
-
-
+    //Pivot Period (structure BoS / ChoCh)
+PP = input.int(5, 'Pivot Period (BoS / ChoCh)' , group = 'Logic Parameter' , minval = 1)
     //Liquidity
 
 ShowSHLL = input.bool(true , 'Show Statics High Liquidity Line',group = 'Liquidity')
@@ -175,40 +43,6 @@ DLLS = input.float(1.00 , 'Dynamics Liquidity Line Sensitivity',
  maxval = 1.95 ,minval = 0.4, step = 0.01,group = 'Liquidity') // Dynamics Liquidity Line Sensitivity
 
 
-    //Alert
-AlertName = input.string('Smart Money Concept [TradingFinder]', 'Alerts Name', group = 'Alert')
-
-Alert_DMM = input.string('On' , 'Alert Demand Main Mitigation' , ['On', 'Off'], 'If you turn on the Alert Demand Main ChoCh Origin Mitigation,' + 
- 'you can receive alerts and notifications after setting the "Alert".' , group = 'Alert')
-MessageBull_DMM = input.text_area('Long Position in Demand Main Zone ChoCh Origin.', 'Long Signal Message' ,group = 'Alert')
-
-Alert_DSM = input.string('On' , 'Alert Demand Sub Mitigation' , ['On', 'Off'], 'If you turn on the Alert Demand Sub ChoCh Origin Mitigation,' +
- 'you can receive alerts and notifications after setting the "Alert".' , group = 'Alert')
-MessageBull_DSM = input.text_area('Long Position in Demand Sub Zone ChoCh Origin.', 'Long Signal Message' ,group = 'Alert')
-
-Alert_DAM = input.string('On' , 'Alert Demand BoS Mitigation' , ['On', 'Off'], 'If you turn on the Alert Demand All BoS Origin Mitigation,' +
- 'you can receive alerts and notifications after setting the "Alert".' , group = 'Alert')
-MessageBull_DAM = input.text_area('Long Position in Demand Zone BoS Origin.', 'Long Signal Message' ,group = 'Alert')
-
-Alert_SMM = input.string('On' , 'Alert Supply Main Mitigation', ['On', 'Off'], 'If you turn on the Alert Supply Main ChoCh Origin Mitigation,' +
- 'you can receive alerts and notifications after setting the "Alert".' , group = 'Alert')
-MessageBear_SMM = input.text_area('Short Position in Supply Main Zone ChoCh Origin.','Short Signal Message' , group = 'Alert')
-
-Alert_SSM = input.string('On' , 'Alert Supply Sub Mitigation' , ['On', 'Off'], 'If you turn on the Alert Supply Sub ChoCh Origin Mitigation,' +
- 'you can receive alerts and notifications after setting the "Alert".' , group = 'Alert')
-MessageBear_SSM = input.text_area('Short Position in Supply Sub Zone ChoCh Origin.','Short Signal Message' , group = 'Alert')
-
-Alert_SAM = input.string('On' , 'Alert Supply BoS Mitigation' , ['On', 'Off'], 'If you turn on the Alert Supply All BoS Origin Mitigation,' +
- 'you can receive alerts and notifications after setting the "Alert".' , group = 'Alert')
-MessageBear_SAM = input.text_area('Short Position in Supply Zone BoS Origin.','Short Signal Message' , group = 'Alert')
-
-
-Frequncy = input.string('Once Per Bar' , 'Message Frequency' , ['All', 'Once Per Bar' , 'Per Bar Close'], 'The triggering frequency. Possible values are: All'+ 
- ' (all function calls trigger the alert), Once Per Bar (the first function call during the bar triggers the alert), ' +  
- ' Per Bar Close (the function call triggers the alert only when it occurs during the last script iteration of the real-time bar,' +  
- ' when it closes). The default is alert.freq_once_per_bar.)', group = 'Alert')
-UTC = input.string('UTC' , 'Show Alert time by Time Zone', group = 'Alert')
-MoreInfo = input.string('On', 'Display More Info', ['On', 'Off'], group = 'Alert')
 
 
 
@@ -1554,70 +1388,11 @@ else
     BeMBoS_Trigger := false
 
 
-////////////////////////////////////////////////////
-///////////////Order Block Refinement///////////////
-////////////////////////////////////////////////////
-
-    //Demand
-        //Demand Main Zone, ChoCh Origin
-[BuMChMain_Xd1, BuMChMain_Xd2, BuMChMain_Yd12, BuMChMain_Xp1, BuMChMain_Xp2, BuMChMain_Yp12] = 
- Refiner.OBRefiner('Demand', RefineDmainCh ? 'On' : 'Off', RefineMeDmainCh ,BuMChMain_Trigger,  BuMChMain_Index)
-        //Demand Sub Zone, ChoCh Origin
-[BuMChSub_Xd1 , BuMChSub_Xd2 ,  BuMChSub_Yd12, BuMChSub_Xp1 , BuMChSub_Xp2 , BuMChSub_Yp12] = 
- Refiner.OBRefiner('Demand', RefineDsubCh ? 'On' : 'Off', RefineMeDsubCh ,BuMChSub_Trigger,  BuMChSub_Index)
-        //Demand All Zone, BoS Origin
-[BuMBoS_Xd1, BuMBoS_Xd2, BuMBoS_Yd12, BuMBoS_Xp1, BuMBoS_Xp2, BuMBoS_Yp12] = 
- Refiner.OBRefiner('Demand', RefineDBoS ? 'On' : 'Off', RefineMeDBoS,BuMBoS_Trigger, BuMBoS_Index)
-
-    //Supply
-        //Supply Main Zone, ChoCh Origin    
-[BeMChMain_Xd1, BeMChMain_Xd2, BeMChMain_Yd12, BeMChMain_Xp1, BeMChMain_Xp2, BeMChMain_Yp12] = 
- Refiner.OBRefiner('Supply', RefineSmainCh ? 'On' : 'Off', RefineMeSmainCh ,BeMChMain_Trigger,  BeMChMain_Index)
-        //Supply Sub Zone, ChoCh Origin
-[BeMChSub_Xd1 , BeMChSub_Xd2 ,  BeMChSub_Yd12, BeMChSub_Xp1 , BeMChSub_Xp2 , BeMChSub_Yp12] = 
- Refiner.OBRefiner('Supply', RefineSsubCh ? 'On' : 'Off', RefineMeSsubCh ,BeMChSub_Trigger,  BeMChSub_Index)
-        //Supply All Zone, BoS Origin
-[BeMBoS_Xd1, BeMBoS_Xd2, BeMBoS_Yd12, BeMBoS_Xp1, BeMBoS_Xp2, BeMBoS_Yp12] = 
- Refiner.OBRefiner('Supply', RefineSBoS ? 'On' : 'Off', RefineMeSBoS,BeMBoS_Trigger, BeMBoS_Index)
-
-
-/////////////////////////////////////
-///////////////Drawing///////////////
-/////////////////////////////////////
-
-        //OUTPUT ==> Alert Trigger
-[Alert_DMMM] = Drawing.OBDrawing('Demand', BuMChMain_Trigger ,BuMChMain_Yd12, BuMChMain_Yp12 ,BuMChMain_Xd1 , OBVaP  , ShowDmainCh, ColorDmainCh)
-[Alert_DSMM] = Drawing.OBDrawing('Demand', BuMChSub_Trigger  ,BuMChSub_Yd12 , BuMChSub_Yp12  ,BuMChSub_Xd1  , OBVaP  , ShowDsubCh , ColorDsubCh)
-[Alert_DAMM] = Drawing.OBDrawing('Demand', BuMBoS_Trigger    , BuMBoS_Yd12  , BuMBoS_Yp12    , BuMBoS_Xd1   , OBVaP  , ShowDBoS   , ColorDBoS )
-
-[Alert_SMMM] = Drawing.OBDrawing('Supply', BeMChMain_Trigger ,BeMChMain_Yd12, BeMChMain_Yp12 ,BeMChMain_Xd1, OBVaP   , ShowSmainCh, ColorSmainCh)
-[Alert_SSMM] = Drawing.OBDrawing('Supply', BeMChSub_Trigger  ,BeMChSub_Yd12 , BeMChSub_Yp12  ,BeMChSub_Xd1 , OBVaP   , ShowSsubCh , ColorSsubCh)
-[Alert_SAMM] = Drawing.OBDrawing('Supply', BeMBoS_Trigger    , BeMBoS_Yd12  , BeMBoS_Yp12    ,BeMBoS_Xd1   , OBVaP   , ShowSBoS   , ColorSBoS )
- 
-/////////////////////////////////
-///////////////FVG///////////////
-/////////////////////////////////
-
-FVG.FVGDetector(PFVGFilter ? 'On' : 'Off' , PFVGFilterType, PShowDeFVG, PShowSuFVG)
-
-
 ///////////////////////////////////////
 ///////////////Liquidity///////////////
 ///////////////////////////////////////
 
 Liq.LLF(SPP,DPP,SLLS,DLLS,ShowSHLL,ShowSLLL,ShowDHLL,ShowDLLL)
-
-///////////////////////////////////
-///////////////Alert///////////////
-///////////////////////////////////
-
-Alert.AlertSender(Alert_DMMM  , Alert_DMM, AlertName, 'Bullish', 'Order Block Signal', 'Full' ,Frequncy, UTC, MoreInfo, MessageBull_DMM, open, high, low, close,0,0,0, BuMChMain_Yd12 , BuMChMain_Yp12)
-Alert.AlertSender(Alert_DSMM  , Alert_DSM, AlertName, 'Bullish', 'Order Block Signal', 'Full' ,Frequncy, UTC, MoreInfo, MessageBull_DSM, open, high, low, close,0,0,0, BuMChSub_Yd12  , BuMChSub_Yp12)
-Alert.AlertSender(Alert_DAMM  , Alert_DAM, AlertName, 'Bullish', 'Order Block Signal', 'Full' ,Frequncy, UTC, MoreInfo, MessageBull_DAM, open, high, low, close,0,0,0, BuMBoS_Yd12    , BuMBoS_Yp12)
-
-Alert.AlertSender(Alert_SMMM  , Alert_SMM, AlertName, 'Bearish', 'Order Block Signal', 'Full' ,Frequncy, UTC, MoreInfo, MessageBear_SMM, open, high, low, close,0,0,0, BeMChMain_Yd12 , BeMChMain_Yp12)
-Alert.AlertSender(Alert_SSMM  , Alert_SSM, AlertName, 'Bearish', 'Order Block Signal', 'Full' ,Frequncy, UTC, MoreInfo, MessageBear_SSM, open, high, low, close,0,0,0, BeMChSub_Yd12  , BeMChSub_Yp12)
-Alert.AlertSender(Alert_SAMM  , Alert_SAM, AlertName, 'Bearish', 'Order Block Signal', 'Full' ,Frequncy, UTC, MoreInfo, MessageBear_SAM, open, high, low, close,0,0,0, BeMBoS_Yd12    , BeMBoS_Yp12)
 
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════ //
@@ -1970,3 +1745,271 @@ if close < bull_line.get_y2()
 
 if close > bear_line.get_y2()
     bear_lvl_reached := true
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+//  AJOUT 6 — Liquidity Defense Zones (LDZ) by JPT  © Jos-ProTrader (MPL 2.0)
+//  Code intact, tous les réglages d'origine. Variables préfixées ldz_ pour éviter les collisions.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════ //
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 1. INPUTS
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ldz_groupLiquidity = "Liquidity Engine"
+
+ldz_pivotLen = input.int(28, "Pivot Strength", minval=2, group=ldz_groupLiquidity)
+ldz_atrLen = input.int(14, "ATR Length", minval=1, group=ldz_groupLiquidity)
+ldz_zoneAtrMult = input.float(0.20, "Zone Thickness (ATR)", minval=0.05, step=0.05, group=ldz_groupLiquidity)
+ldz_maxZones = input.int(15, "Maximum Zones Per Side", minval=1, maxval=50, group=ldz_groupLiquidity)
+
+ldz_groupDisplay = "Display Settings"
+
+ldz_showZones = input.bool(true, "Show Liquidity Zones", group=ldz_groupDisplay)
+ldz_showLabels = input.bool(true, "Show BSL / SSL Labels", group=ldz_groupDisplay)
+ldz_showSweeps = input.bool(true, "Show Sweep Signals", group=ldz_groupDisplay)
+ldz_extendZones = input.bool(true, "Extend Active Zones", group=ldz_groupDisplay)
+
+ldz_groupSignals = "Reversal Confirmation"
+
+ldz_requireCandleColor = input.bool(true, "Require Reversal Candle", group=ldz_groupSignals)
+ldz_showReversals = input.bool(true, "Show Reversal Signals", group=ldz_groupSignals)
+
+ldz_groupAlerts = "Alerts"
+
+ldz_enableAlerts = input.bool(true, "Enable Alerts", group=ldz_groupAlerts)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 2. ATR & CONFIRMED PIVOTS
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ldz_atr = ta.atr(ldz_atrLen)
+ldz_zoneSize = ldz_atr * ldz_zoneAtrMult
+
+ldz_pivotHigh = ta.pivothigh(high, ldz_pivotLen, ldz_pivotLen)
+ldz_pivotLow = ta.pivotlow(low, ldz_pivotLen, ldz_pivotLen)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 3. LIQUIDITY STORAGE
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+var box[] ldz_bslZones = array.new_box()
+var box[] ldz_sslZones = array.new_box()
+
+var float[] ldz_bslPrices = array.new_float()
+var float[] ldz_sslPrices = array.new_float()
+
+var bool[] ldz_bslActive = array.new_bool()
+var bool[] ldz_sslActive = array.new_bool()
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 4. CREATE BUY-SIDE LIQUIDITY ZONES
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+if not na(ldz_pivotHigh) and not na(ldz_zoneSize[ldz_pivotLen])
+
+    float level = ldz_pivotHigh
+    float thickness = ldz_zoneSize[ldz_pivotLen]
+
+    box newZone = box.new(
+         left=bar_index - ldz_pivotLen,
+         top=level + thickness,
+         right=bar_index,
+         bottom=level - thickness,
+         xloc=xloc.bar_index,
+         extend=ldz_extendZones ? extend.right : extend.none,
+         border_color=ldz_showZones ? color.red : color.new(color.red, 100),
+         bgcolor=ldz_showZones ? color.new(color.red, 88) : color.new(color.red, 100))
+
+    array.push(ldz_bslZones, newZone)
+    array.push(ldz_bslPrices, level)
+    array.push(ldz_bslActive, true)
+
+    if ldz_showLabels
+        label.new(
+             bar_index - ldz_pivotLen,
+             level + thickness,
+             "BSL",
+             style=label.style_label_down,
+             color=color.red,
+             textcolor=color.white,
+             size=size.tiny)
+
+    if array.size(ldz_bslZones) > ldz_maxZones
+        box oldZone = array.shift(ldz_bslZones)
+        box.delete(oldZone)
+        array.shift(ldz_bslPrices)
+        array.shift(ldz_bslActive)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 5. CREATE SELL-SIDE LIQUIDITY ZONES
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+if not na(ldz_pivotLow) and not na(ldz_zoneSize[ldz_pivotLen])
+
+    float level = ldz_pivotLow
+    float thickness = ldz_zoneSize[ldz_pivotLen]
+
+    box newZone = box.new(
+         left=bar_index - ldz_pivotLen,
+         top=level + thickness,
+         right=bar_index,
+         bottom=level - thickness,
+         xloc=xloc.bar_index,
+         extend=ldz_extendZones ? extend.right : extend.none,
+         border_color=ldz_showZones ? color.lime : color.new(color.lime, 100),
+         bgcolor=ldz_showZones ? color.new(color.lime, 88) : color.new(color.lime, 100))
+
+    array.push(ldz_sslZones, newZone)
+    array.push(ldz_sslPrices, level)
+    array.push(ldz_sslActive, true)
+
+    if ldz_showLabels
+        label.new(
+             bar_index - ldz_pivotLen,
+             level - thickness,
+             "SSL",
+             style=label.style_label_up,
+             color=color.green,
+             textcolor=color.white,
+             size=size.tiny)
+
+    if array.size(ldz_sslZones) > ldz_maxZones
+        box oldZone = array.shift(ldz_sslZones)
+        box.delete(oldZone)
+        array.shift(ldz_sslPrices)
+        array.shift(ldz_sslActive)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 6. LIQUIDITY SWEEP ENGINE
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+bool ldz_bullishSweep = false
+bool ldz_bearishSweep = false
+
+if array.size(ldz_bslZones) > 0
+    for i = 0 to array.size(ldz_bslZones) - 1
+
+        if array.get(ldz_bslActive, i)
+            box zone = array.get(ldz_bslZones, i)
+            float level = array.get(ldz_bslPrices, i)
+            float zoneTop = box.get_top(zone)
+            float zoneBottom = box.get_bottom(zone)
+
+            if high > zoneTop and close < level
+                ldz_bearishSweep := true
+                array.set(ldz_bslActive, i, false)
+
+                box.set_extend(zone, extend.none)
+                box.set_right(zone, bar_index)
+                box.set_bgcolor(zone, color.new(color.orange, 82))
+                box.set_border_color(zone, color.orange)
+
+                if ldz_showSweeps
+                    label.new(
+                         bar_index,
+                         high,
+                         "BSL SWEEP",
+                         style=label.style_label_down,
+                         color=color.orange,
+                         textcolor=color.white,
+                         size=size.small)
+
+            else if close > zoneTop
+                array.set(ldz_bslActive, i, false)
+                box.set_extend(zone, extend.none)
+                box.set_right(zone, bar_index)
+                box.set_bgcolor(zone, color.new(color.gray, 90))
+                box.set_border_color(zone, color.gray)
+
+if array.size(ldz_sslZones) > 0
+    for i = 0 to array.size(ldz_sslZones) - 1
+
+        if array.get(ldz_sslActive, i)
+            box zone = array.get(ldz_sslZones, i)
+            float level = array.get(ldz_sslPrices, i)
+            float zoneTop = box.get_top(zone)
+            float zoneBottom = box.get_bottom(zone)
+
+            if low < zoneBottom and close > level
+                ldz_bullishSweep := true
+                array.set(ldz_sslActive, i, false)
+
+                box.set_extend(zone, extend.none)
+                box.set_right(zone, bar_index)
+                box.set_bgcolor(zone, color.new(color.aqua, 82))
+                box.set_border_color(zone, color.aqua)
+
+                if ldz_showSweeps
+                    label.new(
+                         bar_index,
+                         low,
+                         "SSL SWEEP",
+                         style=label.style_label_up,
+                         color=color.aqua,
+                         textcolor=color.black,
+                         size=size.small)
+
+            else if close < zoneBottom
+                array.set(ldz_sslActive, i, false)
+                box.set_extend(zone, extend.none)
+                box.set_right(zone, bar_index)
+                box.set_bgcolor(zone, color.new(color.gray, 90))
+                box.set_border_color(zone, color.gray)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 7. REVERSAL CONFIRMATION
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ldz_bullishCandle = close > open
+ldz_bearishCandle = close < open
+
+ldz_buySignal = ldz_bullishSweep and (not ldz_requireCandleColor or ldz_bullishCandle)
+ldz_sellSignal = ldz_bearishSweep and (not ldz_requireCandleColor or ldz_bearishCandle)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 8. PLOT REVERSAL SIGNALS
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+plotshape(
+     ldz_showReversals and ldz_buySignal,
+     title="Bullish Liquidity Reversal",
+     style=shape.cross,
+     location=location.belowbar,
+     color=color.lime,
+     text="BUY",
+     textcolor=color.black,
+     size=size.small)
+
+plotshape(
+     ldz_showReversals and ldz_sellSignal,
+     title="Bearish Liquidity Reversal",
+     style=shape.cross,
+     location=location.abovebar,
+     color=color.red,
+     text="SELL",
+     textcolor=color.white,
+     size=size.small)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 9. ALERTS
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+alertcondition(
+     ldz_enableAlerts and ldz_bullishSweep,
+     title="Sell-Side Liquidity Sweep",
+     message="LDZ [JPT]: Sell-side liquidity swept. Price moved below a liquidity zone and closed back above its swing level.")
+
+alertcondition(
+     ldz_enableAlerts and ldz_bearishSweep,
+     title="Buy-Side Liquidity Sweep",
+     message="LDZ [JPT]: Buy-side liquidity swept. Price moved above a liquidity zone and closed back below its swing level.")
+
+alertcondition(
+     ldz_enableAlerts and ldz_buySignal,
+     title="Bullish Liquidity Reversal",
+     message="LDZ [JPT]: Bullish liquidity reversal confirmed.")
+
+alertcondition(
+     ldz_enableAlerts and ldz_sellSignal,
+     title="Bearish Liquidity Reversal",
+     message="LDZ [JPT]: Bearish liquidity reversal confirmed.")
