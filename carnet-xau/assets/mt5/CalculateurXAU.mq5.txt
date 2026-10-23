@@ -3,6 +3,10 @@
 //|   Outil position et ticket d'ordre façon TradingView, risque     |
 //|   et arrêts pilotés par le Carnet XAU                             |
 //+------------------------------------------------------------------+
+//| Version 4.02 : outil position dessiné en CCanvas comme celui de  |
+//| TradingView (zones à 20 %, trait de 1 px, poignées carrées,      |
+//| étiquettes pleines) ; bougies derrière le ticket et l'outil.     |
+//+------------------------------------------------------------------+
 //| Version 4.01 : affichage façon TradingView                       |
 //|  - Police Trebuchet MS (celle de TradingView sous Windows), Arial |
 //|    pour les symboles ▲ ▼ ○ ↔ qu'elle n'a pas.                     |
@@ -59,10 +63,11 @@
 //| Les boutons et le calendrier économique ne fonctionnent pas      |
 //| dans le testeur de stratégie : tester l'outil sur compte démo.   |
 //+------------------------------------------------------------------+
-#property version     "4.01"
+#property version     "4.02"
 #property description "Carnet XAU : outil position et ticket d'ordre façon TradingView, risque et arrêts du carnet."
 
 #include <Trade\Trade.mqh>
+#include <Canvas\Canvas.mqh>
 
 //=== Préfixes et couleurs ===========================================
 #define PFX          "CN_"
@@ -1851,7 +1856,7 @@ void ClearTool()
       ChartSetInteger(0, CHART_MOUSE_SCROLL, g_scrollWas);
      }
    SaveTool();
-   ObjectsDeleteAll(0, PFXT);
+   DrawTool();                      // outil fermé : le canvas est vidé
    ChartRedraw(0);
   }
 
@@ -1944,141 +1949,130 @@ int PendingKind(const int dir, const double entry)
   }
 
 //+------------------------------------------------------------------+
-//| Outil position : tracé façon TradingView                         |
+//| Outil position : tracé façon TradingView, en CCanvas             |
+//| Zones stop et objectif à 20 % de transparence, trait d'entrée de |
+//| 1 px, poignées carrées blanches à bord bleu, étiquettes pleines  |
+//| à coins arrondis, comme l'outil position longue / courte.        |
 //+------------------------------------------------------------------+
-// Couleur fg posée à « a » (0 à 1) sur le fond bg : remplace la transparence, absente de MT5
-color Blend(const color bg, const color fg, const double a)
+CCanvas g_tcv;
+bool    g_tcvOk = false;
+int     g_tcvW  = 0;
+int     g_tcvH  = 0;
+#define TOOL_FONT 70                 // dixièmes de point : texte des étiquettes de l'outil
+
+uint Argb(const color c, const double a) { return ColorToARGB(c, (uchar)MathRound(255.0 * MathMax(0.0, MathMin(1.0, a)))); }
+
+// Canvas de l'outil sur tout le graphique ; créé avant le ticket pour que le ticket reste au-dessus
+bool ToolCanvas()
   {
-   int b0 = (int)bg;
-   int f0 = (int)fg;
-   int r  = (int)MathRound((b0 & 0xFF) + (((f0 & 0xFF) - (b0 & 0xFF)) * a));
-   int g  = (int)MathRound(((b0 >> 8) & 0xFF) + ((((f0 >> 8) & 0xFF) - ((b0 >> 8) & 0xFF)) * a));
-   int b  = (int)MathRound(((b0 >> 16) & 0xFF) + ((((f0 >> 16) & 0xFF) - ((b0 >> 16) & 0xFF)) * a));
-   return (color)(r | (g << 8) | (b << 16));
+   int w = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+   int h = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+   if(w <= 0 || h <= 0)
+      return false;
+   if(!g_tcvOk)
+     {
+      if(!g_tcv.CreateBitmapLabel(0, 0, PFXT + "CV", 0, 0, w, h, COLOR_FORMAT_ARGB_NORMALIZE))
+         return false;
+      g_tcvOk = true;
+      ObjectSetInteger(0, PFXT + "CV", OBJPROP_HIDDEN, true);
+      ObjectSetInteger(0, PFXT + "CV", OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, PFXT + "CV", OBJPROP_BACK, false);
+     }
+   else if(g_tcv.Width() != w || g_tcv.Height() != h)
+      g_tcv.Resize(w, h);
+   g_tcvW = w;
+   g_tcvH = h;
+   return true;
   }
 
-void ToolRect(const string name, const datetime t1, const double p1, const datetime t2, const double p2, const color clr)
+void TPx(const int x, const int y, const uint c, const double cov)
   {
-   if(ObjectFind(0, name) < 0)
-     {
-      ObjectCreate(0, name, OBJ_RECTANGLE, 0, t1, p1, t2, p2);
-      ObjectSetInteger(0, name, OBJPROP_FILL, true);
-      ObjectSetInteger(0, name, OBJPROP_BACK, true);
-      ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
-      ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-      ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
-     }
-   else
-     {
-      ObjectMove(0, name, 0, t1, p1);
-      ObjectMove(0, name, 1, t2, p2);
-     }
-   if((color)ObjectGetInteger(0, name, OBJPROP_COLOR) != clr)
-      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   if(x < 0 || y < 0 || x >= g_tcvW || y >= g_tcvH)
+      return;
+   double sa = ((c >> 24) & 0xFF) / 255.0 * cov;
+   if(sa <= 0.0)
+      return;
+   uint   d  = g_tcv.PixelGet(x, y);
+   double da = ((d >> 24) & 0xFF) / 255.0;
+   double oa = sa + da * (1.0 - sa);
+   if(oa <= 0.0)
+      return;
+   double k = da * (1.0 - sa);
+   uint r = (uint)MathRound((((c >> 16) & 0xFF) * sa + ((d >> 16) & 0xFF) * k) / oa);
+   uint g = (uint)MathRound((((c >> 8) & 0xFF) * sa + ((d >> 8) & 0xFF) * k) / oa);
+   uint b = (uint)MathRound(((c & 0xFF) * sa + (d & 0xFF) * k) / oa);
+   g_tcv.PixelSet(x, y, ((uint)MathRound(oa * 255.0) << 24) | (r << 16) | (g << 8) | b);
   }
 
-void ToolLine(const string name, const datetime t1, const double p, const datetime t2, const color clr, const int style)
+void TFill(const int x1, const int y1, const int x2, const int y2, const uint c)
   {
-   if(ObjectFind(0, name) < 0)
-     {
-      ObjectCreate(0, name, OBJ_TREND, 0, t1, p, t2, p);
-      ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false);
-      ObjectSetInteger(0, name, OBJPROP_RAY_LEFT, false);
-      ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
-      ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-      ObjectSetInteger(0, name, OBJPROP_BACK, false);
-      ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
-     }
-   else
-     {
-      ObjectMove(0, name, 0, t1, p);
-      ObjectMove(0, name, 1, t2, p);
-     }
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, name, OBJPROP_STYLE, style);
+   int xa = MathMax(MathMin(x1, x2), 0), xb = MathMin(MathMax(x1, x2), g_tcvW - 1);
+   int ya = MathMax(MathMin(y1, y2), 0), yb = MathMin(MathMax(y1, y2), g_tcvH - 1);
+   for(int y = ya; y <= yb; y++)
+      for(int x = xa; x <= xb; x++)
+         TPx(x, y, c, 1.0);
   }
 
-// Poignée (carré ou rond) posée sur un prix : on la saisit à la souris
-void ToolHandle(const string name, const datetime t, const double p, const string glyph)
+void TFillRound(const int x1, const int y1, const int x2, const int y2, const double rad, const uint c)
   {
-   if(ObjectFind(0, name) < 0)
-     {
-      ObjectCreate(0, name, OBJ_TEXT, 0, t, p);
-      ObjectSetString(0, name, OBJPROP_FONT, FONT_SYM);
-      ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 12);
-      ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_CENTER);
-      ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
-      ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-      ObjectSetInteger(0, name, OBJPROP_BACK, false);
-      ObjectSetInteger(0, name, OBJPROP_ZORDER, 4);
-      ObjectSetInteger(0, name, OBJPROP_COLOR, CLR_ACCENT);
-     }
-   else
-      ObjectMove(0, name, 0, t, p);
-   if(ObjectGetString(0, name, OBJPROP_TEXT) != glyph)
-      ObjectSetString(0, name, OBJPROP_TEXT, glyph);
+   for(int y = MathMax(y1, 0); y < MathMin(y2, g_tcvH); y++)
+      for(int x = MathMax(x1, 0); x < MathMin(x2, g_tcvW); x++)
+        {
+         double px = x + 0.5, py = y + 0.5;
+         double qx = MathMax(MathMax(x1 + rad - px, px - (x2 - rad)), 0.0);
+         double qy = MathMax(MathMax(y1 + rad - py, py - (y2 - rad)), 0.0);
+         double cov = 1.0;
+         if(qx > 0.0 && qy > 0.0)
+            cov = MathMax(0.0, MathMin(1.0, rad + 0.5 - MathSqrt(qx * qx + qy * qy)));
+         if(cov > 0.0)
+            TPx(x, y, c, cov);
+        }
   }
 
-int TagWidth(const string text)
+// Trait horizontal de 1 px (TradingView garde 1 px à 125 % et 150 %), plein ou en tirets
+void THLine(const int x1, const int x2, const int y, const bool dash, const uint c)
   {
-   uint w = 0, h = 0;
-   TextSetFont(FONT_TV, -90);            // 9 points, comme l'étiquette : la mesure suit l'échelle de l'écran
-   if(!TextGetSize(text, w, h) || w == 0)
-      w = (uint)(StringLen(text) * Dp(6));
-   return (int)w + Dp(14);
+   int on = Dp(4), off = Dp(4);
+   for(int x = MathMax(MathMin(x1, x2), 0); x <= MathMin(MathMax(x1, x2), g_tcvW - 1); x++)
+      if(!dash || ((x - x1) % (on + off)) < on)
+         TPx(x, y, c, 1.0);
   }
 
-// Étiquette colorée de l'outil (fond + texte), en pixels, centrée sur xc ; le texte est centré dans le cadre
-void ToolTag(const string name, const int xc, const int y, const string text, const color bg, const int width)
+// Poignée : carré blanc à bord bleu, centré sur (x, y)
+void THandle(const int x, const int y)
   {
-   int bw = (width > 0) ? width : TagWidth(text);
-   int bh = Dp(18);
-   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
-   int x  = xc - bw / 2;
-   if(cw > 0 && x + bw > cw - 4)
-      x = cw - 4 - bw;
-   if(x < 2)
-      x = 2;
-   int yy = (y < 2) ? 2 : y;
-   string nb = name + "b";
-   string nt = name + "t";
-   if(ObjectFind(0, nb) < 0)
-     {
-      ObjectCreate(0, nb, OBJ_RECTANGLE_LABEL, 0, 0, 0);
-      ObjectSetInteger(0, nb, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-      ObjectSetInteger(0, nb, OBJPROP_BORDER_TYPE, BORDER_FLAT);
-      ObjectSetInteger(0, nb, OBJPROP_WIDTH, 1);
-      ObjectSetInteger(0, nb, OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, nb, OBJPROP_HIDDEN, true);
-      ObjectSetInteger(0, nb, OBJPROP_BACK, false);
-      ObjectSetInteger(0, nb, OBJPROP_ZORDER, 1);
-     }
-   ObjectSetInteger(0, nb, OBJPROP_XDISTANCE, x);
-   ObjectSetInteger(0, nb, OBJPROP_YDISTANCE, yy);
-   ObjectSetInteger(0, nb, OBJPROP_XSIZE, bw);
-   ObjectSetInteger(0, nb, OBJPROP_YSIZE, bh);
-   ObjectSetInteger(0, nb, OBJPROP_BGCOLOR, bg);
-   ObjectSetInteger(0, nb, OBJPROP_COLOR, bg);
-   if(ObjectFind(0, nt) < 0)
-     {
-      ObjectCreate(0, nt, OBJ_LABEL, 0, 0, 0);
-      ObjectSetInteger(0, nt, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-      ObjectSetInteger(0, nt, OBJPROP_ANCHOR, ANCHOR_CENTER);
-      ObjectSetString(0, nt, OBJPROP_FONT, FONT_TV);
-      ObjectSetInteger(0, nt, OBJPROP_FONTSIZE, 9);
-      ObjectSetInteger(0, nt, OBJPROP_COLOR, clrWhite);
-      ObjectSetInteger(0, nt, OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, nt, OBJPROP_HIDDEN, true);
-      ObjectSetInteger(0, nt, OBJPROP_BACK, false);
-      ObjectSetInteger(0, nt, OBJPROP_ZORDER, 2);
-     }
-   ObjectSetInteger(0, nt, OBJPROP_XDISTANCE, x + bw / 2);
-   ObjectSetInteger(0, nt, OBJPROP_YDISTANCE, yy + bh / 2);
-   if(ObjectGetString(0, nt, OBJPROP_TEXT) != text)
-      ObjectSetString(0, nt, OBJPROP_TEXT, text);
+   int r = Dp(4);
+   TFill(x - r, y - r, x + r, y + r, Argb(CLR_ACCENT, 1.0));
+   TFill(x - r + 1, y - r + 1, x + r - 1, y + r - 1, Argb(clrWhite, 1.0));
+  }
+
+// Étiquette pleine centrée sur xc ; top : haut du cadre ; une ou deux lignes de texte
+void TTag(const int xc, const int top, const string l1, const string l2, const color bg)
+  {
+   int w1 = 0, h1 = 0, w2 = 0, h2 = 0;
+   g_tcv.TextSize(l1, w1, h1);
+   if(l2 != "")
+      g_tcv.TextSize(l2, w2, h2);
+   int padX = Dp(5), padY = Dp(2);
+   int bw = MathMax(w1, w2) + 2 * padX, bh = h1 + h2 + 2 * padY;
+   int x = xc - bw / 2;
+   if(x + bw > g_tcvW - Dp(2))
+      x = g_tcvW - Dp(2) - bw;
+   if(x < Dp(2))
+      x = Dp(2);
+   int y = MathMax(top, Dp(2));
+   TFillRound(x, y, x + bw, y + bh, 2.0 * g_k, Argb(bg, 1.0));
+   g_tcv.TextOut(x + bw / 2, y + padY, l1, Argb(clrWhite, 1.0), TA_CENTER | TA_TOP);
+   if(l2 != "")
+      g_tcv.TextOut(x + bw / 2, y + padY + h1, l2, Argb(clrWhite, 1.0), TA_CENTER | TA_TOP);
+  }
+
+// Hauteur d'une étiquette d'une ligne, en pixels
+int TagH()
+  {
+   int w = 0, h = 0;
+   g_tcv.TextSize("Stop 0", w, h);
+   return h + 2 * Dp(2);
   }
 
 // Pixels de l'outil : bords gauche et droit, entrée, stop, objectif
@@ -2096,12 +2090,9 @@ bool ToolXY(int &x1, int &x2, int &yE, int &yS, int &yT)
    return ChartTimePriceToXY(0, 0, g_tool.t1, g_tool.tp, tmp, yT);
   }
 
-// Étiquettes : stop et cible aux bords de l'outil, P&L d'ouverture et ratio au milieu
-void PlaceToolTags()
+// Étiquettes : stop et cible aux bords de l'outil, P&L d'ouverture et ratio sous le trait d'entrée
+void PlaceToolTags(const int x1, const int x2, const int yE, const int yS, const int yT)
   {
-   int x1 = 0, x2 = 0, yE = 0, yS = 0, yT = 0;
-   if(!ToolXY(x1, x2, yE, yS, yT))
-      return;
    int    xc  = (x1 + x2) / 2;
    bool   v   = g_calc.valid && g_calc.dir == g_tool.dir;
    double en  = ToolEntry();
@@ -2128,45 +2119,33 @@ void PlaceToolTags()
       m1   = "Qté : -";
       m2   = (g_calc.reason != "") ? g_calc.reason : "-";
      }
-   int  h     = Dp(18);
+   int  h     = TagH();
    bool slTop = (yS < yT);
-   ToolTag(PFXT + "LT", xc, MathMin(yS, yT) - h - Dp(4), slTop ? sTxt : tTxt, slTop ? CLR_RED : CLR_GREEN, 0);
-   ToolTag(PFXT + "LB", xc, MathMax(yS, yT) + Dp(4),     slTop ? tTxt : sTxt, slTop ? CLR_GREEN : CLR_RED, 0);
-   int   mw = MathMax(TagWidth(m1), TagWidth(m2));
-   color mc = (pnl < 0.0 || !v) ? CLR_RED : CLR_GREEN;
-   ToolTag(PFXT + "M1", xc, yE - h, m1, mc, mw);
-   ToolTag(PFXT + "M2", xc, yE,     m2, mc, mw);
+   TTag(xc, MathMin(yS, yT) - h - Dp(3), slTop ? sTxt : tTxt, "", slTop ? CLR_RED : CLR_GREEN);
+   TTag(xc, MathMax(yS, yT) + Dp(3),     slTop ? tTxt : sTxt, "", slTop ? CLR_GREEN : CLR_RED);
+   TTag(xc, yE + Dp(3), m1, m2, (pnl < 0.0 || !v) ? CLR_RED : CLR_GREEN);
   }
 
 void DrawTool()
   {
-   if(!g_tool.on)
-     {
-      if(ObjectFind(0, PFXT + "RISK") >= 0)
-        {
-         ObjectsDeleteAll(0, PFXT);
-         ChartRedraw(0);
-        }
+   if(!ToolCanvas())
       return;
+   g_tcv.Erase(0);
+   int x1 = 0, x2 = 0, yE = 0, yS = 0, yT = 0;
+   if(g_tool.on && ToolXY(x1, x2, yE, yS, yT))
+     {
+      bool pend = (g_tool.kind != 0 || (g_calc.valid && g_calc.limit));
+      TFill(x1, MathMin(yE, yS), x2, MathMax(yE, yS), Argb(CLR_RED, 0.20));
+      TFill(x1, MathMin(yE, yT), x2, MathMax(yE, yT), Argb(CLR_GREEN, 0.20));
+      THLine(x1, x2, yE, pend, Argb(CLR_TV_LINE, 1.0));
+      g_tcv.FontSet(FONT_TV, -TOOL_FONT);
+      PlaceToolTags(x1, x2, yE, yS, yT);
+      THandle(x1, yS);
+      THandle(x1, yT);
+      THandle(x1, yE);
+      THandle(x2, yE);
      }
-   datetime t1 = g_tool.t1;
-   datetime t2 = t1 + g_tool.bars * PeriodSeconds();
-   double   en = ToolEntry();
-   color    bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
-   bool     pend = (g_tool.kind != 0 || (g_calc.valid && g_calc.limit));
-   ToolRect(PFXT + "RISK", t1, en, t2, g_tool.sl, Blend(bg, CLR_RED, 0.22));
-   ToolRect(PFXT + "REW",  t1, en, t2, g_tool.tp, Blend(bg, CLR_GREEN, 0.22));
-   ToolLine(PFXT + "ENT", t1, en, t2, CLR_TV_LINE, pend ? STYLE_DASH : STYLE_SOLID);
-   ToolHandle(PFXT + "HSL", t1, g_tool.sl, "□");
-   ToolHandle(PFXT + "HTP", t1, g_tool.tp, "□");
-   ToolHandle(PFXT + "HEN", t1, en, "○");
-   ToolHandle(PFXT + "HW",  t2, en, "□");
-   // Flèche sur le prix d'entrée, une bougie avant l'outil : là où est le prix avant d'entrer
-   // (ou l'entrée de l'ordre en attente)
-   if(InpShowMarks)
-      MkArrow(PFXT + "ARR", t1 - PeriodSeconds(), en, (g_tool.dir > 0) ? "▲" : "▼",
-              (g_tool.dir > 0) ? InpMarkBuyClr : InpMarkSellClr, g_tool.dir < 0);
-   PlaceToolTags();
+   g_tcv.Update(true);
   }
 
 //+------------------------------------------------------------------+
@@ -2867,7 +2846,7 @@ void CreatePanel()
    //--- En-tête
    int y = y0 + (int)(9 * s);
    MkLabel (PFX + "TITLE", xL, y, _Symbol, clrWhite, fs + 2, FONT_TVB);
-   MkLabelR(PFX + "SUB",   xR, y + (int)(3 * s), "Calculateur XAU 4.01", CLR_MUTED, fs - 1, FONT_TV);
+   MkLabelR(PFX + "SUB",   xR, y + (int)(3 * s), "Calculateur XAU 4.02", CLR_MUTED, fs - 1, FONT_TV);
    y += (int)(27 * s);
 
    //--- Sell | spread | Buy
@@ -3824,6 +3803,8 @@ int OnInit()
    RefreshDayStats();
    RefreshNews();
    ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, true);   // poignées de l'outil à la souris
+   ChartSetInteger(0, CHART_FOREGROUND, false);        // bougies derrière le ticket et l'outil
+   ToolCanvas();                                       // créé avant le ticket : le ticket reste au-dessus
    CreatePanel();
    UpdateAll(true);
    EventSetMillisecondTimer(500);
@@ -3842,6 +3823,9 @@ void OnDeinit(const int reason)
       ChartSetInteger(0, CHART_MOUSE_SCROLL, g_scrollWas);
      }
    ObjectsDeleteAll(0, PFX);
+   if(g_tcvOk)
+      g_tcv.Destroy();
+   g_tcvOk = false;
    ObjectsDeleteAll(0, PFXT);       // l'outil est sauvegardé : retracé au prochain démarrage
    if(reason == REASON_REMOVE || reason == REASON_PROGRAM)
       ObjectsDeleteAll(0, PFXM);
