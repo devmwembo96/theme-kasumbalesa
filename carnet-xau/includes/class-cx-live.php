@@ -269,6 +269,16 @@ class CX_Live {
 		$today = CX_Repo::clock( 'Y-m-d' );
 		$tt    = array_filter( CX_Repo::trades( $acc['id'] ), fn( $t ) => $t['date'] === $today );
 		$out[] = 'D|' . count( $tt ) . '|' . count( array_filter( $tt, fn( $t ) => $t['r'] < 0 ) ) . '|' . self::n( array_sum( array_map( fn( $t ) => (float) $t['pnl'], $tt ) ) );
+		// Étape du compte, comme l'onglet Jour : objectif en $ (prop firm seulement), avancement, jours
+		// tradés et limites de la semaine. Le Calculateur XAU arrête les trades normaux à l'objectif.
+		$st    = (string) $acc['status'];
+		$own   = 'propre' === ( $pa['kind'] ?? 'propfirm' );
+		$pct   = $own ? 0.0 : (float) ( array( 'phase1' => $pa['t1'], 'phase2' => $pa['t2'], 'finance' => $pa['tf'] )[ $st ] ?? 0 );
+		$since = $acc['phaseStart'] ? $acc['phaseStart'] : '0000-00-00';
+		$phase = array_filter( CX_Repo::trades( $acc['id'] ), fn( $t ) => $t['date'] >= $since );
+		$snap  = ( (array) CX_Ingest::latest_snapshots() )[ $acc['id'] ] ?? null;
+		$gain  = $snap ? (float) $snap['balance'] - (float) $acc['size'] : array_sum( array_map( fn( $t ) => (float) $t['pnl'], $phase ) );
+		$out[] = 'G|' . $st . '|' . self::n( (float) $acc['size'] * $pct / 100 ) . '|' . self::n( $gain ) . '|' . count( array_unique( array_column( $phase, 'date' ) ) ) . '|' . (int) $pa['mindays'] . '|' . (int) $pa['weekloss'] . '|' . self::n( $pa['weekstopr'] ) . '|' . ( $own ? 'propre' : 'propfirm' );
 
 		// Empreinte : l'EA ne redessine que si le plan ou son état a changé.
 		$body = implode( "\n", $out );

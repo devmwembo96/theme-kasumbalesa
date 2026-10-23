@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.12.0                                   |
+//| CarnetXAU.mq5 — version 2.13.0                                   |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1 à M1), toutes |
@@ -41,7 +41,9 @@
 //| - chaque signal lui est transmis : touche C pour le charger,     |
 //|   Espace pour l'envoyer (l'ordre porte la référence du signal) ; |
 //| - il donne le risque du palier (lot des signaux) et son état :   |
-//|   à l'arrêt (pertes, plancher), le signal dit de ne pas prendre. |
+//|   à l'arrêt (pertes, plancher), le signal dit de ne pas prendre ;|
+//| - il reçoit du carnet le risque, les limites du jour, l'étape et |
+//|   l'objectif du compte (variables cx_*) : il s'y règle seul.     |
 //|                                                                  |
 //| Règles du signal (calculées à partir du plan de Claude) :        |
 //| - le prix touche une zone de Claude non cassée ;                 |
@@ -70,7 +72,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.12"
+#property version   "2.13"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 input string InpUrl         = "https://revnefty.store/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
@@ -123,6 +125,12 @@ bool     g_invalidated = false;
 double   g_risk = 50, g_riskRed = 35, g_redAt = 300, g_contract = 100, g_spreadMax = 15;
 double   g_stopMin = 1.5, g_stopMax = 8.0, g_dailyLim = 300, g_size = 6000, g_floor = 5400;
 int      g_maxTrades = 4, g_maxLoss = 3;
+//--- Étape du compte (ligne « G| » du plan), transmise au Calculateur XAU avec le risque et les limites.
+string   g_phase = "";
+double   g_goal = 0, g_gain = 0, g_weekStopR = 4;
+int      g_daysDone = 0, g_minDays = 0, g_weekLoss = 4;
+bool     g_ownKind = false, g_rOk = false;
+datetime g_planAt = 0;          // dernière lecture réussie du plan (heure locale)
 //--- Réglages des signaux : valeurs des paramètres d'entrée, remplacées par celles que Claude
 //    ajuste dans le carnet après le rejeu du soir (ligne « S| » du plan).
 int      g_touch = 30, g_swing = 20, g_limitMin = 30, g_cooldown = 60;
@@ -189,6 +197,7 @@ int OnInit()
    ApplyTVStyle();
    Sync();
    FetchPlan();
+   PublishCarnet();
    SendCandles();
    DrawPanel();
    return(INIT_SUCCEEDED);
@@ -197,6 +206,7 @@ int OnInit()
 void OnDeinit(const int reason)
   {
    EventKillTimer();
+   GlobalVariableDel(Bridge("cx_on"));   // le Calculateur sait que le carnet n'est plus relié
    if(reason == REASON_REMOVE)
       RestoreStyle();
    ObjectsDeleteAll(0, PFX_PLAN);
@@ -213,6 +223,7 @@ void OnTimer()
      }
    Sync();
    FetchPlan();
+   PublishCarnet();
    if(TimeCurrent() - g_lastCandles >= 900)
       SendCandles();
    DrawPanel();
@@ -237,6 +248,7 @@ void OnTick()
    if(m1 == g_lastM1)
       return;
    g_lastM1 = m1;               // nouvelle bougie M1 : la précédente vient de clôturer
+   PublishCarnet();             // signe de vie pour le Calculateur XAU
    static datetime lastBar = 0;
    datetime bar = iTime(_Symbol, PERIOD_CURRENT, 0);
    if(InpDrawPlan && g_hash != "" && bar != lastBar)
@@ -723,6 +735,7 @@ void FetchPlan()
    string head[];
    if(StringSplit(lines[0], '|', head) < 3 || head[0] != "V")
       return;
+   g_planAt = TimeLocal();
    if(head[1] == g_hash)
       return;                    // rien de nouveau
 
@@ -825,6 +838,18 @@ void FetchPlan()
          g_dailyLim  = StringToDouble(f[10]);
          g_size      = StringToDouble(f[11]);
          g_floor     = StringToDouble(f[12]);
+         g_rOk       = true;
+        }
+      else if(f[0] == "G" && c >= 10)
+        {
+         g_phase     = f[1];
+         g_goal      = StringToDouble(f[2]);
+         g_gain      = StringToDouble(f[3]);
+         g_daysDone  = (int)StringToInteger(f[4]);
+         g_minDays   = (int)StringToInteger(f[5]);
+         g_weekLoss  = (int)StringToInteger(f[6]);
+         g_weekStopR = StringToDouble(f[7]);
+         g_ownKind   = (f[8] == "propre");
         }
       else if(f[0] == "S" && c >= 7)
         {
@@ -1367,7 +1392,46 @@ string CalcBlockText(int code)
    if(code == 3) return "nombre de pertes de la semaine atteint";
    if(code == 4) return "perte maximum de la semaine atteinte";
    if(code == 5) return "plancher du capital atteint";
+   if(code == 6) return "objectif de l'étape atteint";
+   if(code == 7) return "compte échoué ou retiré dans le carnet";
+   if(code == 8) return "limite de trades du jour atteinte";
    return "";
+  }
+
+// Risque, limites du jour, étape et objectif du compte lus dans le carnet, pour le Calculateur XAU.
+// Rien n'est publié avant la première lecture du plan : le Calculateur ne prend jamais des valeurs par défaut.
+void PublishCarnet()
+  {
+   if(!g_rOk)
+      return;
+   int ph = 0;
+   if(g_phase == "phase1") ph = 1;
+   else if(g_phase == "phase2") ph = 2;
+   else if(g_phase == "finance") ph = 3;
+   else if(g_phase == "echoue") ph = 4;
+   else if(g_phase == "retire") ph = 5;
+   GlobalVariableSet(Bridge("cx_risk"), g_risk);
+   GlobalVariableSet(Bridge("cx_riskred"), g_riskRed);
+   GlobalVariableSet(Bridge("cx_redat"), g_redAt);
+   GlobalVariableSet(Bridge("cx_contract"), g_contract);
+   GlobalVariableSet(Bridge("cx_maxtrades"), g_maxTrades);
+   GlobalVariableSet(Bridge("cx_maxloss"), g_maxLoss);
+   GlobalVariableSet(Bridge("cx_spreadmax"), g_spreadMax);
+   GlobalVariableSet(Bridge("cx_stopmin"), g_stopMin);
+   GlobalVariableSet(Bridge("cx_stopmax"), g_stopMax);
+   GlobalVariableSet(Bridge("cx_daylim"), g_dailyLim);
+   GlobalVariableSet(Bridge("cx_size"), g_size);
+   GlobalVariableSet(Bridge("cx_floor"), g_floor);
+   GlobalVariableSet(Bridge("cx_phase"), ph);
+   GlobalVariableSet(Bridge("cx_goal"), g_goal);
+   GlobalVariableSet(Bridge("cx_gain"), g_gain);
+   GlobalVariableSet(Bridge("cx_days"), g_daysDone);
+   GlobalVariableSet(Bridge("cx_mindays"), g_minDays);
+   GlobalVariableSet(Bridge("cx_wkloss"), g_weekLoss);
+   GlobalVariableSet(Bridge("cx_wkstopr"), g_weekStopR);
+   GlobalVariableSet(Bridge("cx_own"), g_ownKind ? 1.0 : 0.0);
+   GlobalVariableSet(Bridge("cx_at"), (double)g_planAt);
+   GlobalVariableSet(Bridge("cx_on"), (double)TimeLocal());   // en dernier : les valeurs sont complètes
   }
 
 // Transmet le signal au Calculateur ; la référence est écrite en dernier (elle déclenche la lecture)

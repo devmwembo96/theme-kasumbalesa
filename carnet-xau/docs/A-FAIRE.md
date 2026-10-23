@@ -6,6 +6,11 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## En cours
 
+- [ ] Compiler dans MetaEditor l’EA Carnet 2.13 et le Calculateur XAU 4.00 (Comptes › Connexions),
+      les remettre sur leurs graphiques XAUUSD du même compte et signaler toute erreur de
+      compilation (vérifiés ici avec un banc de syntaxe : MetaEditor ne démarre pas dans le
+      conteneur de Claude). Calculateur : « Risque et limites du carnet » activé.
+
 - [ ] Compte en fonds propres (250 $) : choisir le courtier (Deriv, XM Global ou Exness), installer
       les deux EA sur deux graphiques XAUUSD du même compte : EA Carnet 2.9.0 (signaux) et
       Calculateur XAU 3.01 (exécution manuelle, touche C pour charger un signal). Compiler les deux
@@ -28,6 +33,10 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
    (une clé MT5 par compte ; seul « Démo Deriv » est relié aujourd’hui).
 
 ## Fait
+
+- Calculateur XAU 4.00 et EA Carnet 2.13 (2.27.4, 23 octobre) : outil position et ticket d’ordre
+  façon TradingView, SL sur l’outil (plus de SL derrière la bougie), flèche sur le prix d’entrée,
+  risque, limites, étape et objectif du compte lus dans le carnet (ligne « G| » du flux).
 
 - Nouveau planning (2.27.3, 23 octobre) : plan de Londres 1 h avant l’ouverture de Londres
   (`kind` « london », zones surveillées par l’EA avec la mention LDN), plan de New York 1 h avant

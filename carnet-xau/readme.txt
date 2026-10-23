@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.27.3
+Stable tag: 2.27.4
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -122,6 +122,19 @@ EA MT5 version 2 : plan dynamique et signaux d’exécution (signal seulement)
   reprend 30 jours de trades. Aucun signal n’est émis pour la période où MT5 était fermé.
 * L’EA envoie aussi les bougies du courtier (D1, H4, H1) chaque heure : GET /candles, pour
   que Claude analyse aux prix exacts de FundedNext.
+* Ligne « G| » du flux (version 2.27.4) : étape du compte (phase 1, phase 2, financé, échoué,
+  retiré), objectif en $, avancement, jours tradés et minimum, limites de la semaine. L’EA 2.13
+  la transmet au Calculateur XAU avec le risque et les limites (variables cx_* du terminal).
+
+Calculateur XAU version 4 : outil position et ticket d’ordre façon TradingView
+* Sell ou Buy (S, W ou B) : l’outil position court ou long se trace au prix actuel (stop par
+  défaut 4,00 $, objectif 2R) ; stop, objectif, entrée, largeur ou outil entier se règlent à la
+  souris. Entrée déplacée : ordre Limite ou Stop. Le SL n’est plus placé derrière une bougie.
+* Ticket : Marché / Limite / Stop, risque en $ ou en % du compte ↔ lot, valeur du trade, marge
+  disponible, valeur du tick, objectif et stop en prix ↔ ticks, ratio risque / récompense.
+* Risque du carnet (jamais dépassé, plafonné par la marge du jour) ; arrêt aux pertes et trades
+  du jour, à la limite du jour, au plancher, compte échoué ou retiré ; objectif de l’étape
+  atteint : micro-trades jusqu’aux jours minimum, puis arrêt. Sans l’EA Carnet XAU : bloqué.
 
 Signaux Claude : trades virtuels et taux de réussite (version 2.5)
 * Chaque signal de l’EA devient un trade virtuel « Signal Claude », suivi par l’EA jusqu’à
