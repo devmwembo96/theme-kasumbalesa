@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.13.0                                   |
+//| CarnetXAU.mq5 — version 2.14.0                                   |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1 à M1), toutes |
@@ -45,6 +45,10 @@
 //| - il reçoit du carnet le risque, les limites du jour, l'étape et |
 //|   l'objectif du compte (variables cx_*) : il s'y règle seul.     |
 //|                                                                  |
+//| Affichage façon TradingView : police Trebuchet MS, couleurs      |
+//| semi-transparentes sur le fond du graphique, et mise à l'échelle |
+//| de l'écran (Windows à 125 % ou 150 %) : le texte ne déborde plus.|
+//|                                                                  |
 //| Règles du signal (calculées à partir du plan de Claude) :        |
 //| - le prix touche une zone de Claude non cassée ;                 |
 //| - extrême de la touche dans la zone (mèche tolérée) ;            |
@@ -72,7 +76,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.13"
+#property version   "2.14"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 input string InpUrl         = "https://revnefty.store/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
@@ -174,6 +178,36 @@ int      g_signalCount = 0;
 #define PFX_SIG  "CXS_"
 #define PFX_UI   "CXU_"
 
+//--- Police de TradingView sous Windows ; Arial pour les symboles ▲ ▼ ○ ↔, absents de Trebuchet MS.
+#define FONT_TV  "Trebuchet MS"
+#define FONT_TVB "Trebuchet MS Bold"
+#define TAG_PT   8                 // taille des noms de lignes et des étiquettes des positions (points)
+//--- Échelle de l'écran : Windows à 125 % ou 150 % agrandit le texte (en points) mais pas les
+//    distances (en pixels) ; elles sont multipliées par DPI / 96 pour que rien ne se chevauche.
+double   g_k = 1.0;
+int      Dp(double px) { return (int)MathRound(px * g_k); }
+
+//--- Largeur réelle d'un texte en Trebuchet MS, en pixels, à l'échelle de l'écran.
+int TextPx(string txt, int pt, bool bold)
+  {
+   uint w = 0, h = 0;
+   TextSetFont(FONT_TV, -pt * 10, bold ? FW_BOLD : FW_NORMAL);
+   if(!TextGetSize(txt, w, h) || w == 0)
+      return (int)(StringLen(txt) * pt * 0.8 * g_k);
+   return (int)w;
+  }
+
+//--- Couleur fg posée à « a » (0 à 1) sur le fond du graphique : la transparence de TradingView.
+color Blend(color bg, color fg, double a)
+  {
+   int b0 = (int)bg, f0 = (int)fg;
+   int r  = (int)MathRound((b0 & 0xFF) + (((f0 & 0xFF) - (b0 & 0xFF)) * a));
+   int g  = (int)MathRound(((b0 >> 8) & 0xFF) + ((((f0 >> 8) & 0xFF) - ((b0 >> 8) & 0xFF)) * a));
+   int b  = (int)MathRound(((b0 >> 16) & 0xFF) + ((((f0 >> 16) & 0xFF) - ((b0 >> 16) & 0xFF)) * a));
+   return (color)(r | (g << 8) | (b << 16));
+  }
+color ChartBg() { return (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND); }
+
 //+------------------------------------------------------------------+
 int OnInit()
   {
@@ -194,6 +228,7 @@ int OnInit()
       g_doneM1 = (datetime)GlobalVariableGet(GV_M1);
    if(GlobalVariableCheck(GV_M15))
       g_doneM15 = (datetime)GlobalVariableGet(GV_M15);
+   g_k = MathMax(0.75, MathMin(3.0, TerminalInfoInteger(TERMINAL_SCREEN_DPI) / 96.0));
    ApplyTVStyle();
    Sync();
    FetchPlan();
@@ -883,6 +918,7 @@ void Text(string name, datetime t, double price, string txt, color clr, int size
   {
    ObjectCreate(0, name, OBJ_TEXT, 0, t, price);
    ObjectSetString(0, name, OBJPROP_TEXT, txt);
+   ObjectSetString(0, name, OBJPROP_FONT, FONT_TV);
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, size);
    ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
@@ -997,7 +1033,7 @@ datetime RightTime()
   {
    int vis   = (int)ChartGetInteger(0, CHART_WIDTH_IN_BARS);
    int first = (int)ChartGetInteger(0, CHART_FIRST_VISIBLE_BAR);
-   double fut = vis - first - 1 - 80.0 / BarPx();
+   double fut = vis - first - 1 - Dp(80) / (double)BarPx();
    return FutureTime(MathMax(31, fut));
   }
 
@@ -1017,8 +1053,8 @@ void Tag(string name, datetime t, double price, string txt, color clr, ENUM_ANCH
   {
    ObjectCreate(0, name, OBJ_TEXT, 0, t, price);
    ObjectSetString(0, name, OBJPROP_TEXT, txt);
-   ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
-   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 7);
+   ObjectSetString(0, name, OBJPROP_FONT, FONT_TVB);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, TAG_PT);
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
    ObjectSetInteger(0, name, OBJPROP_ANCHOR, anchor);
    ObjBase(name);
@@ -1037,12 +1073,12 @@ int PriceY(double price)
   }
 
 //--- Prix sur fond de couleur au bord droit, comme l'échelle de TradingView ; omis s'il recouvrirait un
-//    prix déjà affiché (moins de 13 pixels).
+//    prix déjà affiché (moins de 13 pixels à l'échelle de l'écran).
 void PriceTag(string name, double price, color clr)
   {
    int y = PriceY(price);
    for(int i = 0; i < ArraySize(g_tagY); i++)
-      if(MathAbs(g_tagY[i] - y) < 13)
+      if(MathAbs(g_tagY[i] - y) < Dp(13))
          return;
    int n = ArraySize(g_tagY);
    ArrayResize(g_tagY, n + 1);
@@ -1063,7 +1099,7 @@ void NamedLine(string id, datetime t1, double price, string txt, color clr, ENUM
       sh = vis;
    t1 = iTime(_Symbol, PERIOD_CURRENT, sh);
    datetime tEnd = RightTime();
-   int w = (int)(StringLen(txt) * 5.5 + 10), g = (int)MathCeil(w / (double)BarPx() / 2.0);
+   int w = TextPx(txt, TAG_PT, true) + Dp(10), g = (int)MathCeil(w / (double)BarPx() / 2.0);
    //--- Nom au milieu du trait, sinon au quart, aux trois quarts… : la première place libre.
    double fr[] = { 0.5, 0.25, 0.75, 0.12, 0.88 };
    int y = PriceY(price), m = sh / 2;
@@ -1073,7 +1109,7 @@ void NamedLine(string id, datetime t1, double price, string txt, color clr, ENUM
       ChartTimePriceToXY(0, 0, iTime(_Symbol, PERIOD_CURRENT, c), price, x, yy);
       bool isFree = true;
       for(int j = 0; j < ArraySize(g_lblX) && isFree; j++)
-         if(MathAbs(g_lblY[j] - y) < 12 && MathAbs(g_lblX[j] - x) < (g_lblW[j] + w) / 2 + 6)
+         if(MathAbs(g_lblY[j] - y) < Dp(12) && MathAbs(g_lblX[j] - x) < (g_lblW[j] + w) / 2 + Dp(6))
             isFree = false;
       if(isFree)
         {
@@ -1114,7 +1150,7 @@ void DrawPlan()
    //    simulé du premier. Leur largeur s'adapte à la place libre à droite.
    int per = PeriodSeconds(PERIOD_CURRENT), np = ArraySize(g_pos);
    int vis = (int)ChartGetInteger(0, CHART_WIDTH_IN_BARS), first = (int)ChartGetInteger(0, CHART_FIRST_VISIBLE_BAR);
-   double room = MathMax(31, vis - first - 1 - 80.0 / BarPx());
+   double room = MathMax(31, vis - first - 1 - Dp(80) / (double)BarPx());
    int len = np > 0 ? (int)MathMax(8, MathMin(26, (room - 3) / np - 4)) : 26;
    for(int k = 0; k < np; k++)
      {
@@ -1124,8 +1160,8 @@ void DrawPlan()
       if(stop <= 0)
          continue;
       datetime xa = FutureTime(3 + k * (len + 4)), xb = FutureTime(3 + k * (len + 4) + len), xm = xa + (xb - xa) / 2;
-      Rect(id + "tp", xa, p.entry, xb, p.tp, C'204,235,226', "Objectif " + Fr(p.tp, 2));
-      Rect(id + "sl", xa, p.entry, xb, p.sl, C'252,211,215', "Stop " + Fr(p.sl, 2));
+      Rect(id + "tp", xa, p.entry, xb, p.tp, Blend(ChartBg(), C'8,153,129', 0.20), "Objectif " + Fr(p.tp, 2));
+      Rect(id + "sl", xa, p.entry, xb, p.sl, Blend(ChartBg(), C'242,54,69', 0.20), "Stop " + Fr(p.sl, 2));
       Seg(id + "e", xa, xb, p.entry, C'120,123,134', STYLE_SOLID, false);
       bool up = p.tp > p.entry;
       double rr = MathAbs(p.tp - p.entry) / stop;
@@ -1178,7 +1214,7 @@ void DrawPlan()
       string up = z.type + (z.tf == "US" || z.tf == "" ? "" : " " + z.tf);
       StringToUpper(up);
       bool   ob   = (StringFind(up, "OB") >= 0 || StringFind(up, "ORDER") >= 0);
-      color  fill = ob ? C'239,227,205' : (z.buy ? C'223,231,253' : C'253,224,227');
+      color  fill = ob ? Blend(ChartBg(), C'201,160,90', 0.26) : Blend(ChartBg(), z.buy ? C'41,98,255' : C'242,54,69', 0.13);
       color  ink  = ob ? C'19,23,34' : (z.buy ? C'41,98,255' : C'242,54,69');
       color  axis = ob ? C'245,159,0' : (z.buy ? C'41,98,255' : C'242,54,69');
       string id   = PFX_PLAN + "Z" + IntegerToString(i);
@@ -1191,20 +1227,24 @@ void DrawPlan()
    ChartRedraw();
   }
 
-//--- Bandeau d'état en haut à gauche.
+//--- Bandeau d'état en haut à gauche ; y en pixels à 100 %, mis à l'échelle de l'écran.
+int g_uiW = 0;                     // texte le plus large du bandeau (pixels)
+
 void Label(string name, int y, string txt, color clr)
   {
    if(ObjectFind(0, name) < 0)
      {
       ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-      ObjectSetInteger(0, name, OBJPROP_XDISTANCE, 10);
+      ObjectSetInteger(0, name, OBJPROP_XDISTANCE, Dp(10));
+      ObjectSetString(0, name, OBJPROP_FONT, FONT_TV);
       ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 9);
       ObjBase(name);
      }
-   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, Dp(y));
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
    ObjectSetString(0, name, OBJPROP_TEXT, txt == "" ? " " : txt);
+   g_uiW = (int)MathMax(g_uiW, TextPx(txt, 9, false));
   }
 
 void DrawPanel()
@@ -1214,16 +1254,17 @@ void DrawPanel()
      {
       ObjectCreate(0, bg, OBJ_RECTANGLE_LABEL, 0, 0, 0);
       ObjectSetInteger(0, bg, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-      ObjectSetInteger(0, bg, OBJPROP_XDISTANCE, 4);
-      ObjectSetInteger(0, bg, OBJPROP_YDISTANCE, 16);
-      ObjectSetInteger(0, bg, OBJPROP_XSIZE, 460);
-      ObjectSetInteger(0, bg, OBJPROP_YSIZE, 120);
+      ObjectSetInteger(0, bg, OBJPROP_XDISTANCE, Dp(4));
+      ObjectSetInteger(0, bg, OBJPROP_YDISTANCE, Dp(16));
+      ObjectSetInteger(0, bg, OBJPROP_XSIZE, Dp(460));
+      ObjectSetInteger(0, bg, OBJPROP_YSIZE, Dp(120));
       ObjectSetInteger(0, bg, OBJPROP_BGCOLOR, (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND));
       ObjectSetInteger(0, bg, OBJPROP_BORDER_TYPE, BORDER_FLAT);
       ObjectSetInteger(0, bg, OBJPROP_COLOR, C'224,227,235');
       ObjectSetInteger(0, bg, OBJPROP_BACK, false);
       ObjBase(bg);
      }
+   g_uiW = 0;
    string bias = "neutre";
    if(g_bull > g_bear)
       bias = "haussier";
@@ -1233,8 +1274,8 @@ void DrawPanel()
    Label(PFX_UI + "2", 36, g_planOk ? "Biais " + bias + " · haussier " + IntegerToString(g_bull) + " % · baissier " + IntegerToString(g_bear)
          + " % · range " + IntegerToString(g_range) + " %" : "Aucun plan publié pour la semaine", C'19,23,34');
    Label(PFX_UI + "3", 52, g_inval > 0 ? "Invalidation " + Fr(g_inval, 2) + (g_invalidated ? " : TOUCHÉE, signaux bloqués dans ce sens" : " : intacte") : "Pas d'invalidation",
-         g_invalidated ? clrRed : clrDimGray);
-   Label(PFX_UI + "4", 68, NearestZones(), clrDimGray);
+         g_invalidated ? C'242,54,69' : C'120,123,134');
+   Label(PFX_UI + "4", 68, NearestZones(), C'120,123,134');
    string calc = "";
    if(CalcAlive())
      {
@@ -1243,7 +1284,7 @@ void DrawPanel()
                        : " · Calculateur relié, risque " + Fr(GlobalVariableGet(Bridge("calc_risk")), 2) + " $";
      }
    Label(PFX_UI + "5", 84, "Signaux : " + (InpSignals ? IntegerToString(g_signalCount) + " aujourd'hui · aucun ordre passé" : "désactivés") + calc,
-         CalcBlock() > 0 ? clrRed : clrDimGray);
+         CalcBlock() > 0 ? C'242,54,69' : C'120,123,134');
    // État : coupé en deux lignes si besoin.
    string st = g_status, st2 = "";
    if(StringLen(st) > 62)
@@ -1254,8 +1295,11 @@ void DrawPanel()
       st2 = StringSubstr(st, cut + 1, 62);
       st  = StringSubstr(st, 0, cut);
      }
-   Label(PFX_UI + "6", 100, st, clrDimGray);
-   Label(PFX_UI + "7", 116, st2, clrDimGray);
+   Label(PFX_UI + "6", 100, st, C'120,123,134');
+   Label(PFX_UI + "7", 116, st2, C'120,123,134');
+   int bw = (int)MathMax(Dp(460), g_uiW + Dp(16));   // le cadre s'élargit plutôt que de laisser déborder
+   if(ObjectGetInteger(0, bg, OBJPROP_XSIZE) != bw)
+      ObjectSetInteger(0, bg, OBJPROP_XSIZE, bw);
    ChartRedraw();
   }
 
@@ -1726,8 +1770,8 @@ void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, do
    ObjectSetInteger(0, id + "_A", OBJPROP_WIDTH, 3);
    ObjBase(id + "_A");
    // Position dessinée : objectif en vert, stop en rouge (comme l'outil position longue / courte).
-   Rect(id + "_TP", t, entry, t2, tp, C'190,235,205', "Objectif " + Fr(tp, 2));
-   Rect(id + "_SL", t, entry, t2, sl, C'245,200,195', "Stop " + Fr(sl, 2));
+   Rect(id + "_TP", t, entry, t2, tp, Blend(ChartBg(), C'8,153,129', 0.20), "Objectif " + Fr(tp, 2));
+   Rect(id + "_SL", t, entry, t2, sl, Blend(ChartBg(), C'242,54,69', 0.20), "Stop " + Fr(sl, 2));
    double p2r = buy ? entry + 2 * stop : entry - 2 * stop;
    ObjectCreate(0, id + "_2R", OBJ_TREND, 0, t, p2r, t2, p2r);
    ObjectSetInteger(0, id + "_2R", OBJPROP_STYLE, STYLE_DOT);

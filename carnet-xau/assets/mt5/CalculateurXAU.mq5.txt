@@ -3,6 +3,13 @@
 //|   Outil position et ticket d'ordre façon TradingView, risque     |
 //|   et arrêts pilotés par le Carnet XAU                             |
 //+------------------------------------------------------------------+
+//| Version 4.01 : affichage façon TradingView                       |
+//|  - Police Trebuchet MS (celle de TradingView sous Windows), Arial |
+//|    pour les symboles ▲ ▼ ○ ↔ qu'elle n'a pas.                     |
+//|  - Mise à l'échelle de l'écran : avec Windows à 125 % ou 150 %,  |
+//|    les cadres grandissent comme le texte, plus de débordement.   |
+//|  - Étiquettes de l'outil : texte centré dans son cadre.          |
+//+------------------------------------------------------------------+
 //| Version 4.00                                                     |
 //|  - Sell / Buy (ou S / W) : l'outil position court ou long se     |
 //|    trace au prix actuel, stop par défaut 4,00 $, objectif 2R.    |
@@ -52,7 +59,7 @@
 //| Les boutons et le calendrier économique ne fonctionnent pas      |
 //| dans le testeur de stratégie : tester l'outil sur compte démo.   |
 //+------------------------------------------------------------------+
-#property version     "4.00"
+#property version     "4.01"
 #property description "Carnet XAU : outil position et ticket d'ordre façon TradingView, risque et arrêts du carnet."
 
 #include <Trade\Trade.mqh>
@@ -86,6 +93,9 @@
 #define CLR_BUY_TX   C'91,156,246'
 #define CLR_SIDE_OFF C'30,34,45'
 #define CLR_TV_LINE  C'120,123,134'
+#define FONT_TV      "Trebuchet MS"        // police de TradingView sous Windows
+#define FONT_TVB     "Trebuchet MS Bold"
+#define FONT_SYM     "Arial"               // symboles ▲ ▼ ○ ↔ : absents de Trebuchet MS
 
 //=== Tes règles personnelles : bloquer le bouton ou seulement avertir ===
 enum ENUM_RULE_MODE
@@ -451,6 +461,7 @@ uint     g_lastDragTick    = 0;
 
 // Mise en page : largeur d'un caractère mesurée, pour ne jamais déborder du cadre
 int      g_charPx          = 7;
+int      g_fs              = 9;     // taille du texte du ticket (points)
 int      g_panInner        = 300;
 int      g_colL            = 170;
 int      g_colR            = 130;
@@ -461,6 +472,7 @@ int      g_panH            = 0;
 int      g_tabW            = 100;
 int      g_tabY            = 0;
 double   g_scale           = 1.0;
+double   g_k               = 1.0;   // échelle de l'écran : DPI / 96 (Windows à 125 % = 1,25)
 
 //+------------------------------------------------------------------+
 //| Outils : prix, lots, texte                                       |
@@ -512,6 +524,10 @@ double NormalizeLotsDown(const double lots)
   }
 
 string Px(const double price)       { return DoubleToString(price, _Digits); }
+
+// Pixels à l'échelle de l'écran : le texte (en points) grandit avec la mise à l'échelle de Windows,
+// les cadres (en pixels) doivent grandir autant, sinon le texte déborde
+int Dp(const double px)             { return (int)MathRound(px * g_k); }
 string Usd(const double v)          { return DoubleToString(v, 2) + " $"; }
 string SignedUsd(const double v)    { return (v >= 0.0 ? "+" : "") + DoubleToString(v, 2) + " $"; }
 string LotsStr(const double v)      { return DoubleToString(v, LotDigits()); }
@@ -1566,7 +1582,7 @@ void MkRect(const string name, const int x, const int y, const int w, const int 
   }
 
 void MkLabel(const string name, const int x, const int y, const string text, const color clr, const int fs,
-             const string font = "Consolas")
+             const string font = FONT_TV)
   {
    ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
    ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
@@ -1592,7 +1608,7 @@ void MkEdit(const string name, const int x, const int y, const int w, const int 
    ObjectSetInteger(0, name, OBJPROP_XSIZE, w);
    ObjectSetInteger(0, name, OBJPROP_YSIZE, h);
    ObjectSetString(0, name, OBJPROP_TEXT, text);
-   ObjectSetString(0, name, OBJPROP_FONT, "Consolas");
+   ObjectSetString(0, name, OBJPROP_FONT, FONT_TV);
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fs);
    ObjectSetInteger(0, name, OBJPROP_ALIGN, ALIGN_RIGHT);
    ObjectSetInteger(0, name, OBJPROP_READONLY, false);
@@ -1606,7 +1622,7 @@ void MkEdit(const string name, const int x, const int y, const int w, const int 
   }
 
 void MkButton(const string name, const int x, const int y, const int w, const int h, const string text,
-              const color bg, const color fg, const int fs, const string font = "Arial")
+              const color bg, const color fg, const int fs, const string font = FONT_TV)
   {
    ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0);
    ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
@@ -1990,7 +2006,7 @@ void ToolHandle(const string name, const datetime t, const double p, const strin
    if(ObjectFind(0, name) < 0)
      {
       ObjectCreate(0, name, OBJ_TEXT, 0, t, p);
-      ObjectSetString(0, name, OBJPROP_FONT, "Arial");
+      ObjectSetString(0, name, OBJPROP_FONT, FONT_SYM);
       ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 12);
       ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_CENTER);
       ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
@@ -2009,17 +2025,17 @@ void ToolHandle(const string name, const datetime t, const double p, const strin
 int TagWidth(const string text)
   {
    uint w = 0, h = 0;
-   TextSetFont("Arial", -90);
+   TextSetFont(FONT_TV, -90);            // 9 points, comme l'étiquette : la mesure suit l'échelle de l'écran
    if(!TextGetSize(text, w, h) || w == 0)
-      w = (uint)(StringLen(text) * 6);
-   return (int)w + 12;
+      w = (uint)(StringLen(text) * Dp(6));
+   return (int)w + Dp(14);
   }
 
-// Étiquette colorée de l'outil (fond + texte), en pixels, centrée sur xc
+// Étiquette colorée de l'outil (fond + texte), en pixels, centrée sur xc ; le texte est centré dans le cadre
 void ToolTag(const string name, const int xc, const int y, const string text, const color bg, const int width)
   {
    int bw = (width > 0) ? width : TagWidth(text);
-   int bh = 18;
+   int bh = Dp(18);
    int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
    int x  = xc - bw / 2;
    if(cw > 0 && x + bw > cw - 4)
@@ -2050,8 +2066,8 @@ void ToolTag(const string name, const int xc, const int y, const string text, co
      {
       ObjectCreate(0, nt, OBJ_LABEL, 0, 0, 0);
       ObjectSetInteger(0, nt, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-      ObjectSetInteger(0, nt, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
-      ObjectSetString(0, nt, OBJPROP_FONT, "Arial");
+      ObjectSetInteger(0, nt, OBJPROP_ANCHOR, ANCHOR_CENTER);
+      ObjectSetString(0, nt, OBJPROP_FONT, FONT_TV);
       ObjectSetInteger(0, nt, OBJPROP_FONTSIZE, 9);
       ObjectSetInteger(0, nt, OBJPROP_COLOR, clrWhite);
       ObjectSetInteger(0, nt, OBJPROP_SELECTABLE, false);
@@ -2059,8 +2075,8 @@ void ToolTag(const string name, const int xc, const int y, const string text, co
       ObjectSetInteger(0, nt, OBJPROP_BACK, false);
       ObjectSetInteger(0, nt, OBJPROP_ZORDER, 2);
      }
-   ObjectSetInteger(0, nt, OBJPROP_XDISTANCE, x + 6);
-   ObjectSetInteger(0, nt, OBJPROP_YDISTANCE, yy + 3);
+   ObjectSetInteger(0, nt, OBJPROP_XDISTANCE, x + bw / 2);
+   ObjectSetInteger(0, nt, OBJPROP_YDISTANCE, yy + bh / 2);
    if(ObjectGetString(0, nt, OBJPROP_TEXT) != text)
       ObjectSetString(0, nt, OBJPROP_TEXT, text);
   }
@@ -2112,10 +2128,10 @@ void PlaceToolTags()
       m1   = "Qté : -";
       m2   = (g_calc.reason != "") ? g_calc.reason : "-";
      }
-   int  h     = 18;
+   int  h     = Dp(18);
    bool slTop = (yS < yT);
-   ToolTag(PFXT + "LT", xc, MathMin(yS, yT) - h - 4, slTop ? sTxt : tTxt, slTop ? CLR_RED : CLR_GREEN, 0);
-   ToolTag(PFXT + "LB", xc, MathMax(yS, yT) + 4,     slTop ? tTxt : sTxt, slTop ? CLR_GREEN : CLR_RED, 0);
+   ToolTag(PFXT + "LT", xc, MathMin(yS, yT) - h - Dp(4), slTop ? sTxt : tTxt, slTop ? CLR_RED : CLR_GREEN, 0);
+   ToolTag(PFXT + "LB", xc, MathMax(yS, yT) + Dp(4),     slTop ? tTxt : sTxt, slTop ? CLR_GREEN : CLR_RED, 0);
    int   mw = MathMax(TagWidth(m1), TagWidth(m2));
    color mc = (pnl < 0.0 || !v) ? CLR_RED : CLR_GREEN;
    ToolTag(PFXT + "M1", xc, yE - h, m1, mc, mw);
@@ -2167,9 +2183,9 @@ void StartDrag(const int x, const int y)
    int x1 = 0, x2 = 0, yE = 0, yS = 0, yT = 0;
    if(!ToolXY(x1, x2, yE, yS, yT))
       return;
-   int tol = 7;
+   int tol = Dp(7);
    int d   = DRAG_NONE;
-   if(MathAbs(x - x2) <= tol + 2 && MathAbs(y - yE) <= tol + 2)
+   if(MathAbs(x - x2) <= tol + Dp(2) && MathAbs(y - yE) <= tol + Dp(2))
       d = DRAG_WIDTH;
    else if(x >= x1 - tol && x <= x2 + tol)
      {
@@ -2584,7 +2600,7 @@ void MkArrow(const string name, const datetime t, const double price, const stri
    else
       ObjectMove(0, name, 0, t, price);
    ObjectSetString(0, name, OBJPROP_TEXT, glyph);
-   ObjectSetString(0, name, OBJPROP_FONT, "Arial");
+   ObjectSetString(0, name, OBJPROP_FONT, FONT_SYM);
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, (InpMarkSize > 0) ? InpMarkSize : 8);
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
    ObjectSetInteger(0, name, OBJPROP_ANCHOR, above ? ANCHOR_LOWER : ANCHOR_UPPER);
@@ -2649,6 +2665,7 @@ void CleanMarks()
 void MeasureFont(const string font, const int fs)
   {
    uint w = 0, h = 0;
+   g_fs = fs;
    TextSetFont(font, -fs * 10);
    if(TextGetSize("0123456789ABCDEFGHIJ", w, h) && w > 0)
       g_charPx = (int)MathMax(4.0, MathCeil((double)w / 20.0));
@@ -2656,20 +2673,35 @@ void MeasureFont(const string font, const int fs)
       g_charPx = (int)MathMax(4.0, MathRound(fs * 0.85));
   }
 
-// Coupe un texte à la largeur disponible, en pixels
-string FitPx(const string text, const int px)
+// Coupe un texte à la largeur disponible (pixels), mesurée dans la police du ticket à pt points
+string FitPx(const string text, const int px, const int pt)
   {
-   int maxc = (g_charPx > 0) ? px / g_charPx : 40;
-   if(maxc < 5)
-      maxc = 5;
-   if(StringLen(text) <= maxc)
+   uint w = 0, h = 0;
+   TextSetFont(FONT_TV, -pt * 10);
+   if(!TextGetSize(text, w, h))
+     {
+      int maxc = (g_charPx > 0) ? px / g_charPx : 40;
+      if(maxc < 5)
+         maxc = 5;
+      return (StringLen(text) <= maxc) ? text : StringSubstr(text, 0, maxc - 1) + "…";
+     }
+   if((int)w <= px)
       return text;
-   return StringSubstr(text, 0, maxc - 3) + "...";
+   int lo = 1, hi = StringLen(text) - 1;     // plus long début qui tient avec « … »
+   while(lo < hi)
+     {
+      int mid = (lo + hi + 1) / 2;
+      if(TextGetSize(StringSubstr(text, 0, mid) + "…", w, h) && (int)w <= px)
+         lo = mid;
+      else
+         hi = mid - 1;
+     }
+   return StringSubstr(text, 0, lo) + "…";
   }
 
 // Étiquette alignée à droite
 void MkLabelR(const string name, const int x, const int y, const string text, const color clr, const int fs,
-              const string font = "Consolas")
+              const string font = FONT_TV)
   {
    MkLabel(name, x, y, text, clr, fs, font);
    ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_RIGHT_UPPER);
@@ -2683,9 +2715,9 @@ void SetRect(const string name, const color bg)
       ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bg);
   }
 
-void SetL(const string name, const string text, const color clr) { SetLabel(name, FitPx(text, g_colL), clr); }
-void SetR(const string name, const string text, const color clr) { SetLabel(name, FitPx(text, g_colR), clr); }
-void SetF(const string name, const string text, const color clr) { SetLabel(name, FitPx(text, g_panInner), clr); }
+void SetL(const string name, const string text, const color clr) { SetLabel(name, FitPx(text, g_colL, g_fs), clr); }
+void SetR(const string name, const string text, const color clr) { SetLabel(name, FitPx(text, g_colR, g_fs), clr); }
+void SetF(const string name, const string text, const color clr) { SetLabel(name, FitPx(text, g_panInner, g_fs - 1), clr); }
 
 // Flèche du sens, posée sur le prix d'entrée de la position
 void MarkEntry(const ulong posId, const int dir, const datetime t, const double price)
@@ -2810,9 +2842,10 @@ void CreatePanel()
   {
    ObjectsDeleteAll(0, PFX);
 
-   double s     = MathMax(0.6, MathMin(3.0, InpPanelScale));
-   int    fs    = (int)MathMax(7.0, MathRound(9.0 * s));
-   int    fsB   = (int)MathMax(9.0, MathRound(13.0 * s));
+   double su    = MathMax(0.6, MathMin(3.0, InpPanelScale));   // échelle choisie : texte et cadres
+   double s     = su * g_k;                                    // cadres : aussi à l'échelle de l'écran
+   int    fs    = (int)MathMax(7.0, MathRound(9.0 * su));
+   int    fsB   = (int)MathMax(9.0, MathRound(13.0 * su));
    int    W     = (int)(MathMax(280.0, (double)InpPanelWidth) * s);
    int    pad   = (int)(12 * s);
    int    rh    = (int)(17 * s);
@@ -2827,14 +2860,14 @@ void CreatePanel()
    g_panInner = inner;
    g_colL     = (int)(inner * 0.56);
    g_colR     = (int)(inner * 0.42);
-   MeasureFont("Arial", fs);
+   MeasureFont(FONT_TV, fs);
 
    MkRect(PFX + "BG", x0, y0, W, 100, CLR_BG, CLR_BORDER);
 
    //--- En-tête
    int y = y0 + (int)(9 * s);
-   MkLabel (PFX + "TITLE", xL, y, _Symbol, clrWhite, fs + 2, "Arial Bold");
-   MkLabelR(PFX + "SUB",   xR, y + (int)(3 * s), "Calculateur XAU 4.00", CLR_MUTED, fs - 1, "Arial");
+   MkLabel (PFX + "TITLE", xL, y, _Symbol, clrWhite, fs + 2, FONT_TVB);
+   MkLabelR(PFX + "SUB",   xR, y + (int)(3 * s), "Calculateur XAU 4.01", CLR_MUTED, fs - 1, FONT_TV);
    y += (int)(27 * s);
 
    //--- Sell | spread | Buy
@@ -2842,23 +2875,23 @@ void CreatePanel()
    int boxW = (inner - gap) / 2;
    int xB   = xL + boxW + gap;
    MkRect (PFX + "SELLBG", xL, y, boxW, boxH, CLR_SIDE_OFF, CLR_BORDER);
-   MkLabel(PFX + "SELLT", xL + (int)(10 * s), y + (int)(6 * s), "Sell", CLR_SELL_TX, fs, "Arial");
-   MkLabel(PFX + "SELLP", xL + (int)(10 * s), y + (int)(21 * s), "-", CLR_SELL_TX, fsB, "Arial Bold");
+   MkLabel(PFX + "SELLT", xL + (int)(10 * s), y + (int)(6 * s), "Sell", CLR_SELL_TX, fs, FONT_TV);
+   MkLabel(PFX + "SELLP", xL + (int)(10 * s), y + (int)(21 * s), "-", CLR_SELL_TX, fsB, FONT_TVB);
    MkRect  (PFX + "BUYBG", xB, y, boxW, boxH, CLR_SIDE_OFF, CLR_BORDER);
-   MkLabelR(PFX + "BUYT", xR - (int)(10 * s), y + (int)(6 * s), "Buy", CLR_BUY_TX, fs, "Arial");
-   MkLabelR(PFX + "BUYP", xR - (int)(10 * s), y + (int)(21 * s), "-", CLR_BUY_TX, fsB, "Arial Bold");
+   MkLabelR(PFX + "BUYT", xR - (int)(10 * s), y + (int)(6 * s), "Buy", CLR_BUY_TX, fs, FONT_TV);
+   MkLabelR(PFX + "BUYP", xR - (int)(10 * s), y + (int)(21 * s), "-", CLR_BUY_TX, fsB, FONT_TVB);
    int spW = (int)(38 * s);
    int spH = (int)(18 * s);
    MkRect  (PFX + "SPRBG", xL + boxW + gap / 2 - spW / 2, y + (boxH - spH) / 2, spW, spH, CLR_BG, CLR_BORDER);
-   MkLabelC(PFX + "SPRT", xL + boxW + gap / 2, y + (boxH - spH) / 2 + (int)(3 * s), "-", CLR_TEXT, fs - 1, "Arial");
+   MkLabelC(PFX + "SPRT", xL + boxW + gap / 2, y + (boxH - spH) / 2 + (int)(3 * s), "-", CLR_TEXT, fs - 1, FONT_TV);
    y += boxH + (int)(12 * s);
 
    //--- Marché | Limite | Stop
    g_tabW = inner / 3;
    g_tabY = y;
-   MkLabelC(PFX + "TAB0", xL + g_tabW / 2,         y, "Marché", CLR_MUTED, fs + 1, "Arial");
-   MkLabelC(PFX + "TAB1", xL + g_tabW + g_tabW / 2, y, "Limite", CLR_MUTED, fs + 1, "Arial");
-   MkLabelC(PFX + "TAB2", xL + 2 * g_tabW + g_tabW / 2, y, "Stop", CLR_MUTED, fs + 1, "Arial");
+   MkLabelC(PFX + "TAB0", xL + g_tabW / 2,         y, "Marché", CLR_MUTED, fs + 1, FONT_TV);
+   MkLabelC(PFX + "TAB1", xL + g_tabW + g_tabW / 2, y, "Limite", CLR_MUTED, fs + 1, FONT_TV);
+   MkLabelC(PFX + "TAB2", xL + 2 * g_tabW + g_tabW / 2, y, "Stop", CLR_MUTED, fs + 1, FONT_TV);
    MkRect(PFX + "TABSEP", xL, y + (int)(22 * s), inner, 1, CLR_BORDER, CLR_BORDER);
    MkRect(PFX + "TABL", xL, y + (int)(20 * s), g_tabW, (int)MathMax(2.0, 2.0 * s), clrWhite, clrWhite);
    y += (int)(34 * s);
@@ -2866,13 +2899,13 @@ void CreatePanel()
    //--- Risque ↔ lot
    int half = (inner - (int)(28 * s)) / 2;
    int sw   = xL + half + (int)(14 * s);
-   MkLabel (PFX + "RMODE", xL, y, "Risque USD ▼", CLR_MUTED, fs, "Arial");
-   MkLabelR(PFX + "RHINT", xR, y, " ", CLR_MUTED, fs - 1, "Arial");
+   MkLabel (PFX + "RMODE", xL, y, "Risque USD ▼", CLR_MUTED, fs, FONT_SYM);
+   MkLabelR(PFX + "RHINT", xR, y, " ", CLR_MUTED, fs - 1, FONT_TV);
    y += rh + (int)(2 * s);
    MkEditL (PFX + "E_RISK", xL, y, half, eh, fs + 1);
-   MkLabelC(PFX + "SW1", sw, y + (int)(5 * s), "↔", CLR_MUTED, fs + 1, "Arial");
+   MkLabelC(PFX + "SW1", sw, y + (int)(5 * s), "↔", CLR_MUTED, fs + 1, FONT_SYM);
    MkEditL (PFX + "E_LOTS", xR - half, y, half - (int)(34 * s), eh, fs + 1);
-   MkLabelR(PFX + "LOTU", xR, y + (int)(6 * s), "lot", CLR_MUTED, fs, "Arial");
+   MkLabelR(PFX + "LOTU", xR, y + (int)(6 * s), "lot", CLR_MUTED, fs, FONT_TV);
    y += eh + (int)(10 * s);
 
    //--- Valeur du trade, marge disponible, valeur du tick
@@ -2880,56 +2913,56 @@ void CreatePanel()
    int ix    = xL + (int)(10 * s);
    int ixr   = xR - (int)(10 * s);
    MkRect  (PFX + "INFOBG", xL, y, inner, infoH, CLR_INFO_BG, CLR_INFO_BG);
-   MkLabel (PFX + "I1L", ix,  y + (int)(7 * s),  "Valeur du trade", CLR_MUTED, fs, "Arial");
-   MkLabelR(PFX + "I1R", ixr, y + (int)(7 * s),  "-", CLR_TEXT, fs, "Arial");
-   MkLabel (PFX + "I2L", ix,  y + (int)(25 * s), "Marge disponible", CLR_MUTED, fs, "Arial");
-   MkLabelR(PFX + "I2R", ixr, y + (int)(25 * s), "-", CLR_TEXT, fs, "Arial");
-   MkLabel (PFX + "I3L", ix,  y + (int)(43 * s), "Valeur du tick", CLR_MUTED, fs, "Arial");
-   MkLabelR(PFX + "I3R", ixr, y + (int)(43 * s), "-", CLR_TEXT, fs, "Arial");
+   MkLabel (PFX + "I1L", ix,  y + (int)(7 * s),  "Valeur du trade", CLR_MUTED, fs, FONT_TV);
+   MkLabelR(PFX + "I1R", ixr, y + (int)(7 * s),  "-", CLR_TEXT, fs, FONT_TV);
+   MkLabel (PFX + "I2L", ix,  y + (int)(25 * s), "Marge disponible", CLR_MUTED, fs, FONT_TV);
+   MkLabelR(PFX + "I2R", ixr, y + (int)(25 * s), "-", CLR_TEXT, fs, FONT_TV);
+   MkLabel (PFX + "I3L", ix,  y + (int)(43 * s), "Valeur du tick", CLR_MUTED, fs, FONT_TV);
+   MkLabelR(PFX + "I3R", ixr, y + (int)(43 * s), "-", CLR_TEXT, fs, FONT_TV);
    y += infoH + (int)(12 * s);
 
    //--- Sorties : objectif et stop, en prix ↔ ticks
    int tW = half - (int)(40 * s);
-   MkLabel(PFX + "EXITS", xL, y, "Sorties", clrWhite, fs + 1, "Arial Bold");
+   MkLabel(PFX + "EXITS", xL, y, "Sorties", clrWhite, fs + 1, FONT_TVB);
    y += rh + (int)(6 * s);
-   MkLabel (PFX + "TPL", xL, y, "Take profit prix", CLR_MUTED, fs, "Arial");
-   MkLabelR(PFX + "TPI", xR, y, " ", CLR_GREEN, fs, "Arial");
+   MkLabel (PFX + "TPL", xL, y, "Take profit prix", CLR_MUTED, fs, FONT_TV);
+   MkLabelR(PFX + "TPI", xR, y, " ", CLR_GREEN, fs, FONT_TV);
    y += rh + (int)(2 * s);
    MkEditL (PFX + "E_TP",  xL, y, half, eh, fs + 1);
-   MkLabelC(PFX + "SW2",   sw, y + (int)(5 * s), "↔", CLR_MUTED, fs + 1, "Arial");
+   MkLabelC(PFX + "SW2",   sw, y + (int)(5 * s), "↔", CLR_MUTED, fs + 1, FONT_SYM);
    MkEditL (PFX + "E_TPT", xR - half, y, tW, eh, fs + 1);
-   MkLabelR(PFX + "TPU",   xR, y + (int)(6 * s), "ticks", CLR_MUTED, fs, "Arial");
+   MkLabelR(PFX + "TPU",   xR, y + (int)(6 * s), "ticks", CLR_MUTED, fs, FONT_TV);
    y += eh + (int)(10 * s);
-   MkLabel (PFX + "SLL", xL, y, "Stop Loss prix", CLR_MUTED, fs, "Arial");
-   MkLabelR(PFX + "SLI", xR, y, " ", CLR_RED, fs, "Arial");
+   MkLabel (PFX + "SLL", xL, y, "Stop Loss prix", CLR_MUTED, fs, FONT_TV);
+   MkLabelR(PFX + "SLI", xR, y, " ", CLR_RED, fs, FONT_TV);
    y += rh + (int)(2 * s);
    MkEditL (PFX + "E_SL",  xL, y, half, eh, fs + 1);
-   MkLabelC(PFX + "SW3",   sw, y + (int)(5 * s), "↔", CLR_MUTED, fs + 1, "Arial");
+   MkLabelC(PFX + "SW3",   sw, y + (int)(5 * s), "↔", CLR_MUTED, fs + 1, FONT_SYM);
    MkEditL (PFX + "E_SLT", xR - half, y, tW, eh, fs + 1);
-   MkLabelR(PFX + "SLU",   xR, y + (int)(6 * s), "ticks", CLR_MUTED, fs, "Arial");
+   MkLabelR(PFX + "SLU",   xR, y + (int)(6 * s), "ticks", CLR_MUTED, fs, FONT_TV);
    y += eh + (int)(12 * s);
-   MkLabel (PFX + "RRL", xL, y, "Risque / Récompense", CLR_MUTED, fs, "Arial");
-   MkLabelR(PFX + "RRV", xR, y, "-", clrWhite, fs + 1, "Arial Bold");
+   MkLabel (PFX + "RRL", xL, y, "Risque / Récompense", CLR_MUTED, fs, FONT_TV);
+   MkLabelR(PFX + "RRV", xR, y, "-", clrWhite, fs + 1, FONT_TVB);
    y += rh + (int)(10 * s);
 
    //--- Carnet, journée, annonces
-   MkLabel(PFX + "C1", xL, y, " ", CLR_MUTED, fs - 1, "Arial");
+   MkLabel(PFX + "C1", xL, y, " ", CLR_MUTED, fs - 1, FONT_TV);
    y += rh;
-   MkLabel(PFX + "C2", xL, y, " ", CLR_MUTED, fs - 1, "Arial");
+   MkLabel(PFX + "C2", xL, y, " ", CLR_MUTED, fs - 1, FONT_TV);
    y += rh;
-   MkLabel(PFX + "C3", xL, y, " ", CLR_MUTED, fs - 1, "Arial");
+   MkLabel(PFX + "C3", xL, y, " ", CLR_MUTED, fs - 1, FONT_TV);
    y += rh + (int)(6 * s);
 
    //--- Statut
    MkRect (PFX + "STBG", xL, y, inner, eh, CLR_TINT_N, CLR_TINT_N);
-   MkLabel(PFX + "O_STATUS", xL + (int)(8 * s), y + (int)(6 * s), " ", CLR_MUTED, fs, "Arial");
+   MkLabel(PFX + "O_STATUS", xL + (int)(8 * s), y + (int)(6 * s), " ", CLR_MUTED, fs, FONT_TV);
    y += eh + (int)(8 * s);
 
    //--- Fermer | envoyer
    int bigH   = (int)(36 * s);
    int closeW = (int)(inner * 0.36);
-   MkButton(PFX + "B_TCLOSE", xL, y, closeW, bigH, "Fermer", CLR_BTN, CLR_TEXT, fs + 1, "Arial");
-   MkButton(PFX + "B_SEND", xL + closeW + gap, y, inner - closeW - gap, bigH, "Sell / Buy", CLR_DISABLED, CLR_MUTED, fs + 1, "Arial Bold");
+   MkButton(PFX + "B_TCLOSE", xL, y, closeW, bigH, "Fermer", CLR_BTN, CLR_TEXT, fs + 1, FONT_TV);
+   MkButton(PFX + "B_SEND", xL + closeW + gap, y, inner - closeW - gap, bigH, "Sell / Buy", CLR_DISABLED, CLR_MUTED, fs + 1, FONT_TVB);
    y += bigH + (int)(12 * s);
 
    //--- Position en cours : BE, trailing, automatique, clôture
@@ -2937,15 +2970,15 @@ void CreatePanel()
    int q  = (inner - 3 * g6) / 4;
    MkRect  (PFX + "SEP3", xL, y, inner, 1, CLR_BORDER, CLR_BORDER);
    y += (int)(8 * s);
-   MkLabel (PFX + "O_POS", xL, y, " ", CLR_MUTED, fs, "Arial");
-   MkLabelR(PFX + "O_PNL", xR, y, " ", CLR_MUTED, fs, "Arial");
+   MkLabel (PFX + "O_POS", xL, y, " ", CLR_MUTED, fs, FONT_TV);
+   MkLabelR(PFX + "O_PNL", xR, y, " ", CLR_MUTED, fs, FONT_TV);
    y += rh + (int)(4 * s);
-   MkButton(PFX + "B_BE",    xL,               y, q, eh, "BE (A)",   CLR_DISABLED, CLR_MUTED, fs, "Arial");
-   MkButton(PFX + "B_TRAIL", xL + (q + g6),     y, q, eh, "R1 (D)",   CLR_DISABLED, CLR_MUTED, fs, "Arial");
-   MkButton(PFX + "B_AUTO",  xL + 2 * (q + g6), y, q, eh, "AUTO",     CLR_BTN,      CLR_TEXT,  fs, "Arial");
-   MkButton(PFX + "B_CLOSE", xL + 3 * (q + g6), y, q, eh, "Clôturer", CLR_DISABLED, CLR_MUTED, fs, "Arial");
+   MkButton(PFX + "B_BE",    xL,               y, q, eh, "BE (A)",   CLR_DISABLED, CLR_MUTED, fs, FONT_TV);
+   MkButton(PFX + "B_TRAIL", xL + (q + g6),     y, q, eh, "R1 (D)",   CLR_DISABLED, CLR_MUTED, fs, FONT_TV);
+   MkButton(PFX + "B_AUTO",  xL + 2 * (q + g6), y, q, eh, "AUTO",     CLR_BTN,      CLR_TEXT,  fs, FONT_TV);
+   MkButton(PFX + "B_CLOSE", xL + 3 * (q + g6), y, q, eh, "Clôturer", CLR_DISABLED, CLR_MUTED, fs, FONT_TV);
    y += eh + g6;
-   MkLabel(PFX + "O_STATS", xL, y, " ", CLR_MUTED, fs - 1, "Arial");
+   MkLabel(PFX + "O_STATS", xL, y, " ", CLR_MUTED, fs - 1, FONT_TV);
    y += rh + pad / 2;
 
    g_panX = x0;
@@ -3086,7 +3119,7 @@ void RenderPanel()
       stb = CLR_TINT_R;
      }
    SetRect(PFX + "STBG", stb);
-   SetLabel(PFX + "O_STATUS", FitPx(st, g_panInner - (int)(16 * g_scale)), stc);
+   SetLabel(PFX + "O_STATUS", FitPx(st, g_panInner - (int)(16 * g_scale), g_fs), stc);
 
    //--- Bouton d'envoi : Sell en rouge, Buy en bleu, gris s'il est bloqué
    string sendTxt = "Sell / Buy";
@@ -3763,6 +3796,7 @@ int OnInit()
       g_rTarget = InpRTarget;
    g_lastSymbol = _Symbol;
    g_loaded     = true;
+   g_k          = MathMax(0.75, MathMin(3.0, TerminalInfoInteger(TERMINAL_SCREEN_DPI) / 96.0));
 
    g_trade.SetExpertMagicNumber((ulong)InpMagic);
    g_trade.LogLevel(LOG_LEVEL_ERRORS);

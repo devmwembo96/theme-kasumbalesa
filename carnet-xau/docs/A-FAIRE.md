@@ -6,7 +6,7 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## En cours
 
-- [ ] Compiler dans MetaEditor l’EA Carnet 2.13 et le Calculateur XAU 4.00 (Comptes › Connexions),
+- [ ] Compiler dans MetaEditor l’EA Carnet 2.14 et le Calculateur XAU 4.01 (Comptes › Connexions),
       les remettre sur leurs graphiques XAUUSD du même compte et signaler toute erreur de
       compilation (vérifiés ici avec un banc de syntaxe : MetaEditor ne démarre pas dans le
       conteneur de Claude). Calculateur : « Risque et limites du carnet » activé.
@@ -34,6 +34,10 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## Fait
 
+- Affichage façon TradingView (2.27.5, 23 octobre) : Calculateur 4.01 et EA Carnet 2.14 en
+  Trebuchet MS, à l’échelle de l’écran (Windows à 125 % ou 150 %), textes coupés à leur largeur
+  réelle, couleurs semi-transparentes de TradingView. Maquette du ticket vérifiée à 100, 125 et
+  150 % (aucun débordement).
 - Calculateur XAU 4.00 et EA Carnet 2.13 (2.27.4, 23 octobre) : outil position et ticket d’ordre
   façon TradingView, SL sur l’outil (plus de SL derrière la bougie), flèche sur le prix d’entrée,
   risque, limites, étape et objectif du compte lus dans le carnet (ligne « G| » du flux).

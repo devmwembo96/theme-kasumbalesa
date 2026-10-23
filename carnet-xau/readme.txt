@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.27.4
+Stable tag: 2.27.5
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -135,6 +135,11 @@ Calculateur XAU version 4 : outil position et ticket d’ordre façon TradingVie
 * Risque du carnet (jamais dépassé, plafonné par la marge du jour) ; arrêt aux pertes et trades
   du jour, à la limite du jour, au plancher, compte échoué ou retiré ; objectif de l’étape
   atteint : micro-trades jusqu’aux jours minimum, puis arrêt. Sans l’EA Carnet XAU : bloqué.
+* Affichage façon TradingView (Calculateur 4.01, EA Carnet 2.14, version 2.27.5) : police
+  Trebuchet MS (celle de TradingView sous Windows ; Arial pour ▲ ▼ ○ ↔ qu’elle n’a pas), cadres
+  et écarts multipliés par DPI / 96 (Windows à 125 % ou 150 % : le texte ne déborde plus et ne se
+  chevauche plus), textes coupés à leur largeur mesurée, zones et positions de l’EA Carnet en
+  couleurs semi-transparentes posées sur le fond du graphique.
 
 Signaux Claude : trades virtuels et taux de réussite (version 2.5)
 * Chaque signal de l’EA devient un trade virtuel « Signal Claude », suivi par l’EA jusqu’à
