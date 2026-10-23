@@ -10,12 +10,14 @@
  * - GET  /candles     les bougies du compte de référence de l'analyse (tâches Claude, interface),
  *   ou celles d'un compte précis avec ?account=ID.
  *
- * Format texte (séparateur « | », prix avec un point décimal, heures en secondes Unix UTC) :
+ * Format texte (séparateur « | », prix avec un point décimal, heures en secondes Unix UTC ; « origine » :
+ * bougie de départ du tracé, « jj/mm hh:mm » en heure du serveur MT5 du compte, « jj/mm » sans heure,
+ * vide si le plan n'en donne pas) :
  *   V|empreinte|lundi|publié|mis à jour
  *   B|haussier|baissier|range
  *   I|invalidation|range bas|range haut|prix de référence|invalidée (0/1)
- *   Z|clé|type|ut|bas|haut|achat/vente|force|état (vierge/testee/cassee)
- *   L|prix|type
+ *   Z|clé|type|ut|bas|haut|achat/vente|force|état (vierge/testee/cassee)|origine
+ *   L|prix|type|origine
  *   N|heure unix|impact|annonce
  *   R|risque|risque réduit|seuil|contrat|trades max|pertes max|spread max %|stop min|stop max|limite jour $|taille|plancher
  *   X|invalidation de la dernière analyse de séance du jour
@@ -150,6 +152,72 @@ class CX_Live {
 	}
 
 	/**
+	 * Bougie d'origine d'une zone ou d'un niveau (« origin » du plan, écrit en heure de Lubumbashi) :
+	 * le premier « jj/mm » du texte et l'heure « hh:mm » (ou « hhhmm ») qui le suit, avant la date
+	 * suivante. « Bas D1 du 07/10 et bas H1 du 14/10 18:00 » donne le 07/10 sans heure.
+	 *
+	 * @param mixed  $text Texte « origin ».
+	 * @param string $week Lundi du plan (année de référence).
+	 * @return array|null {t : heure Unix UTC, hour : heure donnée}
+	 */
+	public static function origin_time( $text, $week ) {
+		$s = (string) $text;
+		if ( ! preg_match( '/(?<!\d)(\d{1,2})\/(\d{1,2})(?!\d)/', $s, $d, PREG_OFFSET_CAPTURE ) ) {
+			return null;
+		}
+		$day  = (int) $d[1][0];
+		$mon  = (int) $d[2][0];
+		$rest = substr( $s, $d[0][1] + strlen( $d[0][0] ) );
+		if ( preg_match( '/\d{1,2}\/\d{1,2}/', $rest, $nx, PREG_OFFSET_CAPTURE ) ) {
+			$rest = substr( $rest, 0, $nx[0][1] );
+		}
+		$hour = preg_match( '/(?<!\d)(\d{1,2})[:h](\d{2})(?!\d)/', $rest, $h ) && (int) $h[1] < 24 && (int) $h[2] < 60;
+		$ref  = new DateTimeImmutable( $week . ' 12:00', CX_Repo::tz() );
+		$year = (int) $ref->format( 'Y' ) - ( $mon > (int) $ref->format( 'n' ) + 1 ? 1 : 0 ); // plan de janvier, bougie de décembre
+		if ( ! checkdate( $mon, $day, $year ) ) {
+			return null;
+		}
+		$t = new DateTimeImmutable( sprintf( '%04d-%02d-%02d %02d:%02d', $year, $mon, $day, $hour ? (int) $h[1] : 0, $hour ? (int) $h[2] : 0 ), CX_Repo::tz() );
+		return array(
+			't'    => $t->getTimestamp(),
+			'hour' => $hour,
+		);
+	}
+
+	/**
+	 * Décalage de l'heure du serveur MT5 d'un compte sur UTC, en secondes : la bougie D1 s'ouvre à
+	 * minuit, heure du serveur. Sans bougies : heure d'Europe de l'Est (UTC+2, UTC+3 l'été), celle de la
+	 * plupart des serveurs MT5.
+	 *
+	 * @param int $id Compte.
+	 * @return int
+	 */
+	public static function server_offset( $id ) {
+		$d1 = $id ? ( self::candle_data( (int) $id )['tf']['D1'] ?? array() ) : array();
+		if ( $d1 ) {
+			$off = ( 86400 - (int) $d1[ count( $d1 ) - 1 ][0] % 86400 ) % 86400;
+			return $off > 43200 ? $off - 86400 : $off;
+		}
+		return ( new DateTimeImmutable( 'now', new DateTimeZone( 'Europe/Athens' ) ) )->getOffset();
+	}
+
+	/**
+	 * « origin » pour l'EA : « jj/mm hh:mm » en heure du serveur du compte, « jj/mm » sans heure, vide sinon.
+	 *
+	 * @param mixed  $text Texte « origin » du plan.
+	 * @param string $week Lundi du plan.
+	 * @param int    $off  Décalage du serveur sur UTC (secondes).
+	 * @return string
+	 */
+	private static function origin_field( $text, $week, $off ) {
+		$o = self::origin_time( $text, $week );
+		if ( ! $o ) {
+			return '';
+		}
+		return $o['hour'] ? gmdate( 'd/m H:i', $o['t'] + $off ) : wp_date( 'd/m', $o['t'], CX_Repo::tz() );
+	}
+
+	/**
 	 * Plan au format texte pour l'EA.
 	 *
 	 * @param WP_REST_Request $req Requête.
@@ -165,6 +233,7 @@ class CX_Live {
 		$c    = is_array( $p['content'] ?? null ) ? $p['content'] : array();
 		$live = (array) ( $c['live'] ?? array() );
 		$out  = array();
+		$off  = self::server_offset( (int) $acc['id'] );
 
 		$pr    = (array) ( $c['prediction'] ?? array() );
 		$refs  = (array) ( $c['refs'] ?? array() );
@@ -176,7 +245,7 @@ class CX_Live {
 			}
 			$key   = self::zone_key( $z );
 			$state = $live['zones'][ $key ]['state'] ?? ( $z['state'] ? $z['state'] : 'vierge' );
-			$out[] = 'Z|' . $key . '|' . self::t( $z['type'] ) . '|' . self::t( $z['tf'] ) . '|' . self::n( min( $z['low'], $z['high'] ) ) . '|' . self::n( max( $z['low'], $z['high'] ) ) . '|' . ( 'vente' === $z['side'] ? 'vente' : 'achat' ) . '|' . (int) $z['strength'] . '|' . $state;
+			$out[] = 'Z|' . $key . '|' . self::t( $z['type'] ) . '|' . self::t( $z['tf'] ) . '|' . self::n( min( $z['low'], $z['high'] ) ) . '|' . self::n( max( $z['low'], $z['high'] ) ) . '|' . ( 'vente' === $z['side'] ? 'vente' : 'achat' ) . '|' . (int) $z['strength'] . '|' . $state . '|' . self::origin_field( $z['origin'] ?? '', $week, $off );
 		}
 		// Zones du dernier plan de séance du jour (Londres, puis New York qui le remplace), surveillées
 		// par l'EA comme les zones du plan.
@@ -198,7 +267,7 @@ class CX_Live {
 			list( $pre, $tf ) = $feed[ $plan['kind'] ];
 			$key              = $pre . self::zone_key( $z );
 			$state            = $live['zones'][ $key ]['state'] ?? 'vierge';
-			$out[]            = 'Z|' . $key . '|' . self::t( $z['type'] ? $z['type'] : 'Zone' ) . '|' . $tf . '|' . self::n( min( $z['low'], $z['high'] ) ) . '|' . self::n( max( $z['low'], $z['high'] ) ) . '|' . ( 'vente' === $z['side'] ? 'vente' : 'achat' ) . '|2|' . $state;
+			$out[]            = 'Z|' . $key . '|' . self::t( $z['type'] ? $z['type'] : 'Zone' ) . '|' . $tf . '|' . self::n( min( $z['low'], $z['high'] ) ) . '|' . self::n( max( $z['low'], $z['high'] ) ) . '|' . ( 'vente' === $z['side'] ? 'vente' : 'achat' ) . '|2|' . $state . '|' . self::origin_field( $z['origin'] ?? '', $week, $off );
 		}
 		$t     = CX_Tuning::values();
 		$out[] = 'S|' . (int) $t['touch'] . '|' . (int) $t['swing'] . '|' . self::n( $t['fvg'] ) . '|' . self::n( $t['slbuf'] ) . '|' . (int) $t['limitmin'] . '|' . (int) $t['cooldown'];
@@ -218,18 +287,28 @@ class CX_Live {
 				$last = $se;
 			}
 		}
-		// Ceux de l'analyse de séance d'abord, puis ceux du plan de la semaine.
-		$all = array_merge( $last ? (array) ( $last['levels'] ?? array() ) : array(), (array) ( $c['levels'] ?? array() ) );
+		// Ceux de l'analyse de séance d'abord, puis ceux du plan de la semaine. Le niveau gardé prend
+		// l'origine d'un niveau fusionné s'il n'en a pas (PDH de la séance, origine dans le plan).
+		$all  = array_merge( $last ? (array) ( $last['levels'] ?? array() ) : array(), (array) ( $c['levels'] ?? array() ) );
+		$keep = array();
 		foreach ( $all as $l ) {
-			$v    = (float) $l['price'];
-			$near = false;
-			foreach ( $seen as $x ) {
-				$near = $near || abs( $x - $v ) < 1.0;
+			if ( null === $l['price'] ) {
+				continue;
 			}
-			if ( null !== $l['price'] && ! $near ) {
-				$out[]  = 'L|' . self::n( $l['price'] ) . '|' . self::t( $l['type'] );
-				$seen[] = (float) $l['price'];
+			$v = (float) $l['price'];
+			$k = null;
+			foreach ( $seen as $i => $x ) {
+				$k = null === $k && abs( $x - $v ) < 1.0 ? $i : $k;
 			}
+			if ( null === $k ) {
+				$keep[] = $l;
+				$seen[] = $v;
+			} elseif ( '' === trim( (string) ( $keep[ $k ]['origin'] ?? '' ) ) ) {
+				$keep[ $k ]['origin'] = $l['origin'] ?? '';
+			}
+		}
+		foreach ( $keep as $l ) {
+			$out[] = 'L|' . self::n( $l['price'] ) . '|' . self::t( $l['type'] ) . '|' . self::origin_field( $l['origin'] ?? '', $week, $off );
 		}
 		if ( $last ) {
 			if ( preg_match_all( '/\d[\d \x{202F}\x{00A0}]*(?:[.,]\d+)?/u', (string) ( $last['invalid'] ?? '' ), $m ) ) {

@@ -74,7 +74,38 @@ public:
    ulong  ResultDeal() { return 0; }
   };
 
+// Canvas\Canvas.mqh : méthodes utilisées par les EA (dessin en ARGB)
+class CCanvas
+  {
+public:
+   template<typename... A> bool CreateBitmapLabel(A...) { return true; }
+   template<typename... A> bool CreateBitmap(A...) { return true; }
+   template<typename... A> void Destroy(A...) {}
+   template<typename... A> bool Resize(A...) { return true; }
+   template<typename... A> void Erase(A...) {}
+   template<typename... A> void Update(A...) {}
+   template<typename... A> uint PixelGet(A...) { return 0; }
+   template<typename... A> void PixelSet(A...) {}
+   template<typename... A> bool FontSet(A...) { return true; }
+   template<typename... A> void TextOut(A...) {}
+   template<typename... A> void TextSize(A...) {}
+   template<typename... A> int  TextWidth(A...) { return 0; }
+   template<typename... A> int  TextHeight(A...) { return 0; }
+   template<typename... A> void FillRectangle(A...) {}
+   template<typename... A> void Rectangle(A...) {}
+   template<typename... A> void LineHorizontal(A...) {}
+   template<typename... A> void LineVertical(A...) {}
+   template<typename... A> void Line(A...) {}
+   template<typename... A> void LineAA(A...) {}
+   template<typename... A> void FillCircle(A...) {}
+   template<typename... A> void FillTriangle(A...) {}
+   int Width() { return 0; }
+   int Height() { return 0; }
+   string ChartObjectName() { return ""; }
+  };
+
 #define V template<typename... A>
+V uint ColorToARGB(A...);
 // string
 V string DoubleToString(A...);
 V string IntegerToString(A...);

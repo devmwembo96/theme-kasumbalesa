@@ -340,11 +340,13 @@ async function loadCandles(){
 let CUR_CHART=null;
 function cssVar(n,f){const v=getComputedStyle(document.getElementById("cx-app")||document.body).getPropertyValue(n).trim();return v||f}
 function rgba(c,a){const m=/^#([0-9a-f]{6})$/i.exec(c);if(!m)return c;const n=parseInt(m[1],16);return "rgba("+(n>>16)+","+(n>>8&255)+","+(n&255)+","+a+")"}
-// Bougie d'origine d'une zone ou d'un niveau : date « jj/mm » et heure « hh:mm » de `origin`, sinon la
-// dernière bougie dont un extrême touche la borne à quelques centimes près.
+// Bougie d'origine d'une zone ou d'un niveau : premier « jj/mm » de `origin` et l'heure « hh:mm » qui le suit
+// (avant la date suivante), en heure de Lubumbashi (UTC+2) ; sinon la dernière bougie dont un extrême touche
+// la borne à quelques centimes près.
 function originIndex(bars,text,prices){
-  const d=/(\d{1,2})\/(\d{1,2})/.exec(text||""),h=/(\d{1,2})[:h](\d{2})/.exec(text||"");
-  if(d){const y=new Date(bars[bars.length-1][0]*1000).getUTCFullYear(),t=Date.UTC(y,+d[2]-1,+d[1],h?+h[1]:0,h?+h[2]:0)/1000;
+  const s=String(text||""),d=/(\d{1,2})\/(\d{1,2})/.exec(s),rest=d?s.slice(d.index+d[0].length):"",nx=rest.search(/\d{1,2}\/\d{1,2}/),
+    h=/(\d{1,2})[:h](\d{2})/.exec(nx<0?rest:rest.slice(0,nx));
+  if(d){const y=new Date(bars[bars.length-1][0]*1000).getUTCFullYear(),t=Date.UTC(y,+d[2]-1,+d[1],h?+h[1]:0,h?+h[2]:0)/1000-7200;
     if(t<=bars[bars.length-1][0]){let i=bars.length-1;while(i>0&&bars[i][0]>t)i--;if(bars[i][0]<=t&&t-bars[i][0]<7*86400)return i}}
   for(let i=bars.length-4;i>=0;i--){const b=bars[i];if(prices.some(p=>[b[1],b[2],b[3],b[4]].some(v=>Math.abs(v-p)<=.3)))return i}
   return 0;

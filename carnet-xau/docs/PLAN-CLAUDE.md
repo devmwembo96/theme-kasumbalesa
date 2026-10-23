@@ -176,7 +176,7 @@ Prix en dollars, avec deux décimales au plus. Heures en heure de Lubumbashi (UT
 | `review.verdict` | `bonne`, `partielle`, `mauvaise` |
 | `bias_ok`, `range_held`, `invalidation_hit`, `reached`, `reacted`, `triggered` | `true`, `false` ou `null` (inconnu) |
 | `update.status` | `maintenu`, `mis_a_jour` (avec `update.date` = jour relu, `AAAA-MM-JJ`) |
-| `origin` (zones et niveaux) | bougie d’origine « jj/mm hh:mm » : point de départ du tracé (le graphique et l’EA dessinent eux-mêmes) |
+| `origin` (zones et niveaux) | bougie d’origine « jj/mm hh:mm », heure de Lubumbashi, « jj/mm » seul pour une bougie D1 : point de départ du tracé (le graphique et l’EA dessinent eux-mêmes ; le carnet la convertit en heure du serveur MT5 pour l’EA) |
 
 Limites : 6 lignes de structure, 12 zones, 15 niveaux, 8 fondamentaux, 25 annonces, 5 jours, 8 scénarios, 10 règles. Les valeurs hors format sont ignorées.
 
@@ -227,8 +227,8 @@ dans l’historique.
   "facts": ["Plus bas de l’Asie 4 136,59 à 04:40, sous l’EQL 4 146,9"],
   "liquidity": ["EQL 4 146,9 pris", "PDL 4 136,6 intact"],
   "execution": ["Pas de vente sous 4 140 : place insuffisante jusqu’au PDL"],
-  "zones": [ { "type": "FVG M15", "low": 4158, "high": 4162, "side": "vente", "note": "…" } ],
-  "levels": [ { "price": 4136.6, "type": "PDL" } ],
+  "zones": [ { "type": "FVG M15", "low": 4158, "high": 4162, "side": "vente", "note": "…", "origin": "20/10 13:15" } ],
+  "levels": [ { "price": 4136.6, "type": "PDL", "origin": "19/10 21:40" } ],
   "positions": [ { "side": "vente", "setup": "1", "label": "retour FVG M15 de 13:15",
     "wait": "Le prix revient dans 4 158–4 162 après avoir pris le haut de Londres 4 156,80",
     "trigger": "Clôture M1 sous le dernier creux pivot après la mèche",

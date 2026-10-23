@@ -360,14 +360,16 @@ class CX_Plan {
 			'liquidity' => array( 'list', 'text', 8 ),
 			'execution' => array( 'list', 'text', 8 ),
 			'invalid'   => 'long',
+			// « origin » : bougie d'origine « jj/mm hh:mm » (heure de Lubumbashi), départ du tracé de l'EA.
 			'zones'     => array(
 				'list',
 				array(
-					'type' => 'text',
-					'low'  => 'num',
-					'high' => 'num',
-					'side' => 'side',
-					'note' => 'text',
+					'type'   => 'text',
+					'low'    => 'num',
+					'high'   => 'num',
+					'side'   => 'side',
+					'note'   => 'text',
+					'origin' => 'text',
 				),
 				4,
 			),
@@ -375,8 +377,9 @@ class CX_Plan {
 			'levels'    => array(
 				'list',
 				array(
-					'price' => 'num',
-					'type'  => 'text',
+					'price'  => 'num',
+					'type'   => 'text',
+					'origin' => 'text',
 				),
 				6,
 			),

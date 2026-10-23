@@ -57,8 +57,11 @@
     z.label = String(z.label || "Zone").toUpperCase();
   });
   levels.forEach(l => { l.label = String(l.label || "").toUpperCase(); });
-  zones.forEach(z => { z.from = isFinite(z.from) ? Math.max(0, bars.findIndex(b => b.time >= z.from + OFF)) : origin([z.low, z.high]); });
-  levels.forEach(l => { l.from = origin([l.price]); });
+  // Bougie d'origine donnée par le plan (« from », heure Unix UTC) : celle qui la contient, le bord gauche si
+  // elle est plus ancienne que le graphique ; sans origine, cherchée par le prix.
+  const at = t => { if (t == null || !isFinite(t) || t + OFF > bars[bars.length - 1].time + 86400) return -1; let i = bars.length - 1; while (i > 0 && bars[i].time > t + OFF) i--; return i; };
+  zones.forEach(z => { const i = at(z.from); z.from = i >= 0 ? i : origin([z.low, z.high]); });
+  levels.forEach(l => { const i = at(l.from); l.from = i >= 0 ? i : origin([l.price]); });
 
   // Échelle : bougies visibles, scénarios et zones proches.
   ser.applyOptions({ autoscaleInfoProvider: orig => { const r = orig(); if (!r || !r.priceRange) return r; let lo = r.priceRange.minValue, hi = r.priceRange.maxValue; const span = hi - lo, near = v => v > lo - span * 0.6 && v < hi + span * 0.6;

@@ -71,7 +71,13 @@ class CX_Chart {
 	 * @return array|null
 	 */
 	public static function data( $date, $kind ) {
-		$p = CX_Repo::plan( self::week_of( $date ) );
+		$week = self::week_of( $date );
+		$p    = CX_Repo::plan( $week );
+		// Bougie d'origine du plan (heure Unix UTC), point de départ du tracé ; null : cherchée par le prix.
+		$from = static function ( $x ) use ( $week ) {
+			$o = CX_Live::origin_time( $x['origin'] ?? '', $week );
+			return $o ? $o['t'] : null;
+		};
 		$c = is_array( $p['content'] ?? null ) ? $p['content'] : array();
 		$s = null;
 		if ( 'week' !== $kind ) {
@@ -110,6 +116,7 @@ class CX_Chart {
 				'high'  => (float) $z['high'],
 				'side'  => $z['side'],
 				'label' => trim( (string) $z['type'] ),
+				'from'  => $from( $z ),
 			);
 		}
 		$live = (array) ( $c['live']['zones'] ?? array() );
@@ -131,6 +138,7 @@ class CX_Chart {
 				'high'  => (float) $z['high'],
 				'side'  => $z['side'],
 				'label' => trim( $z['type'] . ' ' . $z['tf'] ),
+				'from'  => $from( $z ),
 			);
 		}
 
@@ -151,6 +159,7 @@ class CX_Chart {
 				'label' => '' === $t ? 'Niveau' : ( preg_match( '/^EQ[HL]$/i', $t ) ? $t . ' liquidity' : $t ),
 				// Couleurs de TradingView : PDH, PDL, PWH, PWL en bleu ; EQH, EQL en gris foncé ; le reste en gris.
 				'color' => preg_match( '/^P[DWM][HL]/i', $t ) ? '#2962ff' : ( preg_match( '/^EQ[HL]/i', $t ) ? '#434651' : '#787b86' ),
+				'from'  => $from( $l ),
 			);
 		}
 		// Invalidation : premier prix de la phrase « annule » (séance) ou invalidation du plan (semaine).

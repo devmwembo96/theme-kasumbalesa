@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.27.6
+Stable tag: 2.27.7
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -142,6 +142,17 @@ Calculateur XAU version 4 : outil position et ticket d’ordre façon TradingVie
   couleurs semi-transparentes posées sur le fond du graphique.
 * Téléchargement des deux EA (version 2.27.6) : fichiers servis en UTF-8 avec BOM, pour que
   MetaEditor lise les accents (é, ·, −) sans les confondre avec la page de code de Windows.
+* Bougie d’origine des tracés (version 2.27.7, EA Carnet 2.16) : lignes « Z|…|origine » et
+  « L|prix|type|origine » du flux de l’EA. Le plan écrit `origin` en heure de Lubumbashi ; le carnet
+  la convertit en heure du serveur MT5 du compte (décalage lu sur sa bougie D1, qui s’ouvre à minuit
+  heure du serveur), « jj/mm » seul pour une bougie D1. Un niveau fusionné à moins de 1 $ prend
+  l’origine de l’autre s’il n’en a pas. Le graphique du carnet lit aussi `origin` en heure de
+  Lubumbashi (il le lisait en UTC : 2 h d’écart), et l’image envoyée sur Telegram fait partir zones
+  et niveaux de leur bougie d’origine. Les plans de séance acceptent `origin` pour leurs zones et
+  niveaux.
+* EA Carnet 2.16 (affichage) : plan et signaux dessinés en CCanvas (vraie transparence), zones
+  vert achat / rouge vente, signaux à l’outil position de TradingView gardés 7 jours, tableau au
+  dessin du ticket du Calculateur, bougies derrière le plan et le tableau.
 
 Signaux Claude : trades virtuels et taux de réussite (version 2.5)
 * Chaque signal de l’EA devient un trade virtuel « Signal Claude », suivi par l’EA jusqu’à
