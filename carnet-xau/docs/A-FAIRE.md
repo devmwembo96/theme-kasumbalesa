@@ -37,7 +37,8 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 - Affichage façon TradingView (2.27.5, 23 octobre) : Calculateur 4.01 et EA Carnet 2.14 en
   Trebuchet MS, à l’échelle de l’écran (Windows à 125 % ou 150 %), textes coupés à leur largeur
   réelle, couleurs semi-transparentes de TradingView. Maquette du ticket vérifiée à 100, 125 et
-  150 % (aucun débordement).
+  150 % (aucun débordement). Fichiers des EA téléchargés en UTF-8 avec BOM (2.27.6) : accents
+  lus correctement par MetaEditor.
 - Calculateur XAU 4.00 et EA Carnet 2.13 (2.27.4, 23 octobre) : outil position et ticket d’ordre
   façon TradingView, SL sur l’outil (plus de SL derrière la bougie), flèche sur le prix d’entrée,
   risque, limites, étape et objectif du compte lus dans le carnet (ligne « G| » du flux).
