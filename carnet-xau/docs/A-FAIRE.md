@@ -29,6 +29,11 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## Fait
 
+- Nouveau planning (2.27.3, 23 octobre) : plan de Londres 1 h avant l’ouverture de Londres
+  (`kind` « london », zones surveillées par l’EA avec la mention LDN), plan de New York 1 h avant
+  l’ouverture de New York (il remplace le plan de Londres pour l’EA) ; pré-marché arrêté. Les
+  anciennes analyses Asie et pré-marché restent lisibles dans l’historique.
+
 - Fiabilité de Claude (2.19.0) : chaque analyse de séance est notée par le carnet sur les
   bougies (biais annoncé contre mouvement réel, seuil ± 0,2 × ATR), bilan dans l’onglet Suivi
   (`GET /claude-score`). Trades MT5 remplis seuls : setup du signal Claude correspondant, zone et
@@ -78,11 +83,13 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 ## Tâches Claude programmées
 
 - « Carnet XAU · plan de la semaine · revnefty.store » : dimanche 11:52 (Lubumbashi).
-- « Carnet XAU · session Asie (06:45) » : du lundi au vendredi à 06:45 (Lubumbashi).
-- « Carnet XAU · pré-marché US (08:33 New York) » : du lundi au vendredi (14:33 Lubumbashi
-  en heure d’été américaine).
-- « Carnet XAU · plan de la session US (09:15 New York) » : du lundi au vendredi (15:15).
+- « Carnet XAU · plan de Londres (1 h avant l’ouverture) » : du lundi au vendredi à 06:45 à
+  Londres (08:45 Lubumbashi en hiver, 07:45 en été), publié vers 07:00 à Londres.
+- « Carnet XAU · plan de New York (1 h avant l’ouverture) » : du lundi au vendredi à 08:15 à
+  New York (14:15 Lubumbashi en heure d’été américaine, 15:15 en hiver), publié vers 08:30.
 - « Carnet XAU · relecture et rejeu de 17 h (New York) » : du lundi au vendredi à 17:20
-  New York (23:20 Lubumbashi) ; rejeu, réglage de l’EA ; le vendredi, verdict et coaching.
+  New York (23:20 Lubumbashi, 00:20 en hiver) ; rejeu, réglage de l’EA ; le vendredi, verdict et
+  coaching.
+- Le pré-marché US (08:33 New York) est arrêté depuis le 23 octobre 2026.
 - Elles publient sur revnefty.store seulement, avec un jeton réservé aux plans. S’il est régénéré dans
-  Comptes › Connexions, il faut le remplacer dans les cinq tâches.
+  Comptes › Connexions, il faut le remplacer dans les quatre tâches.

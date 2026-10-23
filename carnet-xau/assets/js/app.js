@@ -481,7 +481,7 @@ function execCard(x,i){
 }
 const posCard=q=>({side:q.side,setup:q.setup,label:q.label,wait:q.wait,trigger:q.trigger,entry:num(q.entry),sl:q.sl,tp:q.tp,cancel:q.cancel});
 const scnCard=s=>({side:s.side,setup:s.setup,prob:s.prob,label:s.then,wait:s.if?"Si "+s.if:"",trigger:s.trigger,entry:s.entry,sl:s.sl,tp:s.tp,cancel:s.invalidation});
-const SES_K={asia:"Session Asie",premarket:"Pré-marché US (Asie et Londres)",us:"Plan de la session US"},SES_O={asia:0,premarket:1,us:2},SES_B={h:"haussier",b:"baissier",n:"neutre"};
+const SES_K={asia:"Session Asie",london:"Plan de Londres",premarket:"Pré-marché US (Asie et Londres)",us:"Plan de New York"},SES_S={asia:"Asie",london:"Londres",premarket:"pré-marché",us:"New York"},SES_O={asia:0,london:1,premarket:2,us:3},SES_B={h:"haussier",b:"baissier",n:"neutre"};
 // Une analyse de séance : résumé, fiches à exécuter, consignes, ce qui annule ; le « pourquoi » est replié.
 function sessionBlock(x){
   const b=el("div",{class:"sess "+x.kind},el("div",{class:"row"},el("b",{text:SES_K[x.kind]||x.kind}),x.bias?el("span",{class:"bias "+x.bias,text:"biais "+SES_B[x.bias]}):null,x.at?el("span",{class:"k",text:"publiée à "+x.at.slice(11,16)}):null));
@@ -513,10 +513,10 @@ function scoreLine(sc){
 // Fiabilité de Claude : part des biais justes par séance, sur 12 semaines.
 async function scoreCard(){
   let d;try{d=await api("claude-score")}catch(e){return null}
-  const K={asia:"Session Asie",premarket:"Pré-marché US",us:"Plan de la session US"},rows=[];let n=0,ok=0;
-  for(const k of ["asia","premarket","us"]){const v=(d.kinds||{})[k];if(!v)continue;n+=v.n;ok+=v.ok;rows.push([K[k],String(v.n),String(v.ok),Math.round(100*v.ok/v.n)+" %"])}
+  const K={asia:"Session Asie",london:"Plan de Londres",premarket:"Pré-marché US",us:"Plan de New York"},rows=[];let n=0,ok=0;
+  for(const k of ["asia","london","premarket","us"]){const v=(d.kinds||{})[k];if(!v)continue;n+=v.n;ok+=v.ok;rows.push([K[k],String(v.n),String(v.ok),Math.round(100*v.ok/v.n)+" %"])}
   if(n)rows.push([el("b",{text:"Total"}),String(n),String(ok),el("b",{text:Math.round(100*ok/n)+" %"})]);
-  return card("Fiabilité de Claude",n?table(["Analyse","Notées","Biais justes","Réussite"],rows):el("p",{class:"hint",text:"Pas encore d’analyse notée : chaque séance est notée par le carnet après sa fin (Asie à 14:30, pré-marché et plan US à 22:00, heure de Lubumbashi)."}),
+  return card("Fiabilité de Claude",n?table(["Analyse","Notées","Biais justes","Réussite"],rows):el("p",{class:"hint",text:"Pas encore d’analyse notée : chaque plan est noté par le carnet après sa séance (Londres à "+tzAt("America/New_York",8,15)+", New York à "+tzAt("America/New_York",16,0)+", heure de Lubumbashi)."}),
     el("p",{class:"hint",style:"margin-top:8px",text:"Noté par le carnet sur les bougies, sans avis de Claude : mouvement entre la publication et la fin de la séance visée. Au-delà de ± "+fmt(100*d.neutral,0)+" % de l’ATR journalier il est haussier ou baissier, sinon neutre."}));
 }
 function renderPlanView(p){
@@ -563,7 +563,7 @@ function renderPlanView(p){
   // 4. Séances de la semaine, la plus récente ouverte
   const ses=p.content.sessions||[], dates=[...new Set(ses.map(x=>x.date))].sort().reverse();
   if(dates.length)out.push(card("Séances de la semaine",...dates.map((d,n)=>{const l=ses.filter(x=>x.date===d).sort((a,b)=>SES_O[b.kind]-SES_O[a.kind]);
-    const det=el("details",{class:"sday"},el("summary",{text:new Date(d+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+" · "+l.map(x=>({asia:"Asie",premarket:"pré-marché",us:"plan US"}[x.kind]||x.kind)).join(", ")}),...l.map(sessionBlock));
+    const det=el("details",{class:"sday"},el("summary",{text:new Date(d+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+" · "+l.map(x=>SES_S[x.kind]||x.kind).join(", ")}),...l.map(sessionBlock));
     if(!n)det.open=true;return det})));
   // 5. Zones et niveaux, du plus haut au plus bas
   const zl=[...(c.zones||[]).map(z=>({v:num(z.high),r:[px(z.low)+" – "+px(z.high),(z.type||"Zone")+" "+(z.tf||""),el("span",{class:"bias "+(z.side==="vente"?"b":"h"),text:z.side==="vente"?"Vente":"Achat"}),{testee:"Testée",cassee:"Cassée"}[z.state]||"Vierge",z.note]})),
@@ -635,7 +635,7 @@ function renderToday(){
     out.push(el("h3",{text:"À exécuter : plan de la semaine"}));
     if(day&&day.focus)out.push(el("p",{class:"lead"},el("b",{text:"Aujourd’hui : "}),document.createTextNode(day.focus)));
     if(sc.length)out.push(el("div",{class:"xcards"},...sc.map((x,i)=>execCard(scnCard(x),i))));
-    out.push(el("p",{class:"hint",style:"margin-top:8px",text:"Claude publie l’analyse de la séance Asie à 06:45 (Lubumbashi), puis le pré-marché à 08:33 et le plan US à 09:15 (New York) : elles remplacent ces scénarios."}));
+    out.push(el("p",{class:"hint",style:"margin-top:8px",text:"Claude publie le plan de Londres vers "+tzAt("Europe/London",7,0)+" et le plan de New York vers "+tzAt("America/New_York",8,30)+" (heure de Lubumbashi), 1 h avant chaque ouverture : ils remplacent ces scénarios."}));
   }
   box.replaceChildren(...out);
 }
@@ -656,7 +656,7 @@ function renderIdeas(){
     x.solution?el("p",null,el("span",{class:"k",text:"Solution : "}),document.createTextNode(x.solution)):null,
     x.test?el("p",null,el("span",{class:"k",text:"Test : "}),document.createTextNode(x.test)):null,
     x.result?el("p",null,el("span",{class:"k",text:"Résultat : "}),document.createTextNode(x.result)):null))));
-  if(tips.length)out.push(el("p",{style:"margin-top:12px"},el("span",{class:"k",text:"Idées nées des séances"})),el("ul",{class:"rules"},...tips.map(x=>el("li",null,el("b",{text:new Date(x.date+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long"})+" · "+({asia:"Asie",premarket:"pré-marché",us:"plan US"}[x.kind]||x.kind)+" : "}),document.createTextNode(x.idea)))));
+  if(tips.length)out.push(el("p",{style:"margin-top:12px"},el("span",{class:"k",text:"Idées nées des séances"})),el("ul",{class:"rules"},...tips.map(x=>el("li",null,el("b",{text:new Date(x.date+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long"})+" · "+(SES_S[x.kind]||x.kind)+" : "}),document.createTextNode(x.idea)))));
   box.replaceChildren(...out);
 }
 // Ce qui coûte dans le journal, en R : ce qu'il faut corriger en premier.
@@ -676,6 +676,10 @@ function renderErrors(T){
 /* ---------- calendrier économique (ForexFactory, USD fort et moyen impact) ---------- */
 let CAL=null,CAL_SKEW=0;
 const CAL_TZ="Africa/Lubumbashi";
+// Heure de Lubumbashi (HH:MM) d’une heure locale de Londres ou de New York aujourd’hui, changements d’heure compris.
+const tzAt=(tz,h,m)=>{const now=new Date(),p={};new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now).forEach(x=>p[x.type]=+x.value);
+  const off=Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute)-Math.floor(now.getTime()/60000)*60000;
+  return new Date(Date.UTC(p.year,p.month-1,p.day,h,m)-off).toLocaleTimeString("fr-FR",{timeZone:CAL_TZ,hour:"2-digit",minute:"2-digit"})};
 const calDay=d=>new Intl.DateTimeFormat("en-CA",{timeZone:CAL_TZ,year:"numeric",month:"2-digit",day:"2-digit"}).format(d);
 const calLong=t=>new Intl.DateTimeFormat("fr-FR",{timeZone:CAL_TZ,weekday:"long",day:"numeric",month:"short"}).format(new Date(t*1000));
 const calIn=s=>{const m=Math.round(s/60);if(m<60)return m+" min";const h=Math.floor(m/60),r=m%60;return h+" h"+(r?" "+String(r).padStart(2,"0"):"")};
@@ -1302,7 +1306,7 @@ async function start(){
   setActive();fillAccountSelects();resetTradeForm();resetPayoutForm();
   try{THIS_WEEK_PLAN=await api("plans/"+weekId(planWeek()))}catch(e){THIS_WEEK_PLAN=null}
   renderToday();loadPlan();renderTrades();calc();loadFeuSignals();setInterval(loadFeuSignals,120000);
-  // Les analyses de séance arrivent dans la journée (06:45, 08:33 et 09:15 New York) : relecture toutes les 5 minutes.
+  // Les plans de séance arrivent dans la journée (06:45 à Londres, 08:15 à New York) : relecture toutes les 5 minutes.
   setInterval(async()=>{if(document.hidden)return;try{THIS_WEEK_PLAN=await api("plans/"+weekId(planWeek()));renderToday();if(weekId(PLAN_WEEK)===weekId(planWeek())&&!$("#tab-plan").hidden)renderPlanView(THIS_WEEK_PLAN)}catch(e){}},300000);
   loadCalendar();
   lockReadOnly();

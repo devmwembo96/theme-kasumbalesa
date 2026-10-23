@@ -93,7 +93,7 @@ class CX_Plan {
 			'day'    => self::DAYS,
 			'verdict' => array( 'bonne', 'partielle', 'mauvaise' ),
 			'status'  => array( 'maintenu', 'mis_a_jour' ),
-			'kind'    => array( 'asia', 'premarket', 'us' ),
+			'kind'    => array( 'asia', 'london', 'premarket', 'us' ),
 			'istate'  => array( 'proposee', 'test', 'appliquee', 'abandonnee' ),
 		);
 		switch ( $type ) {
@@ -344,7 +344,9 @@ class CX_Plan {
 	}
 
 	/**
-	 * Analyse de séance (clé « session ») : Asie à 06:45, pré-marché à 14:30, plan US à 15:15.
+	 * Analyse de séance (clé « session ») : plan de Londres (« london ») 1 h avant l'ouverture de
+	 * Londres, plan de New York (« us ») 1 h avant celle de New York ; « asia » et « premarket »
+	 * restent lisibles dans l'historique.
 	 *
 	 * @return array
 	 */
@@ -467,7 +469,7 @@ class CX_Plan {
 		}
 		$session = isset( $in['session'] ) ? self::clean( $in['session'], self::session_spec() ) : null;
 		if ( isset( $in['session'] ) && ( '' === $session['date'] || '' === $session['kind'] ) ) {
-			return CX_Repo::invalid( 'Séance : « date » (AAAA-MM-JJ) et « kind » (asia, premarket ou us) obligatoires.' );
+			return CX_Repo::invalid( 'Séance : « date » (AAAA-MM-JJ) et « kind » (london ou us) obligatoires.' );
 		}
 		if ( $session ) {
 			// Une analyse par séance et par jour ; les 15 dernières journées sont gardées.

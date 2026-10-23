@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.27.2
+Stable tag: 2.27.3
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -98,6 +98,10 @@ Plan de semaine élargi, rédigé exclusivement par Claude (onglet Plan en lectu
   invalidation, zones atteintes et réaction, scénarios), ce qui a marché ou non, leçon.
   Onglet Stats : fiabilité des prévisions de Claude au fil des semaines.
 * Telegram : résumé de la relecture et verdict le lendemain à partir de 7 h (Lubumbashi).
+* Plans de séance (version 2.27.3) : plan de Londres 1 h avant l’ouverture de Londres (« london »),
+  plan de New York 1 h avant celle de New York (« us ») ; l’EA surveille les zones du dernier des
+  deux (mention LDN puis US). Le pré-marché est arrêté ; les analyses Asie et pré-marché déjà
+  publiées restent lisibles.
 * Le samedi et le dimanche, « Cette semaine », le résumé de l’onglet Jour et la commande
   Telegram /plan portent sur la semaine qui commence.
 

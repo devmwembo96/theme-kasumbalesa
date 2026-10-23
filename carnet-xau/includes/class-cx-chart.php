@@ -2,7 +2,7 @@
 /**
  * Graphique d'une analyse de Claude, au style TradingView clair, et sa capture d'écran.
  *
- * - ?cx_chart=1&date=AAAA-MM-JJ&kind=asia|premarket|us|week : page du graphique, en paysage comme un
+ * - ?cx_chart=1&date=AAAA-MM-JJ&kind=london|us|week : page du graphique, en paysage comme un
  *   écran de PC (1600 × 900, capture à 2560 × 1440) : bougies du courtier,
  *   zones, niveaux, outil position de chaque scénario, trajet simulé). La tâche Claude la capture
  *   avec un navigateur sans écran (window.CX_READY = true quand le dessin est fini).
@@ -16,7 +16,7 @@ defined( 'ABSPATH' ) || exit;
 
 class CX_Chart {
 
-	const KINDS = array( 'asia', 'premarket', 'us', 'week' );
+	const KINDS = array( 'asia', 'london', 'premarket', 'us', 'week' );
 
 	public static function init() {
 		add_action( 'init', array( __CLASS__, 'serve' ), 2 );
@@ -210,8 +210,9 @@ class CX_Chart {
 
 		$titles = array(
 			'asia'      => 'Session Asie',
+			'london'    => 'Plan de Londres',
 			'premarket' => 'Pré-marché US',
-			'us'        => 'Plan de la session US',
+			'us'        => 'Plan de New York',
 			'week'      => 'Plan de la semaine',
 		);
 		$when   = wp_date( 'l j F', strtotime( $date . ' 12:00' ), CX_Repo::tz() );
@@ -303,7 +304,7 @@ class CX_Chart {
 		$files = $req->get_file_params();
 		$f     = $files['file'] ?? null;
 		if ( ! $date || ! in_array( $kind, self::KINDS, true ) ) {
-			return CX_Repo::invalid( '« date » (AAAA-MM-JJ) et « kind » (asia, premarket, us ou week) obligatoires.' );
+			return CX_Repo::invalid( '« date » (AAAA-MM-JJ) et « kind » (london, us ou week) obligatoires.' );
 		}
 		if ( ! $f || ! empty( $f['error'] ) || ! is_uploaded_file( $f['tmp_name'] ) || $f['size'] > 4 * MB_IN_BYTES ) {
 			return CX_Repo::invalid( 'Image absente ou trop lourde (4 Mo au plus), champ « file ».' );

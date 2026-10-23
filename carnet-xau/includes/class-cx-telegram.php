@@ -211,8 +211,9 @@ class CX_Telegram {
 	public static function chart_caption( $s ) {
 		$t = array(
 			'asia'      => '🌏 <b>Session Asie</b>',
+			'london'    => '🇬🇧 <b>Plan de Londres</b>',
 			'premarket' => '🧭 <b>Pré-marché US</b>',
-			'us'        => '🇺🇸 <b>Plan de la session US</b>',
+			'us'        => '🇺🇸 <b>Plan de New York</b>',
 		)[ $s['kind'] ] ?? '<b>Séance</b>';
 		$l  = array( $t . ' — graphique' . ( empty( $s['bias'] ) ? '' : ' · biais ' . array( 'h' => 'haussier', 'b' => 'baissier', 'n' => 'neutre' )[ $s['bias'] ] ) );
 		$rk = self::exec_risk();
@@ -847,7 +848,7 @@ class CX_Telegram {
 	}
 
 	/**
-	 * Analyse de séance (Asie, pré-marché, plan US), envoyée dès sa publication.
+	 * Analyse de séance (plan de Londres, plan de New York), envoyée dès sa publication.
 	 *
 	 * @param array $s Séance.
 	 * @return string
@@ -856,8 +857,9 @@ class CX_Telegram {
 		$e     = fn( $v ) => esc_html( (string) $v );
 		$title = array(
 			'asia'      => '🌏 <b>Session Asie</b>',
+			'london'    => '🇬🇧 <b>Plan de Londres</b>',
 			'premarket' => '🧭 <b>Pré-marché US</b> (Asie et Londres)',
-			'us'        => '🇺🇸 <b>Plan de la session US</b>',
+			'us'        => '🇺🇸 <b>Plan de New York</b>',
 		)[ $s['kind'] ] ?? '<b>Séance</b>';
 		$bias  = array(
 			'h' => 'haussier',

@@ -178,20 +178,27 @@ class CX_Live {
 			$state = $live['zones'][ $key ]['state'] ?? ( $z['state'] ? $z['state'] : 'vierge' );
 			$out[] = 'Z|' . $key . '|' . self::t( $z['type'] ) . '|' . self::t( $z['tf'] ) . '|' . self::n( min( $z['low'], $z['high'] ) ) . '|' . self::n( max( $z['low'], $z['high'] ) ) . '|' . ( 'vente' === $z['side'] ? 'vente' : 'achat' ) . '|' . (int) $z['strength'] . '|' . $state;
 		}
-		// Zones du plan de séance US du jour (15:15), surveillées par l'EA comme les zones du plan.
+		// Zones du dernier plan de séance du jour (Londres, puis New York qui le remplace), surveillées
+		// par l'EA comme les zones du plan.
 		$today = CX_Repo::clock( 'Y-m-d' );
+		$feed  = array(
+			'london' => array( 'ld-', 'LDN' ),
+			'us'     => array( 'us-', 'US' ),
+		);
+		$plan  = null;
 		foreach ( (array) ( $c['sessions'] ?? array() ) as $se ) {
-			if ( 'us' !== $se['kind'] || $se['date'] !== $today ) {
+			if ( $se['date'] === $today && isset( $feed[ $se['kind'] ] ) && ( ! $plan || 'us' === $se['kind'] ) ) {
+				$plan = $se;
+			}
+		}
+		foreach ( $plan ? (array) $plan['zones'] : array() as $z ) {
+			if ( null === $z['low'] || null === $z['high'] ) {
 				continue;
 			}
-			foreach ( (array) $se['zones'] as $z ) {
-				if ( null === $z['low'] || null === $z['high'] ) {
-					continue;
-				}
-				$key   = 'us-' . self::zone_key( $z );
-				$state = $live['zones'][ $key ]['state'] ?? 'vierge';
-				$out[] = 'Z|' . $key . '|' . self::t( $z['type'] ? $z['type'] : 'Zone' ) . '|US|' . self::n( min( $z['low'], $z['high'] ) ) . '|' . self::n( max( $z['low'], $z['high'] ) ) . '|' . ( 'vente' === $z['side'] ? 'vente' : 'achat' ) . '|2|' . $state;
-			}
+			list( $pre, $tf ) = $feed[ $plan['kind'] ];
+			$key              = $pre . self::zone_key( $z );
+			$state            = $live['zones'][ $key ]['state'] ?? 'vierge';
+			$out[]            = 'Z|' . $key . '|' . self::t( $z['type'] ? $z['type'] : 'Zone' ) . '|' . $tf . '|' . self::n( min( $z['low'], $z['high'] ) ) . '|' . self::n( max( $z['low'], $z['high'] ) ) . '|' . ( 'vente' === $z['side'] ? 'vente' : 'achat' ) . '|2|' . $state;
 		}
 		$t     = CX_Tuning::values();
 		$out[] = 'S|' . (int) $t['touch'] . '|' . (int) $t['swing'] . '|' . self::n( $t['fvg'] ) . '|' . self::n( $t['slbuf'] ) . '|' . (int) $t['limitmin'] . '|' . (int) $t['cooldown'];
@@ -201,8 +208,9 @@ class CX_Live {
 		// d'exécution (P), tracés par l'EA comme sur le graphique envoyé sur Telegram.
 		$order = array(
 			'asia'      => 0,
-			'premarket' => 1,
-			'us'        => 2,
+			'london'    => 1,
+			'premarket' => 2,
+			'us'        => 3,
 		);
 		$last  = null;
 		foreach ( (array) ( $c['sessions'] ?? array() ) as $se ) {
@@ -406,7 +414,7 @@ class CX_Live {
 			);
 			$msg = sprintf( "⚠️ <b>Invalidation touchée</b> à %s (%s)\nLe plan de Claude ne tient plus dans ce sens : pas de signal tant que Claude n’a pas relu le plan (17 h à New York).", $at->format( 'H:i' ), $usd( $num( 'price' ) ) );
 		} elseif ( 'zone' === $type ) {
-			$key   = preg_replace( '/[^0-9.\-bsu]/', '', (string) ( $in['key'] ?? '' ) );
+			$key   = preg_replace( '/[^0-9.\-a-z]/', '', (string) ( $in['key'] ?? '' ) );
 			$state = CX_Repo::pick( $in['state'] ?? '', array( 'cassee', 'testee' ), '' );
 			if ( $key && $state && ( $live['zones'][ $key ]['state'] ?? '' ) !== $state ) {
 				$live['zones'][ $key ] = array(
@@ -414,7 +422,13 @@ class CX_Live {
 					'at'    => $at->format( 'Y-m-d H:i:s' ),
 				);
 				if ( 'cassee' === $state ) {
-					$msg = sprintf( '🧱 Zone %s cassée à %s : plus de signal sur cette zone.', esc_html( str_replace( array( '-b', '-s' ), array( ' (achat)', ' (vente)' ), $key ) ), $at->format( 'H:i' ) );
+					// « ld-4100.00-4110.00-b » → « 4100.00-4110.00 (achat, plan de Londres) ».
+					$src  = array(
+						'ld' => ', plan de Londres',
+						'us' => ', plan de New York',
+					);
+					$name = preg_match( '/^(?:([a-z]+)-)?(.+)-([bs])$/', $key, $mm ) ? $mm[2] . ' (' . ( 's' === $mm[3] ? 'vente' : 'achat' ) . ( $src[ $mm[1] ] ?? '' ) . ')' : $key;
+					$msg  = sprintf( '🧱 Zone %s cassée à %s : plus de signal sur cette zone.', esc_html( $name ), $at->format( 'H:i' ) );
 				}
 			}
 		}

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Carnet XAU
  * Description: Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan hebdomadaire, journal, statistiques, comptes et retraits ; réception MT5 et TradingView, alertes Telegram. Page hors du site : absente des menus, de la recherche et des plans du site, jamais indexée.
- * Version: 2.27.2
+ * Version: 2.27.3
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Text Domain: carnet-xau
@@ -12,7 +12,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'CX_VERSION', '2.27.2' );
+define( 'CX_VERSION', '2.27.3' );
 define( 'CX_DB_VERSION', '6' );
 define( 'CX_FILE', __FILE__ );
 define( 'CX_DIR', plugin_dir_path( __FILE__ ) );

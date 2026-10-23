@@ -3,8 +3,9 @@
  * Fiabilité de Claude et remplissage automatique des trades MT5.
  *
  * - Chaque analyse de séance est notée par le carnet sur les bougies du courtier, sans avis de
- *   Claude : mouvement entre la publication et la fin de la séance visée (Asie : jusqu'à 08:30 à
- *   New York ; pré-marché et plan US : jusqu'à 16:00 à New York). Au-delà de ± 0,2 × ATR
+ *   Claude : mouvement entre la publication et la fin de la séance visée (plan de Londres : jusqu'à
+ *   08:15 à New York, quand le plan de New York prend le relais ; plan de New York : jusqu'à 16:00
+ *   à New York ; anciennes analyses Asie : 08:30, pré-marché : 16:00). Au-delà de ± 0,2 × ATR
  *   journalier le mouvement est haussier ou baissier, sinon neutre ; le biais est juste s'il
  *   correspond. GET /claude-score en fait le bilan.
  * - Un trade importé de MT5 reçoit le setup du signal Claude correspondant, la zone et le niveau
@@ -60,7 +61,10 @@ class CX_Score {
 	 * @return int|null
 	 */
 	private static function end_ts( $s ) {
-		$h = 'asia' === $s['kind'] ? '08:30' : '16:00';
+		$h = array(
+			'asia'   => '08:30',
+			'london' => '08:15',
+		)[ $s['kind'] ] ?? '16:00';
 		try {
 			return ( new DateTimeImmutable( $s['date'] . ' ' . $h, new DateTimeZone( 'America/New_York' ) ) )->getTimestamp();
 		} catch ( Exception $e ) {
@@ -250,7 +254,7 @@ class CX_Score {
 		$date = $open->format( 'Y-m-d' );
 		$ses  = array_values( array_filter( (array) ( $c['sessions'] ?? array() ), fn( $s ) => $s['date'] === $date && ! empty( $s['at'] ) && $s['at'] <= $open->format( 'Y-m-d H:i:s' ) ) );
 
-		// Zone du plan de la semaine ou du plan US du jour, dans le sens du trade.
+		// Zone du plan de la semaine ou d'un plan de séance du jour, dans le sens du trade.
 		if ( null !== $entry ) {
 			$zones = (array) ( $c['zones'] ?? array() );
 			foreach ( $ses as $s ) {
@@ -281,7 +285,7 @@ class CX_Score {
 		$from = '';
 		if ( $ses ) {
 			$bias = (string) end( $ses )['bias'];
-			$from = array( 'asia' => 'session Asie', 'premarket' => 'pré-marché', 'us' => 'plan US' )[ end( $ses )['kind'] ] ?? 'séance';
+			$from = array( 'asia' => 'session Asie', 'london' => 'plan de Londres', 'premarket' => 'pré-marché', 'us' => 'plan de New York' )[ end( $ses )['kind'] ] ?? 'séance';
 		}
 		if ( '' === $bias ) {
 			$days = array( 1 => 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi' );

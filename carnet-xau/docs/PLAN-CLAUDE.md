@@ -214,9 +214,12 @@ serveur) : tous les prix d’un plan viennent d’un seul courtier, jamais d’u
 
 ## Analyses de séance (`session`)
 
-Publiées dans le plan de la semaine, envoyées sur Telegram dès réception. `kind` : `asia` (06:45,
-Lubumbashi), `premarket` (08:33 à New York), `us` (09:15 à New York). Une analyse par séance et par
-jour ; les zones du plan US du jour sont surveillées par l’EA comme les zones du plan.
+Publiées dans le plan de la semaine, envoyées sur Telegram dès réception. `kind` : `london` (plan
+de Londres, 06:45 à Londres, 1 h avant l’ouverture), `us` (plan de New York, 08:15 à New York, 1 h
+avant l’ouverture). Une analyse par séance et par jour. L’EA surveille les zones du dernier plan
+du jour comme les zones du plan : celles du plan de Londres (mention LDN), puis celles du plan de
+New York, qui les remplacent. `asia` et `premarket` (arrêtés le 23 octobre 2026) restent lisibles
+dans l’historique.
 
 ```json
 "session": { "date": "2026-10-20", "kind": "us", "bias": "b",
