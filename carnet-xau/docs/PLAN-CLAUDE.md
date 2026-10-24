@@ -274,3 +274,12 @@ la première impulsion d’au moins 1 $ et retournement à +60 min. Les 300 dern
 `GET /news-playbook` donne le résumé par annonce (`n`, `range15`, `abs60`, `reverse_pc`) ;
 `?title=CPI m/m` filtre une annonce. Les plans de Londres et de New York s’en servent pour chiffrer
 la réaction attendue d’une annonce du jour (jamais pour assouplir la fenêtre sans trade).
+
+## Statisticien (`/edge`)
+
+`GET /edge` : résultats en R (`n`, `win` %, `avg`, `sum`) des trades du journal (`journal`) et des
+signaux Claude soldés (`claude`), par `setup`, `session` (asia, london : 07:00 Londres → 08:15 New
+York, ny : 08:15 → 16:00 New York, off), `hour` (heure de Lubumbashi) et `side`, sur tout
+l’historique (`total`) et sur 30 jours (`30d`) ; `journal.rules` compare les trades complétés où
+les règles sont respectées ou non. Les plans de séance mettent en premier la fiche du setup et de la
+séance qui gagnent (au moins 5 trades pour conclure) ; le coach s’en sert pour ses bilans.
