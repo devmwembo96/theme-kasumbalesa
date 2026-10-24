@@ -34,6 +34,7 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## Fait
 
+- Coach de Claude (2.28.0, 24 octobre) : débrief du soir et bilan du dimanche sur Telegram.
 - Bougie d’origine des tracés (2.27.7, 23 octobre) : `origin` dans le flux de l’EA, en heure du
   serveur MT5 du compte ; graphique du carnet corrigé (il lisait `origin` en UTC au lieu de l’heure
   de Lubumbashi) ; image Telegram partie de la bougie d’origine. EA Carnet 2.16 de la session

@@ -256,3 +256,11 @@ gestion va dans `idea`, chiffrée sur les bougies.
 `PUT /claude/ea-params` (jeton du plan) : `{ "key": "fvg", "value": 0.5, "reason": "faits" }` ou
 `{ "key": "fvg", "revert": true, "reason": "…" }`. Réglages : touch (10–60), swing (10–40),
 fvg (0,10–1,50 $), slbuf (0,10–1,00 $), limitmin (15–120), cooldown (15–180). Un changement par jour.
+
+## Coach (`/claude/coach`)
+
+`POST /claude/coach` (jeton du plan, en-tête `X-CX-Key`) :
+`{"kind": "day"|"week", "date": "AAAA-MM-JJ", "lines": ["…"], "focus": "objectif", "score": 0-10}`.
+10 lignes au plus, chiffrées ; `focus` = un seul objectif ; `score` = discipline (règles du compte).
+Envoyé en privé sur Telegram (pas sur la chaîne). Une note par jour et par type : la dernière
+remplace la précédente. `GET /coach` : les 60 dernières notes (relire l’objectif précédent).
