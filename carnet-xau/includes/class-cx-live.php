@@ -466,7 +466,7 @@ class CX_Live {
 			if ( $send ) {
 				CX_Telegram::send(
 					sprintf(
-						"%s <b>%s</b> — %s\nZone : %s\nEntrée %s · stop %s · objectif %s (%sR)\nLot : %s (stop %s $)\n" . ( 'limit' === $kind ? 'Ordre limite : valable 30 min, en attente d’un repli.' : 'Sortie partielle à 2R, puis stop au prix d’entrée.' ) . ( null === $retest ? '' : "\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ) . ( '' === $note ? '' : "\n⛔ " . esc_html( $note ) ),
+						"%s <b>%s</b>\n%s\n\nZone : %s\n\n• Entrée : %s\n• Stop : %s\n• Objectif : %s (%sR)\n• Lot : %s (stop %s $)" . ( 'limit' === $kind ? "\n\nOrdre limite : valable 30 min, en attente d’un repli." : '' ) . ( null === $retest ? '' : "\n\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ) . ( '' === $note ? '' : "\n\n⛔ " . esc_html( $note ) ),
 						'sell' === $side ? '🔴' : '🟢',
 						esc_html( $label ),
 						esc_html( $acc['name'] ),
@@ -581,7 +581,7 @@ class CX_Live {
 					substr( $row->signale_le, 11, 5 ),
 					$r > 0 ? '+' : ( $r < 0 ? '−' : '' ),
 					number_format( abs( $r ), 1, ',', '' ),
-					$data['atteint_2r'] ? ' (2R atteint, sortie partielle)' : ''
+					$data['atteint_2r'] ? "\n2R atteint en cours de trade" : ''
 				)
 			);
 		}

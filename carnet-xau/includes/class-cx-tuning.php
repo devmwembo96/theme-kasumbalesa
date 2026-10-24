@@ -163,7 +163,7 @@ class CX_Tuning {
 		update_option( self::OPT, $d, false );
 		CX_Telegram::send(
 			sprintf(
-				"🛠 <b>EA : réglage ajusté par Claude</b>%s\n%s : %s → %s\n%s",
+				"🛠 <b>EA : réglage ajusté par Claude</b>%s\n\n• %s : %s → %s\n\n%s",
 				empty( $in['revert'] ) ? '' : ' (retour à la valeur précédente)',
 				esc_html( $p[3] ),
 				esc_html( self::fmt( $old ) ),

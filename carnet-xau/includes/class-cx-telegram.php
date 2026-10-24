@@ -215,15 +215,23 @@ class CX_Telegram {
 			'premarket' => '🧭 <b>Pré-marché US</b>',
 			'us'        => '🇺🇸 <b>Plan de New York</b>',
 		)[ $s['kind'] ] ?? '<b>Séance</b>';
-		$l  = array( $t . ' — graphique' . ( empty( $s['bias'] ) ? '' : ' · biais ' . array( 'h' => 'haussier', 'b' => 'baissier', 'n' => 'neutre' )[ $s['bias'] ] ) );
-		$rk = self::exec_risk();
+		$l = array( $t . ' — graphique' );
+		if ( ! empty( $s['bias'] ) ) {
+			$l[] = 'Biais : ' . array( 'h' => 'haussier', 'b' => 'baissier', 'n' => 'neutre' )[ $s['bias'] ];
+		}
+		// Rappel court de chaque fiche ; la fiche complète est dans le message du plan.
 		foreach ( array_values( (array) ( $s['positions'] ?? array() ) ) as $i => $p ) {
-			$l[] = '';
-			$l   = array_merge( $l, self::card_lines( $p, $i + 1, $rk ) );
+			$sell = 'vente' === ( $p['side'] ?? '' );
+			$l[]  = '';
+			$l[]  = sprintf( '%s <b>%d. %s</b>%s', $sell ? '🔴' : '🟢', $i + 1, $sell ? 'VENTE' : 'ACHAT', empty( $p['label'] ) ? '' : ' — ' . esc_html( $p['label'] ) );
+			$l[]  = '• Entrée : ' . self::usd( (float) $p['entry'] );
+			$l[]  = '• Stop : ' . self::usd( (float) $p['sl'] );
+			$l[]  = '• Objectif : ' . self::usd( (float) $p['tp'] );
 		}
 		if ( ! empty( $s['invalid'] ) ) {
 			$l[] = '';
-			$l[] = '⛔ Annule le plan : ' . esc_html( $s['invalid'] );
+			$l[] = '⛔ <b>Annule le plan</b>';
+			$l[] = esc_html( $s['invalid'] );
 		}
 		// Légende de photo : 1 024 caractères au plus ; on retire des lignes entières, jamais une balise.
 		while ( count( $l ) > 1 && mb_strlen( implode( "\n", $l ) ) > 1000 ) {
@@ -273,24 +281,30 @@ class CX_Telegram {
 		$cost = $stop * $rk['contract'] + $rk['commission'];
 		$lot  = $cost > 0 && $rk['risk'] > 0 ? floor( $rk['risk'] / $cost * 100 + 1e-9 ) / 100 : 0;
 		$sell = 'vente' === ( $p['side'] ?? '' );
-		$out  = array( sprintf( '%s <b>%d. %s</b>%s%s', $sell ? '🔴' : '🟢', $n, $sell ? 'VENTE' : 'ACHAT', empty( $p['setup'] ) ? '' : ' · setup ' . $e( $p['setup'] ), empty( $p['label'] ) ? '' : ' — ' . $e( $p['label'] ) ) );
+		$out  = array( sprintf( '%s <b>%d. %s</b>%s', $sell ? '🔴' : '🟢', $n, $sell ? 'VENTE' : 'ACHAT', empty( $p['setup'] ) ? '' : ' · setup ' . $e( $p['setup'] ) ) );
+		if ( ! empty( $p['label'] ) ) {
+			$out[] = '<i>' . $e( $p['label'] ) . '</i>';
+		}
 		if ( ! empty( $p['wait'] ) ) {
-			$out[] = '⏳ Attendre : ' . $e( $p['wait'] );
+			$out[] = '';
+			$out[] = '⏳ <b>Attendre</b>';
+			$out[] = $e( $p['wait'] );
 		}
 		if ( ! empty( $p['trigger'] ) ) {
-			$out[] = '🎯 Déclencheur : ' . $e( $p['trigger'] );
+			$out[] = '';
+			$out[] = '🎯 <b>Déclencheur</b>';
+			$out[] = $e( $p['trigger'] );
 		}
-		$out[] = sprintf(
-			'📌 Ordre : entrée %s · stop %s (%s $) · objectif %s (%sR) · %s',
-			self::usd( (float) $p['entry'] ),
-			self::usd( (float) $p['sl'] ),
-			number_format( $stop, 2, ',', ' ' ),
-			self::usd( (float) $p['tp'] ),
-			number_format( $rr, 1, ',', '' ),
-			$lot >= 0.01 ? 'lot ' . number_format( $lot, 2, ',', '' ) . ' (risque ' . self::usd( $rk['risk'] ) . ')' : 'stop trop large pour le risque du compte'
-		);
+		$out[] = '';
+		$out[] = '📌 <b>Ordre</b>';
+		$out[] = '• Entrée : ' . self::usd( (float) $p['entry'] );
+		$out[] = '• Stop : ' . self::usd( (float) $p['sl'] ) . ' (' . number_format( $stop, 2, ',', ' ' ) . ' $)';
+		$out[] = '• Objectif : ' . self::usd( (float) $p['tp'] ) . ' (' . number_format( $rr, 1, ',', '' ) . 'R)';
+		$out[] = $lot >= 0.01 ? '• Lot : ' . number_format( $lot, 2, ',', '' ) . ' (risque ' . self::usd( $rk['risk'] ) . ')' : '• Lot : stop trop large pour le risque du compte';
 		if ( ! empty( $p['cancel'] ) ) {
-			$out[] = '✖ Annulé si : ' . $e( $p['cancel'] );
+			$out[] = '';
+			$out[] = '✖ <b>Annulé si</b>';
+			$out[] = $e( $p['cancel'] );
 		}
 		return $out;
 	}
@@ -624,17 +638,31 @@ class CX_Telegram {
 			? $a['params']['daystopr'] * CX_Repo::own_risk( $sn ? (float) $sn['balance'] : (float) $a['size'], $a['params'] )['risk']
 			: CX_Repo::prop_limits( $a, $sn )['firm_daily'];
 		$lines = array(
-			'<b>' . esc_html( $a['name'] ) . '</b> — ' . wp_date( 'l j F', null, CX_Repo::tz() ),
-			sprintf( 'Trades : %d/%d · pertes : %d/%d', count( $tt ), $a['params']['maxtrades'], $loss, $a['params']['maxloss'] ),
-			'Résultat : ' . self::usd( $pnl ),
-			'Limite journalière : ' . self::usd( $lim ),
+			'<b>' . esc_html( $a['name'] ) . '</b>',
+			wp_date( 'l j F', null, CX_Repo::tz() ),
+			'',
+			sprintf( '• Trades : %d/%d', count( $tt ), $a['params']['maxtrades'] ),
+			sprintf( '• Pertes : %d/%d', $loss, $a['params']['maxloss'] ),
+			'• Résultat : ' . self::usd( $pnl ),
+			'• Limite journalière : ' . self::usd( $lim ),
 		);
 		$snap = CX_Ingest::latest_snapshots()->{$a['id']} ?? null;
 		if ( $snap ) {
-			$lines[] = sprintf( 'MT5 (%s) : solde %s, équité %s', substr( $snap['at'], 11, 5 ), self::usd( $snap['balance'] ), self::usd( $snap['equity'] ) );
+			$lines[] = '';
+			$lines[] = '<b>MT5</b> (' . substr( $snap['at'], 11, 5 ) . ')';
+			$lines[] = '• Solde : ' . self::usd( $snap['balance'] );
+			$lines[] = '• Équité : ' . self::usd( $snap['equity'] );
 		}
 		$news    = CX_Calendar::day( new DateTimeImmutable( 'now', CX_Repo::tz() ) );
-		$lines[] = $news ? 'Annonces USD : ' . implode( ' · ', array_map( fn( $e ) => $e['time'] . ' ' . esc_html( $e['name'] ) . ( 'high' === $e['impact'] ? ' 🔴' : ' 🟠' ), $news ) ) : 'Aucune annonce USD importante aujourd’hui.';
+		$lines[] = '';
+		if ( $news ) {
+			$lines[] = '<b>Annonces USD</b>';
+			foreach ( $news as $x ) {
+				$lines[] = ( 'high' === $x['impact'] ? '🔴 ' : '🟠 ' ) . $x['time'] . ' — ' . esc_html( $x['name'] );
+			}
+		} else {
+			$lines[] = 'Aucune annonce USD importante aujourd’hui.';
+		}
 		return implode( "\n", $lines );
 	}
 
@@ -685,13 +713,20 @@ class CX_Telegram {
 		$num   = fn( $v ) => null === $v ? '?' : number_format( (float) $v, 2, ',', ' ' );
 		$lines = array(
 			'🧭 <b>Plan de la semaine du ' . wp_date( 'j F', strtotime( $week ), CX_Repo::tz() ) . '</b> (Claude)',
-			sprintf( 'Haussier %d %% · Baissier %d %% · Range %d %%', $p['bull'], $p['bear'], $p['range'] ),
+			'',
+			'• Haussier : ' . (int) $p['bull'] . ' %',
+			'• Baissier : ' . (int) $p['bear'] . ' %',
+			'• Range : ' . (int) $p['range'] . ' %',
 		);
-		if ( $p['summary'] ) {
-			$lines[] = $e( $p['summary'] );
-		}
 		if ( null !== $p['range_low'] && null !== $p['range_high'] ) {
-			$lines[] = 'Range attendu : ' . $num( $p['range_low'] ) . ' – ' . $num( $p['range_high'] ) . ( null !== $p['invalidation'] ? ' · invalidation ' . $num( $p['invalidation'] ) : '' );
+			$lines[] = '• Range attendu : ' . $num( $p['range_low'] ) . ' – ' . $num( $p['range_high'] );
+		}
+		if ( null !== $p['invalidation'] ) {
+			$lines[] = '• Invalidation : ' . $num( $p['invalidation'] );
+		}
+		if ( $p['summary'] ) {
+			$lines[] = '';
+			$lines[] = $e( $p['summary'] );
 		}
 		$zones = (array) ( $c['zones'] ?? array() );
 		usort( $zones, fn( $x, $y ) => (float) $y['high'] <=> (float) $x['high'] );
@@ -708,12 +743,24 @@ class CX_Telegram {
 			$lines[] = '';
 			$lines[] = '<b>Scénarios</b>';
 			foreach ( $sc as $i => $x ) {
+				if ( $i ) {
+					$lines[] = '';
+				}
 				$lines[] = ( 'vente' === $x['side'] ? '🔴 ' : '🟢 ' ) . '<b>' . ( $i + 1 ) . '. ' . ( 'vente' === $x['side'] ? 'Vente' : 'Achat' ) . '</b>' . ( $x['setup'] ? ' · setup ' . $e( $x['setup'] ) : '' ) . ( null !== $x['prob'] ? ' · ' . (int) $x['prob'] . ' %' : '' );
-				$lines[] = '⏳ Si ' . $e( $x['if'] ) . ( $x['then'] ? ' → ' . $e( $x['then'] ) : '' );
+				$lines[] = '⏳ Si : ' . $e( $x['if'] );
+				if ( $x['then'] ) {
+					$lines[] = '➡️ Alors : ' . $e( $x['then'] );
+				}
 				if ( ! empty( $x['trigger'] ) ) {
 					$lines[] = '🎯 Déclencheur : ' . $e( $x['trigger'] );
 				}
-				$lines[] = '📌 Entrée ' . $e( $x['entry'] ) . ( null !== $x['sl'] ? ' · stop ' . $num( $x['sl'] ) : '' ) . ( null !== $x['tp'] ? ' · objectif ' . $num( $x['tp'] ) : '' );
+				$lines[] = '• Entrée : ' . $e( $x['entry'] );
+				if ( null !== $x['sl'] ) {
+					$lines[] = '• Stop : ' . $num( $x['sl'] );
+				}
+				if ( null !== $x['tp'] ) {
+					$lines[] = '• Objectif : ' . $num( $x['tp'] );
+				}
 				if ( $x['invalidation'] ) {
 					$lines[] = '✖ Annulé si : ' . $e( $x['invalidation'] );
 				}
@@ -723,12 +770,14 @@ class CX_Telegram {
 		foreach ( (array) ( $c['days'] ?? array() ) as $d ) {
 			if ( $d['day'] === $today && $d['focus'] ) {
 				$lines[] = '';
-				$lines[] = '<b>Aujourd’hui</b> : ' . $e( $d['focus'] );
+				$lines[] = '<b>Aujourd’hui</b>';
+				$lines[] = $e( $d['focus'] );
 			}
 		}
 		$news = array_filter( (array) ( $c['calendar'] ?? array() ), fn( $x ) => 'high' === $x['impact'] );
 		if ( $news ) {
 			$lines[] = '';
+			$lines[] = '<b>Annonces à fort impact</b>';
 			foreach ( $news as $x ) {
 				$lines[] = '📅 ' . $e( $x['day'] . ' ' . $x['time'] . ' ' . $x['event'] );
 			}
@@ -782,6 +831,7 @@ class CX_Telegram {
 		$day   = wp_date( 'l j F', strtotime( $u['date'] . ' 12:00 UTC' ), CX_Repo::tz() );
 		$lines = array(
 			'🌅 <b>Relecture de ' . $e( $day ) . '</b>',
+			'',
 			'mis_a_jour' === $u['status'] ? '🔄 <b>Plan mis à jour</b>' : '✅ <b>Plan maintenu</b>',
 		);
 		if ( $u['reason'] ) {
@@ -796,11 +846,13 @@ class CX_Telegram {
 		}
 		if ( $u['trades'] ) {
 			$lines[] = '';
-			$lines[] = '<b>Vos trades</b> : ' . $e( $u['trades'] );
+			$lines[] = '<b>Vos trades</b>';
+			$lines[] = $e( $u['trades'] );
 		}
 		if ( $u['tomorrow'] ) {
 			$lines[] = '';
-			$lines[] = '<b>Aujourd’hui</b> : ' . $e( $u['tomorrow'] );
+			$lines[] = '<b>Aujourd’hui</b>';
+			$lines[] = $e( $u['tomorrow'] );
 		}
 		if ( 'mis_a_jour' === $u['status'] ) {
 			$draw = array_filter( (array) ( $c['zones'] ?? array() ), fn( $z ) => '' !== $z['draw'] );
@@ -815,14 +867,20 @@ class CX_Telegram {
 		$bt = (array) ( $u['backtest'] ?? array() );
 		if ( ! empty( $bt['summary'] ) || ! empty( $bt['missed'] ) || ! empty( $bt['wrong'] ) ) {
 			$lines[] = '';
-			$lines[] = '🔁 <b>Rejeu de la journée</b>' . ( empty( $bt['summary'] ) ? '' : ' : ' . $e( $bt['summary'] ) );
+			$lines[] = '🔁 <b>Rejeu de la journée</b>';
+			if ( ! empty( $bt['summary'] ) ) {
+				$lines[] = $e( $bt['summary'] );
+			}
 			foreach ( (array) ( $bt['missed'] ?? array() ) as $x ) {
-				$lines[] = '➕ Manqué ' . self::trade_line( $x, $e );
+				$lines[] = '';
+				$lines[] = '➕ <b>Manqué</b> ' . self::trade_line( $x, $e );
 			}
 			foreach ( (array) ( $bt['wrong'] ?? array() ) as $x ) {
-				$lines[] = '➖ À éviter ' . self::trade_line( $x, $e );
+				$lines[] = '';
+				$lines[] = '➖ <b>À éviter</b> ' . self::trade_line( $x, $e );
 			}
 			if ( ! empty( $bt['tuning'] ) ) {
+				$lines[] = '';
 				$lines[] = '🛠 ' . $e( $bt['tuning'] );
 			}
 		}
@@ -842,9 +900,9 @@ class CX_Telegram {
 	private static function trade_line( $x, $e ) {
 		$p = static fn( $v ) => null === $v ? '?' : number_format( (float) $v, 2, ',', ' ' );
 		$r = null === ( $x['r'] ?? null ) ? '' : ' → ' . ( $x['r'] > 0 ? '+' : '' ) . number_format( (float) $x['r'], 1, ',', '' ) . 'R';
-		return $e( trim( ( $x['time'] ?? '' ) . ' ' . ( 'vente' === ( $x['side'] ?? '' ) ? 'vente' : 'achat' ) . ( empty( $x['setup'] ) ? '' : ' S' . $x['setup'] ) ) )
-			. ' : ' . $p( $x['entry'] ?? null ) . ' / stop ' . $p( $x['sl'] ?? null ) . ' / objectif ' . $p( $x['tp'] ?? null ) . $r
-			. ( empty( $x['why'] ) ? '' : ' — ' . $e( $x['why'] ) );
+		return $e( trim( ( $x['time'] ?? '' ) . ' ' . ( 'vente' === ( $x['side'] ?? '' ) ? 'vente' : 'achat' ) . ( empty( $x['setup'] ) ? '' : ' S' . $x['setup'] ) ) ) . $r
+			. "\n• Entrée : " . $p( $x['entry'] ?? null ) . "\n• Stop : " . $p( $x['sl'] ?? null ) . "\n• Objectif : " . $p( $x['tp'] ?? null )
+			. ( empty( $x['why'] ) ? '' : "\n" . $e( $x['why'] ) );
 	}
 
 	/**
@@ -866,16 +924,20 @@ class CX_Telegram {
 			'b' => 'baissier',
 			'n' => 'neutre',
 		)[ $s['bias'] ] ?? '';
-		$lines = array( $title . ' — ' . $e( wp_date( 'l j F', strtotime( $s['date'] . ' 12:00 UTC' ), CX_Repo::tz() ) ) . ( $bias ? ' · biais ' . $bias : '' ) );
+		$lines = array( $title, $e( wp_date( 'l j F', strtotime( $s['date'] . ' 12:00 UTC' ), CX_Repo::tz() ) ) . ( $bias ? ' · biais ' . $bias : '' ) );
 		if ( $s['summary'] ) {
+			$lines[] = '';
 			$lines[] = $e( $s['summary'] );
 		}
-		// Ce qu'il faut exécuter, dans l'ordre : une fiche par scénario.
+		// Ce qu'il faut exécuter, dans l'ordre : une fiche par scénario, séparées par un trait.
 		$lines[] = '';
-		$lines[] = '<b>▶ À exécuter</b>';
+		$lines[] = '<b>▶ À EXÉCUTER</b>';
 		$rk      = self::exec_risk();
 		foreach ( array_values( (array) ( $s['positions'] ?? array() ) ) as $i => $p ) {
-			$lines = array_merge( $lines, $i ? array( '' ) : array(), self::card_lines( $p, $i + 1, $rk ) );
+			$lines = array_merge( $lines, array( '━━━━━━━━━━━━' ), self::card_lines( $p, $i + 1, $rk ) );
+		}
+		if ( ! empty( $s['positions'] ) ) {
+			$lines[] = '━━━━━━━━━━━━';
 		}
 		if ( empty( $s['positions'] ) ) {
 			$lines[] = 'Aucun scénario exécutable pour l’instant : on ne force pas de trade.';
@@ -896,11 +958,13 @@ class CX_Telegram {
 		}
 		if ( $s['invalid'] ) {
 			$lines[] = '';
-			$lines[] = '⛔ <b>Annule le plan</b> : ' . $e( $s['invalid'] );
+			$lines[] = '⛔ <b>Annule le plan</b>';
+			$lines[] = $e( $s['invalid'] );
 		}
 		if ( ! empty( $s['idea'] ) ) {
 			$lines[] = '';
-			$lines[] = '💡 <b>Idée de Claude</b> : ' . $e( $s['idea'] );
+			$lines[] = '💡 <b>Idée de Claude</b>';
+			$lines[] = $e( $s['idea'] );
 		}
 		$lines[] = '';
 		$lines[] = 'Carnet : ' . get_permalink( CX_Front::page_id() );
@@ -951,18 +1015,29 @@ class CX_Telegram {
 		)[ $r['verdict'] ] ?? '';
 		$yn    = fn( $v ) => null === $v ? '—' : ( $v ? 'oui' : 'non' );
 		$lines = array(
-			'📊 <b>Verdict de la semaine du ' . wp_date( 'j F', strtotime( $week ), CX_Repo::tz() ) . '</b> : ' . $icon . ( null !== $r['score'] ? ' (' . $r['score'] . '/10)' : '' ),
-			'Biais juste : ' . $yn( $r['bias_ok'] ) . ' · range respecté : ' . $yn( $r['range_held'] ) . ' · invalidation touchée : ' . $yn( $r['invalidation_hit'] ),
+			'📊 <b>Verdict de la semaine du ' . wp_date( 'j F', strtotime( $week ), CX_Repo::tz() ) . '</b>',
+			$icon . ( null !== $r['score'] ? ' (' . $r['score'] . '/10)' : '' ),
+			'',
+			'• Biais juste : ' . $yn( $r['bias_ok'] ),
+			'• Range respecté : ' . $yn( $r['range_held'] ),
+			'• Invalidation touchée : ' . $yn( $r['invalidation_hit'] ),
 		);
-		foreach ( (array) $r['worked'] as $w ) {
-			$lines[] = '✔️ ' . $e( $w );
+		if ( $r['worked'] ) {
+			$lines[] = '';
+			foreach ( (array) $r['worked'] as $w ) {
+				$lines[] = '✔️ ' . $e( $w );
+			}
 		}
-		foreach ( (array) $r['failed'] as $f ) {
-			$lines[] = '✖️ ' . $e( $f );
+		if ( $r['failed'] ) {
+			$lines[] = '';
+			foreach ( (array) $r['failed'] as $f ) {
+				$lines[] = '✖️ ' . $e( $f );
+			}
 		}
 		if ( $r['lesson'] ) {
 			$lines[] = '';
-			$lines[] = '<b>Leçon</b> : ' . $e( $r['lesson'] );
+			$lines[] = '<b>Leçon</b>';
+			$lines[] = $e( $r['lesson'] );
 		}
 		return implode( "\n", $lines );
 	}
@@ -1003,7 +1078,7 @@ class CX_Telegram {
 		) as $level => $title ) {
 			if ( $loss >= $lim * $level / 100 ) {
 				if ( CX_Guard::once( "daily|{$account_id}|{$day}|{$level}" ) ) {
-					self::send( sprintf( "%s\n%s : perte du jour %s sur %s autorisés. Arrêtez de trader aujourd’hui.", $title, esc_html( $a['name'] ), self::usd( $loss ), self::usd( $lim ) ) );
+					self::send( sprintf( "%s\n%s\n\n• Perte du jour : %s\n• Autorisé : %s\n\nArrêtez de trader aujourd’hui.", $title, esc_html( $a['name'] ), self::usd( $loss ), self::usd( $lim ) ) );
 				}
 				return;
 			}
@@ -1068,9 +1143,14 @@ class CX_Telegram {
 			$to    = ( new DateTimeImmutable( '@' . ( $t + 30 * MINUTE_IN_SECONDS ) ) )->setTimezone( $tz )->format( 'H:i' );
 			$lines = array( sprintf( '📅 <b>Annonce à %s</b> (dans %d min)', $group[0]['time'], max( 1, (int) round( ( $t - $now->getTimestamp() ) / 60 ) ) ) );
 			foreach ( $group as $e ) {
-				$lines[] = ( 'high' === $e['impact'] ? '🔴 ' : '🟠 ' ) . '<b>' . esc_html( $e['name'] ? $e['name'] : 'Annonce' ) . '</b>' . ( $e['fp'] ? ' — ' . esc_html( $e['fp'] ) : '' );
+				$lines[] = '';
+				$lines[] = ( 'high' === $e['impact'] ? '🔴 ' : '🟠 ' ) . '<b>' . esc_html( $e['name'] ? $e['name'] : 'Annonce' ) . '</b>';
+				if ( $e['fp'] ) {
+					$lines[] = esc_html( $e['fp'] );
+				}
 			}
-			$lines[] = $high ? 'Fort impact : pas de trade de ' . $from . ' à ' . $to . '.' : 'Impact moyen : prudence de ' . $from . ' à ' . $to . '.';
+			$lines[] = '';
+			$lines[] = $high ? '⛔ Pas de trade de ' . $from . ' à ' . $to . '.' : '⚠️ Prudence de ' . $from . ' à ' . $to . '.';
 			self::send( implode( "\n", $lines ) );
 		}
 	}

@@ -93,9 +93,9 @@ class CX_Coach {
 
 		$when = wp_date( 'd/m', strtotime( $date . ' 12:00' ), CX_Repo::tz() );
 		$head = 'week' === $kind ? '🧭 <b>Coach · bilan de la semaine</b> (' . $when . ')' : '🎯 <b>Coach · débrief du ' . $when . '</b>';
-		$text = $head . ( null !== $score ? ' · discipline ' . $score . '/10' : '' ) . "\n"
-			. implode( "\n", array_map( fn( $l ) => '• ' . esc_html( $l ), $lines ) )
-			. "\n\n<b>Objectif :</b> " . esc_html( $focus );
+		$text = $head . ( null !== $score ? "\nDiscipline : " . $score . '/10' : '' ) . "\n\n"
+			. implode( "\n\n", array_map( fn( $l ) => '• ' . esc_html( $l ), $lines ) )
+			. "\n\n🎯 <b>Objectif</b>\n" . esc_html( $focus );
 		$sent = CX_Telegram::send( $text, true );
 		return new WP_REST_Response(
 			array(

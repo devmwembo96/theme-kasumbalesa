@@ -520,21 +520,34 @@ class CX_Report {
 	 */
 	public static function summary( $d ) {
 		$t     = $d['totals'];
-		$lines = array( '📊 <b>Rapport de la semaine</b> ' . esc_html( self::period( $d ) ), esc_html( $d['account']['name'] ) );
+		$lines = array( '📊 <b>Rapport de la semaine</b> ' . esc_html( self::period( $d ) ), esc_html( $d['account']['name'] ), '' );
 		if ( $t['n'] ) {
-			$lines[] = sprintf( 'Trades : %d · réussite %s · total %s · %s $', $t['n'], self::pct( $t['wr'] ), self::r( $t['sumR'] ), self::nf( $t['pnl'] ) );
-			$lines[] = sprintf( 'Règles respectées : %d/%d · série de pertes max : %d', $d['discipline']['rules'], $t['n'], $d['discipline']['streak'] );
+			$lines[] = '<b>Trades</b>';
+			$lines[] = '• Nombre : ' . $t['n'];
+			$lines[] = '• Réussite : ' . self::pct( $t['wr'] );
+			$lines[] = '• Total : ' . self::r( $t['sumR'] ) . ' (' . self::nf( $t['pnl'] ) . ' $)';
+			$lines[] = '• Règles respectées : ' . $d['discipline']['rules'] . '/' . $t['n'];
+			$lines[] = '• Série de pertes max : ' . $d['discipline']['streak'];
 		} else {
 			$lines[] = 'Aucun trade cette semaine.';
 		}
-		$lines[] = sprintf( 'Étape : %s $ sur %s $ (reste %s $)', self::nf( $d['progress']['profit'] ), self::nf( $d['progress']['target'] ), self::nf( $d['progress']['left'] ) );
+		$lines[] = '';
+		$lines[] = '<b>Étape</b>';
+		$lines[] = '• ' . self::nf( $d['progress']['profit'] ) . ' $ sur ' . self::nf( $d['progress']['target'] ) . ' $';
+		$lines[] = '• Reste : ' . self::nf( $d['progress']['left'] ) . ' $';
 		if ( $d['signals']['closed'] ) {
-			$lines[] = sprintf( 'Signaux Claude : %d clôturés · réussite %s · %s', $d['signals']['closed'], self::pct( $d['signals']['wr'] ), self::r( $d['signals']['sumR'] ) );
+			$lines[] = '';
+			$lines[] = '<b>Signaux Claude</b>';
+			$lines[] = '• Clôturés : ' . $d['signals']['closed'];
+			$lines[] = '• Réussite : ' . self::pct( $d['signals']['wr'] );
+			$lines[] = '• Total : ' . self::r( $d['signals']['sumR'] );
 		}
 		$co = $d['claude']['coaching'];
 		if ( $co && ! empty( $co['actions'] ) ) {
+			$lines[] = '';
 			$lines[] = '🎯 ' . esc_html( (string) $co['actions'][0] );
 		}
+		$lines[] = '';
 		$lines[] = '<a href="' . esc_url( $d['url'] ) . '">Ouvrir le rapport complet (PDF)</a>';
 		return implode( "\n", $lines );
 	}
