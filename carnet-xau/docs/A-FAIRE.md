@@ -6,7 +6,7 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## En cours
 
-- [ ] Compiler dans MetaEditor l’EA Carnet 2.17 et le Calculateur XAU 4.02 (Comptes › Connexions),
+- [ ] Compiler dans MetaEditor l’EA Carnet 2.18 et le Calculateur XAU 4.02 (Comptes › Connexions),
       les remettre sur leurs graphiques XAUUSD du même compte et signaler toute erreur de
       compilation (vérifiés ici avec un banc de syntaxe : MetaEditor ne démarre pas dans le
       conteneur de Claude). Calculateur : « Risque et limites du carnet » activé.

@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.17.0                                   |
+//| CarnetXAU.mq5 — version 2.18.0                                   |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1 à M1), toutes |
@@ -55,6 +55,7 @@
 //| (champ « origin » du plan, heure du serveur), sinon sur la mèche |
 //| H1 qui marque le prix (côté selon le type H / L), sinon au bord. |
 //| 2.17 : signal suivi sans gestion, objectif ou stop seulement.    |
+//| 2.18 : signaux de l'EA du VPS redessinés au retour du PC.        |
 //|                                                                  |
 //| Règles du signal (calculées à partir du plan de Claude) :        |
 //| - le prix touche une zone de Claude non cassée ;                 |
@@ -83,7 +84,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.17"
+#property version   "2.18"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 #include <Canvas\Canvas.mqh>
@@ -805,6 +806,7 @@ void FetchPlan()
    ArrayResize(g_newsName, 0);
    g_bull = 0; g_bear = 0; g_range = 0;
    g_inval = 0; g_rlo = 0; g_rhi = 0; g_ref = 0; g_invalidated = false;
+   string kl[];   // signaux de l'EA de référence (VPS), dessinés après la lecture du plan
 
    for(int i = 1; i < n; i++)
      {
@@ -899,6 +901,12 @@ void FetchPlan()
          g_weekStopR = StringToDouble(f[7]);
          g_ownKind   = (f[8] == "propre");
         }
+      else if(f[0] == "K" && c >= 10)
+        {
+         int k = ArraySize(kl);
+         ArrayResize(kl, k + 1);
+         kl[k] = lines[i];
+        }
       else if(f[0] == "S" && c >= 7)
         {
          // Réglages ajustés par Claude (bornés par le carnet).
@@ -910,12 +918,87 @@ void FetchPlan()
          g_cooldown = (int)StringToInteger(f[6]);
         }
      }
+   RemoteSignals(kl);
    g_hash   = head[1];
    g_week   = head[2];
    g_planOk = (ArraySize(g_zones) > 0);
    g_status = g_planOk ? "Plan de Claude reçu (" + IntegerToString(ArraySize(g_zones)) + " zones)." : "Aucun plan publié pour la semaine.";
    if(InpDrawPlan)
       DrawPlan();
+  }
+
+//--- Signaux de l'EA de référence (VPS) des dernières 24 h : dessinés ici comme si cet EA avait tourné
+//    (PC éteint puis rallumé). Un signal déjà trouvé par cet EA (même sens, 5 min, 1 $) n'est pas doublé ;
+//    le résultat ou l'annulation mettent le texte à jour.
+//    Ligne K : ref|heure du serveur|buy ou sell|now ou limit|entrée|stop|objectif|statut|résultat R|setup
+void RemoteSignals(string &kl[])
+  {
+   bool changed = false;
+   for(int i = 0; i < ArraySize(kl); i++)
+     {
+      string f[];
+      int c = StringSplit(kl[i], '|', f);
+      if(c < 10)
+         continue;
+      string   id   = PFX_SIG + "V" + f[1];
+      datetime t    = (datetime)StringToInteger(f[2]);
+      bool     buy  = (f[3] == "buy");
+      double   e    = StringToDouble(f[5]), sl = StringToDouble(f[6]), tp = StringToDouble(f[7]);
+      double   stop = MathAbs(e - sl);
+      if(e <= 0 || stop <= 0)
+         continue;
+      string label = (buy ? "BUY " : "SELL ") + (f[4] == "limit" ? "LIMIT" : "NOW") + " (VPS)";
+      string text  = label + " · SL " + Fr(sl, 2) + " · TP " + Fr(tp, 2) + " (" + Fr(MathAbs(tp - e) / stop, 1) + "R)" + (c >= 11 && f[10] != "" ? " S" + f[10] : "");
+      bool   grey  = (f[8] == "annule" || f[8] == "inconnu");
+      if(f[9] != "")
+        {
+         double r = StringToDouble(f[9]);
+         text = label + " : résultat " + (r >= 0 ? "+" : "-") + Fr(MathAbs(r), 1) + "R";
+        }
+      else if(f[8] == "annule")
+         text = label + " annulé (prix non atteint)";
+      int found = -1;
+      for(int j = 0; j < ArraySize(g_draws); j++)
+        {
+         if(g_draws[j].id == id)
+           {
+            found = j;
+            break;
+           }
+         if(g_draws[j].p2r != 0 && g_draws[j].buy == buy && MathAbs((double)(g_draws[j].t - t)) <= 300 && MathAbs(g_draws[j].entry - e) <= 1.0)
+           {
+            found = -2;   // même signal trouvé par cet EA
+            break;
+           }
+        }
+      if(found == -2)
+         continue;
+      if(found >= 0)
+        {
+         if(g_draws[found].text != text || (grey && !g_draws[found].grey))
+           {
+            g_draws[found].text = text;
+            g_draws[found].grey = g_draws[found].grey || grey;
+            changed = true;
+           }
+         continue;
+        }
+      int k = ArraySize(g_draws);
+      ArrayResize(g_draws, k + 1);
+      g_draws[k].id    = id;
+      g_draws[k].t     = t;
+      g_draws[k].t2    = t + 60 * 60;
+      g_draws[k].buy   = buy;
+      g_draws[k].entry = e;
+      g_draws[k].sl    = sl;
+      g_draws[k].tp    = tp;
+      g_draws[k].p2r   = buy ? e + 2 * stop : e - 2 * stop;
+      g_draws[k].text  = text;
+      g_draws[k].grey  = grey;
+      changed = true;
+     }
+   if(changed)
+      SaveDraws();
   }
 
 //+------------------------------------------------------------------+

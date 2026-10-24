@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.33.0
+Stable tag: 2.34.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -150,6 +150,9 @@ Calculateur XAU version 4 : outil position et ticket d’ordre façon TradingVie
   Lubumbashi (il le lisait en UTC : 2 h d’écart), et l’image envoyée sur Telegram fait partir zones
   et niveaux de leur bougie d’origine. Les plans de séance acceptent `origin` pour leurs zones et
   niveaux.
+* PC rallumé (version 2.34.0, EA Carnet 2.18) : le flux de l'EA donne aux autres comptes les
+  signaux de l'EA de référence des dernières 24 h (lignes K) ; l'EA du PC les dessine avec leur
+  résultat, sans doubler ceux qu'il a trouvés lui-même.
 * Signaux du VPS (version 2.33.0) : seuls les signaux de l'EA du compte de référence sont gardés
   et envoyés (un autre EA, sur le PC, est ignoré tant que la référence envoie ses bougies : pas de
   doublon) ; le message Telegram donne le lot du compte actif (celui qui est tradé).

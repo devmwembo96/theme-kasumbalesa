@@ -359,6 +359,19 @@ class CX_Live {
 		$gain  = $snap ? (float) $snap['balance'] - (float) $acc['size'] : array_sum( array_map( fn( $t ) => (float) $t['pnl'], $phase ) );
 		$out[] = 'G|' . $st . '|' . self::n( (float) $acc['size'] * $pct / 100 ) . '|' . self::n( $gain ) . '|' . count( array_unique( array_column( $phase, 'date' ) ) ) . '|' . (int) $pa['mindays'] . '|' . (int) $pa['weekloss'] . '|' . self::n( $pa['weekstopr'] ) . '|' . ( $own ? 'propre' : 'propfirm' );
 
+		// Signaux du compte de référence (EA du VPS) des dernières 24 h, pour un autre EA (PC rallumé) :
+		// il les dessine comme s'il avait tourné. Heure du signal en heure du serveur de ce compte.
+		$ref_id = self::ref_account_id();
+		if ( $ref_id && (int) $acc['id'] !== $ref_id ) {
+			global $wpdb;
+			$t    = CX_Install::table( 'csignals' );
+			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $t WHERE account_id = %d AND genre <> 'retest' AND signale_le >= %s ORDER BY signale_le", $ref_id, gmdate( 'Y-m-d H:i:s', strtotime( CX_Repo::clock() ) - DAY_IN_SECONDS ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+			foreach ( $rows as $r ) {
+				$ts    = ( new DateTimeImmutable( $r->signale_le, CX_Repo::tz() ) )->getTimestamp() + $off;
+				$out[] = 'K|' . preg_replace( '/[^0-9A-Za-z_-]/', '', (string) $r->ref ) . '|' . $ts . '|' . ( 'sell' === $r->sens ? 'sell' : 'buy' ) . '|' . $r->genre . '|' . self::n( (float) $r->entree ) . '|' . self::n( (float) $r->stop_prix ) . '|' . self::n( (float) $r->objectif ) . '|' . $r->statut . '|' . ( null === $r->resultat_r ? '' : self::n( (float) $r->resultat_r ) ) . '|' . $r->setup;
+			}
+		}
+
 		// Empreinte : l'EA ne redessine que si le plan ou son état a changé.
 		$body = implode( "\n", $out );
 		$head = 'V|' . substr( md5( $body ), 0, 12 ) . '|' . $week . '|' . ( $p ? ( $p['publishedAt'] ?? '' ) : '' ) . '|' . ( $p['updatedAt'] ?? '' );
