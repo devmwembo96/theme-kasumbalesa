@@ -293,6 +293,9 @@
 .cx-app .score{margin:8px 0 0;padding:6px 10px;border-radius:8px;font-size:14px}
 .cx-app .score.ok{background:var(--win-soft)}
 .cx-app .score.ko{background:var(--loss-soft)}
+.cx-app li.ok::marker{color:var(--win)}
+.cx-app li.ko::marker{color:var(--loss)}
+.cx-app li.ko{color:var(--loss)}
 .cx-app .score.na{color:var(--muted)}
 .cx-app .ticket-in.quick{border-top:1px dashed var(--line);border-bottom:0;display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap}
 .cx-app .ticket-in.quick .f{flex:0 1 240px}

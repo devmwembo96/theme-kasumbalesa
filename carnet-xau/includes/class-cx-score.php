@@ -47,6 +47,14 @@ class CX_Score {
 		foreach ( array( CX_Live::week(), CX_Telegram::monday( $now->modify( '-7 days' ) ) ) as $week ) {
 			self::score_week( $week );
 		}
+		// Samedi à partir de 9 h : bulletin de fiabilité de la semaine écoulée, une fois.
+		if ( 6 === (int) $now->format( 'N' ) && (int) $now->format( 'G' ) >= 9 ) {
+			$week = CX_Telegram::monday( $now );
+			$msg  = self::weekly_message( $week );
+			if ( $msg && CX_Guard::once( 'reliab|' . $week ) ) {
+				CX_Telegram::send( $msg );
+			}
+		}
 		if ( ! get_option( 'cx_autofill_v1' ) ) {
 			update_option( 'cx_autofill_v1', 1, false );
 			self::backfill();
@@ -109,7 +117,8 @@ class CX_Score {
 			return;
 		}
 		$c       = $p['content'];
-		$changed = self::score_cards( $c ) | self::score_scenarios( $c, $week, (string) ( $p['publishedAt'] ?? '' ) );
+		$pub     = (string) ( $p['publishedAt'] ?? '' );
+		$changed = self::score_cards( $c ) | self::score_scenarios( $c, $week, $pub ) | self::score_week_zones( $c, $week, $pub );
 		$atr     = (float) ( $c['refs']['atr_d'] ?? 0 );
 		$thr     = round( self::NEUTRAL * ( $atr > 0 ? $atr : 40 ), 2 );
 		foreach ( (array) ( $c['sessions'] ?? array() ) as $i => $s ) {
@@ -340,14 +349,25 @@ class CX_Score {
 	private static function score_cards( &$c ) {
 		$changed = false;
 		foreach ( (array) ( $c['sessions'] ?? array() ) as $i => $s ) {
-			if ( isset( $s['cards'] ) || empty( $s['positions'] ) || empty( $s['at'] ) ) {
+			if ( empty( $s['at'] ) ) {
 				continue;
 			}
 			$to = self::end_ts( $s );
 			if ( ! $to || time() < $to + 600 ) {
 				continue;
 			}
-			$from  = ( new DateTimeImmutable( $s['at'], CX_Repo::tz() ) )->getTimestamp();
+			$from = ( new DateTimeImmutable( $s['at'], CX_Repo::tz() ) )->getTimestamp();
+			// Zones données à l'EA pour la séance.
+			if ( ! isset( $s['zone_score'] ) && ! empty( $s['zones'] ) ) {
+				$zs = self::score_zone_list( $s['zones'], $from, $to, $s['kind'] );
+				if ( null !== $zs ) {
+					$c['sessions'][ $i ]['zone_score'] = $zs;
+					$changed                           = true;
+				}
+			}
+			if ( isset( $s['cards'] ) || empty( $s['positions'] ) ) {
+				continue;
+			}
 			$cards = array();
 			foreach ( array_values( $s['positions'] ) as $n => $p ) {
 				$res = self::replay_order( $p, self::close_rule( $p['cancel'] ?? '' ), $from, $to );
@@ -384,30 +404,8 @@ class CX_Score {
 		if ( time() < $to ) {
 			return false;
 		}
-		// Versions des scénarios : celle du dimanche (`initial`, gardée avant la première mise à jour) de la
-		// publication à la première relecture « mis_a_jour », puis la dernière depuis la dernière (17:00 New York).
-		$ny    = new DateTimeZone( 'America/New_York' );
-		$start = $mon->getTimestamp();
-		if ( $published ) {
-			$start = max( $start, ( new DateTimeImmutable( $published, CX_Repo::tz() ) )->getTimestamp() );
-		}
-		$ups = array();
-		foreach ( (array) ( $c['updates'] ?? array() ) as $u ) {
-			if ( 'mis_a_jour' === ( $u['status'] ?? '' ) && ! empty( $u['date'] ) ) {
-				$ups[] = ( new DateTimeImmutable( $u['date'] . ' 17:00', $ny ) )->getTimestamp();
-			}
-		}
-		sort( $ups );
-		$runs = array();
-		if ( $ups && ! empty( $c['initial']['scenarios'] ) ) {
-			$runs[] = array( 'initial', $c['initial']['scenarios'], $start, min( $to, $ups[0] ) );
-		}
-		$runs[] = array( 'final', $c['scenarios'], $ups ? max( $start, end( $ups ) ) : $start, $to );
 		$out = array();
-		foreach ( $runs as list( $version, $list, $from, $until ) ) {
-			if ( $from >= $until ) {
-				continue;
-			}
+		foreach ( self::week_runs( $c, $mon, $to, $published, 'scenarios' ) as list( $version, $list, $from, $until ) ) {
 			foreach ( array_values( (array) $list ) as $n => $x ) {
 				$o   = array(
 					'side'  => $x['side'] ?? '',
@@ -429,6 +427,369 @@ class CX_Score {
 		}
 		$c['scenario_score'] = $out;
 		return true;
+	}
+
+	/**
+	 * Versions d'une liste du plan de la semaine (scénarios ou zones) et leur période de validité : celle
+	 * du dimanche (`initial`, gardée avant la première mise à jour) de la publication à la première
+	 * relecture « mis_a_jour », puis la dernière depuis la dernière relecture (17:00 à New York).
+	 *
+	 * @param array             $c         Contenu du plan.
+	 * @param DateTimeImmutable $mon       Lundi 00:00.
+	 * @param int               $to        Fin de la semaine (Unix).
+	 * @param string            $published Publication du plan.
+	 * @param string            $key       scenarios ou zones.
+	 * @return array[] [version, liste, début, fin]
+	 */
+	private static function week_runs( $c, $mon, $to, $published, $key ) {
+		$start = $mon->getTimestamp();
+		if ( $published ) {
+			$start = max( $start, ( new DateTimeImmutable( $published, CX_Repo::tz() ) )->getTimestamp() );
+		}
+		$ups = array();
+		foreach ( (array) ( $c['updates'] ?? array() ) as $u ) {
+			if ( 'mis_a_jour' === ( $u['status'] ?? '' ) && ! empty( $u['date'] ) ) {
+				$ups[] = ( new DateTimeImmutable( $u['date'] . ' 17:00', new DateTimeZone( 'America/New_York' ) ) )->getTimestamp();
+			}
+		}
+		sort( $ups );
+		$runs = array();
+		if ( $ups && ! empty( $c['initial'][ $key ] ) ) {
+			$runs[] = array( 'initial', $c['initial'][ $key ], $start, min( $to, $ups[0] ) );
+		}
+		$runs[] = array( 'final', (array) ( $c[ $key ] ?? array() ), $ups ? max( $start, end( $ups ) ) : $start, $to );
+		return array_values( array_filter( $runs, fn( $r ) => $r[2] < $r[3] && $r[1] ) );
+	}
+
+	/**
+	 * Zones du plan de la semaine (données à l'EA), rejouées une fois la semaine terminée : zone_score.
+	 *
+	 * @param array  $c         Contenu du plan (modifié).
+	 * @param string $week      Lundi.
+	 * @param string $published Publication du plan.
+	 * @return bool
+	 */
+	private static function score_week_zones( &$c, $week, $published = '' ) {
+		if ( isset( $c['zone_score'] ) || empty( $c['zones'] ) ) {
+			return false;
+		}
+		$mon = new DateTimeImmutable( $week . ' 00:00', CX_Repo::tz() );
+		$to  = $mon->modify( '+5 days' )->getTimestamp();
+		if ( time() < $to ) {
+			return false;
+		}
+		$out = array();
+		foreach ( self::week_runs( $c, $mon, $to, $published, 'zones' ) as list( $version, $list, $from, $until ) ) {
+			$zs = self::score_zone_list( $list, $from, $until, 'week' );
+			if ( null === $zs ) {
+				return false;
+			}
+			foreach ( $zs as $z ) {
+				$out[] = $z + array( 'version' => $version );
+			}
+		}
+		$c['zone_score'] = $out;
+		return true;
+	}
+
+	/**
+	 * Rejeu d'une liste de zones ; null tant qu'une zone attend des bougies.
+	 *
+	 * @param array[] $zones  Zones {type, tf, low, high, side}.
+	 * @param int     $from   Publication.
+	 * @param int     $until  Fin de validité.
+	 * @param string  $source week, london ou us.
+	 * @return array[]|null
+	 */
+	private static function score_zone_list( $zones, $from, $until, $source ) {
+		$out = array();
+		foreach ( array_values( (array) $zones ) as $n => $z ) {
+			$res = self::replay_zone( $z, $from, $until );
+			if ( null === $res ) {
+				return null;
+			}
+			$out[] = array(
+				'n'      => $n + 1,
+				'source' => $source,
+				'kind'   => self::zone_kind( $z ),
+				'side'   => $z['side'] ?? '',
+				'low'    => (float) ( $z['low'] ?? 0 ),
+				'high'   => (float) ( $z['high'] ?? 0 ),
+			) + $res;
+		}
+		return $out;
+	}
+
+	/**
+	 * Famille d'une zone : « OB H4 », « FVG M15 »… (type sans les détails, unité de temps).
+	 *
+	 * @param array $z Zone.
+	 * @return string
+	 */
+	public static function zone_kind( $z ) {
+		$t = strtoupper( trim( (string) ( $z['type'] ?? '' ) . ' ' . (string) ( $z['tf'] ?? '' ) ) );
+		$k = preg_match( '/\b(I?FVG|OB|BB|BREAKER|MB|RB|SD|DEMANDE|OFFRE)\b/u', $t, $m ) ? ( 'IFVG' === $m[1] ? 'iFVG' : $m[1] ) : 'Zone';
+		$u = preg_match( '/\b(M1|M5|M15|M30|H1|H4|D1|D|W)\b/', $t, $m2 ) ? ' ' . $m2[1] : '';
+		return $k . $u;
+	}
+
+	/**
+	 * Une zone comme l'EA la trade : entrée au bord touché en premier, stop 1 $ derrière l'autre bord
+	 * (1,50 $ au moins). « Réagi » = le prix va à 2R avant le stop ; « cassée » = stop d'abord.
+	 *
+	 * @param array $z     Zone {low, high, side}.
+	 * @param int   $from  Publication.
+	 * @param int   $until Fin de validité.
+	 * @return array|null
+	 */
+	public static function replay_zone( $z, $from, $until ) {
+		$lo0 = (float) ( $z['low'] ?? 0 );
+		$hi0 = (float) ( $z['high'] ?? 0 );
+		if ( $lo0 <= 0 || $hi0 < $lo0 ) {
+			return array( 'status' => 'incomplete' );
+		}
+		$src = self::bars_from( $from );
+		if ( ! $src ) {
+			return time() > $until + 2 * DAY_IN_SECONDS ? array( 'status' => 'no_data' ) : null;
+		}
+		list( $tf, $sec, $bars ) = $src;
+		$buy   = 'vente' !== ( $z['side'] ?? '' );
+		$e     = $buy ? $hi0 : $lo0;
+		$stop  = $buy ? min( $lo0 - 1.0, $e - 1.5 ) : max( $hi0 + 1.0, $e + 1.5 );
+		$risk  = abs( $e - $stop );
+		$tz    = CX_Repo::tz();
+		$touch = null;
+		$mfe   = 0.0;
+		$first = true;
+		$last  = 0;
+		foreach ( $bars as $b ) {
+			$o0 = (int) $b[0];
+			$t  = $o0 + $sec;
+			if ( $t <= $from ) {
+				continue;
+			}
+			$last = $t;
+			$hi   = (float) $b[2];
+			$lo   = (float) $b[3];
+			if ( null === $touch ) {
+				if ( $first && ( $buy ? (float) $b[1] < $lo0 : (float) $b[1] > $hi0 ) ) {
+					// Le prix est déjà de l'autre côté de la zone à la publication : zone mal placée.
+					return array(
+						'tf'     => $tf,
+						'status' => 'wrong_side',
+					);
+				}
+				$first = false;
+				if ( $o0 >= $until ) {
+					break;
+				}
+				if ( $buy ? $lo <= $e : $hi >= $e ) {
+					$touch = $o0;
+				} else {
+					continue;
+				}
+			}
+			$mfe = max( $mfe, $buy ? $hi - $e : $e - $lo );
+			if ( $buy ? $lo <= $stop : $hi >= $stop ) {
+				return array(
+					'tf'     => $tf,
+					'status' => 'broken',
+					'touch'  => wp_date( 'd/m H:i', $touch, $tz ),
+					'mfe'    => round( $mfe / $risk, 2 ),
+				);
+			}
+			if ( $mfe >= 2 * $risk ) {
+				return array(
+					'tf'     => $tf,
+					'status' => 'reacted',
+					'touch'  => wp_date( 'd/m H:i', $touch, $tz ),
+					'to_2r'  => (int) round( ( $t - $touch ) / 60 ),
+				);
+			}
+			if ( $t - $touch > 24 * HOUR_IN_SECONDS ) {
+				return array(
+					'tf'     => $tf,
+					'status' => 'touched',
+					'touch'  => wp_date( 'd/m H:i', $touch, $tz ),
+					'mfe'    => round( $mfe / $risk, 2 ),
+				);
+			}
+		}
+		$end = (int) end( $bars )[0] + $sec;
+		if ( null === $touch && ( $last >= $until || ( time() > $until && $end >= $until - 2 * HOUR_IN_SECONDS ) ) ) {
+			return array(
+				'tf'     => $tf,
+				'status' => 'not_reached',
+			);
+		}
+		if ( null !== $touch && time() > $touch + 2 * DAY_IN_SECONDS ) {
+			return array(
+				'tf'     => $tf,
+				'status' => 'touched',
+				'touch'  => wp_date( 'd/m H:i', $touch, $tz ),
+				'mfe'    => round( $mfe / $risk, 2 ),
+			);
+		}
+		return time() > $until + 2 * DAY_IN_SECONDS ? array( 'status' => 'no_data' ) : null;
+	}
+
+	/**
+	 * Bilan des zones : données, atteintes, réagi (2R avant le stop), cassées, mal placées.
+	 *
+	 * @param array[] $zs Zones rejouées.
+	 * @return array
+	 */
+	public static function zone_stats( $zs ) {
+		$cnt     = fn( $st ) => count( array_filter( $zs, fn( $x ) => $st === $x['status'] ) );
+		$react   = $cnt( 'reacted' );
+		$reached = $react + $cnt( 'broken' ) + $cnt( 'touched' );
+		$valid   = $reached + $cnt( 'not_reached' ) + $cnt( 'wrong_side' );
+		return array(
+			'n'          => $valid,
+			'reached'    => $reached,
+			'reacted'    => $react,
+			'broken'     => $cnt( 'broken' ),
+			'wrong_side' => $cnt( 'wrong_side' ),
+			'reach_pc'   => $valid ? (int) round( 100 * $reached / $valid ) : null,
+			'react_pc'   => $reached ? (int) round( 100 * $react / $reached ) : null,
+		);
+	}
+
+	/**
+	 * Bilans de zones par groupe.
+	 *
+	 * @param array[]  $zs  Zones rejouées.
+	 * @param callable $key Clé du groupe.
+	 * @return array
+	 */
+	private static function group_stats( $zs, $key ) {
+		$g = array();
+		foreach ( $zs as $z ) {
+			$g[ $key( $z ) ][] = $z;
+		}
+		ksort( $g );
+		return array_map( array( __CLASS__, 'zone_stats' ), $g );
+	}
+
+	/**
+	 * Bulletin de fiabilité d'une semaine : fiches, scénarios et zones rejoués, leçons ; vide tant que
+	 * les zones de la semaine ne sont pas rejouées.
+	 *
+	 * @param string $week Lundi.
+	 * @return string
+	 */
+	public static function weekly_message( $week ) {
+		$p = CX_Repo::plan( $week );
+		$c = is_array( $p['content'] ?? null ) ? $p['content'] : array();
+		if ( ! isset( $c['zone_score'] ) && ! isset( $c['scenario_score'] ) ) {
+			return '';
+		}
+		$cards = array();
+		$zones = (array) ( $c['zone_score'] ?? array() );
+		foreach ( (array) ( $c['sessions'] ?? array() ) as $x ) {
+			$zones = array_merge( $zones, (array) ( $x['zone_score'] ?? array() ) );
+			foreach ( (array) ( $x['cards'] ?? array() ) as $k ) {
+				$cards[] = $k + array( 'kind' => $x['kind'] );
+			}
+		}
+		$r     = fn( $v ) => ( $v > 0 ? '+' : ( $v < 0 ? '−' : '' ) ) . number_format( abs( (float) $v ), 1, ',', '' ) . 'R';
+		$cs    = self::card_stats( $cards );
+		$ss    = self::card_stats( (array) ( $c['scenario_score'] ?? array() ) );
+		$zs    = self::zone_stats( $zones );
+		$lines = array(
+			'🧪 <b>Fiabilité de Claude</b>',
+			'Semaine du ' . wp_date( 'j F', strtotime( $week . ' 12:00' ), CX_Repo::tz() ) . ', mesurée sur les bougies',
+			'',
+			'<b>Fiches des plans de séance</b>',
+			'• Publiées : ' . $cs['published'],
+			'• Déclenchées : ' . $cs['triggered'],
+			'• Objectif : ' . $cs['tp'] . ' · stop : ' . $cs['sl'],
+			'• Total : ' . $r( $cs['sum_r'] ),
+		);
+		if ( $ss['published'] ) {
+			array_push( $lines, '', '<b>Scénarios de la semaine</b>', '• Publiés : ' . $ss['published'], '• Déclenchés : ' . $ss['triggered'], '• Objectif : ' . $ss['tp'] . ' · stop : ' . $ss['sl'] );
+		}
+		if ( $zs['n'] ) {
+			array_push( $lines, '', '<b>Zones données à l’EA</b>', '• Atteintes : ' . $zs['reached'] . ' sur ' . $zs['n'], '• 2R avant le stop : ' . $zs['reacted'] . ( null === $zs['react_pc'] ? '' : ' (' . $zs['react_pc'] . ' %)' ), '• Cassées : ' . $zs['broken'] );
+		}
+		$les = self::lessons_all();
+		if ( $les ) {
+			$lines[] = '';
+			$lines[] = '<b>Leçons apprises</b>';
+			foreach ( array_slice( $les, 0, 5 ) as $l ) {
+				$lines[] = ( 'eviter' === $l['verdict'] ? '⛔ ' : '✅ ' ) . esc_html( $l['text'] );
+			}
+		}
+		return implode( "\n", $lines );
+	}
+
+	/**
+	 * Leçons sur les 12 dernières semaines.
+	 *
+	 * @return array[]
+	 */
+	public static function lessons_all() {
+		$d = self::summary()->get_data();
+		return (array) ( $d['lessons'] ?? array() );
+	}
+
+	/** Échantillon minimal avant de tirer une leçon. */
+	const LEARN_MIN = 8;
+
+	/**
+	 * Leçons apprises sur les résultats mesurés (fiches et zones), à respecter dans les prochains plans :
+	 * une famille qui réussit moins d'une fois sur trois est à éviter, plus d'une fois sur deux à privilégier.
+	 *
+	 * @param array[] $cards Fiches rejouées (avec kind = séance).
+	 * @param array[] $zones Zones rejouées.
+	 * @return array[] {kind, key, n, rate, verdict, text}
+	 */
+	public static function lessons( $cards, $zones ) {
+		$out = array();
+		$add = function ( $kind, $key, $n, $ok, $what ) use ( &$out ) {
+			if ( $n < self::LEARN_MIN ) {
+				return;
+			}
+			$rate = (int) round( 100 * $ok / $n );
+			$v    = $rate < 34 ? 'eviter' : ( $rate > 50 ? 'privilegier' : '' );
+			if ( $v ) {
+				$out[] = array(
+					'kind'    => $kind,
+					'key'     => $key,
+					'n'       => $n,
+					'rate'    => $rate,
+					'verdict' => $v,
+					'text'    => sprintf( '%s : %d %s sur %d (%d %%) — %s', $key, $ok, $what, $n, $rate, 'eviter' === $v ? 'à éviter' : 'à privilégier' ),
+				);
+			}
+		};
+		$names = array(
+			'london' => 'Londres',
+			'us'     => 'New York',
+			'week'   => 'semaine',
+		);
+		$g = array();
+		foreach ( $cards as $x ) {
+			if ( isset( $x['r'] ) ) {
+				$k         = 'Fiches ' . ( $names[ $x['kind'] ?? '' ] ?? ( $x['kind'] ?? '' ) ) . ' setup ' . ( '' === ( $x['setup'] ?? '' ) ? '?' : $x['setup'] ) . ' ' . $x['side'];
+				$g[ $k ][] = $x['r'] > 0 ? 1 : 0;
+			}
+		}
+		foreach ( $g as $k => $v ) {
+			$add( 'cards', $k, count( $v ), array_sum( $v ), 'gagnantes' );
+		}
+		$g = array();
+		foreach ( $zones as $z ) {
+			if ( in_array( $z['status'], array( 'reacted', 'broken', 'touched' ), true ) ) {
+				$k         = 'Zones ' . $z['kind'] . ' ' . $z['side'] . ' (' . ( $names[ $z['source'] ] ?? $z['source'] ) . ')';
+				$g[ $k ][] = 'reacted' === $z['status'] ? 1 : 0;
+			}
+		}
+		foreach ( $g as $k => $v ) {
+			$add( 'zones', $k, count( $v ), array_sum( $v ), 'ont donné 2R' );
+		}
+		usort( $out, fn( $a, $b ) => $a['rate'] <=> $b['rate'] );
+		return $out;
 	}
 
 	/**
@@ -467,12 +828,15 @@ class CX_Score {
 		$cards = array();
 		$recent = array();
 		$scen  = array();
+		$zones = array();
 		for ( $w = 0; $w < 12; $w++ ) {
 			$p = CX_Repo::plan( CX_Telegram::monday( $now->modify( '-' . ( 7 * $w ) . ' days' ) ) );
-			$scen = array_merge( $scen, (array) ( $p['content']['scenario_score'] ?? array() ) );
+			$scen  = array_merge( $scen, (array) ( $p['content']['scenario_score'] ?? array() ) );
+			$zones = array_merge( $zones, (array) ( $p['content']['zone_score'] ?? array() ) );
 			foreach ( (array) ( $p['content']['sessions'] ?? array() ) as $s ) {
+				$zones = array_merge( $zones, (array) ( $s['zone_score'] ?? array() ) );
 				foreach ( (array) ( $s['cards'] ?? array() ) as $x ) {
-					$cards[ $s['kind'] ][] = $x;
+					$cards[ $s['kind'] ][] = $x + array( 'kind' => $s['kind'] );
 					$recent[]              = array(
 						'date' => $s['date'],
 						'kind' => $s['kind'],
@@ -503,6 +867,14 @@ class CX_Score {
 					'recent' => array_slice( array_reverse( $recent ), 0, 20 ),
 				),
 				'scenarios' => self::card_stats( $scen ),
+				// Zones données à l'EA (semaine et séances) rejouées comme l'EA les trade : 2R avant le stop.
+				'zones'     => array(
+					'all'    => self::zone_stats( $zones ),
+					'kinds'  => (object) self::group_stats( $zones, fn( $z ) => $z['kind'] . ' ' . $z['side'] ),
+					'source' => (object) self::group_stats( $zones, fn( $z ) => $z['source'] ),
+				),
+				// Leçons tirées des résultats (8 cas au moins) : à respecter dans les prochains plans.
+				'lessons'   => self::lessons( array_merge( array(), ...array_values( $cards ) ), $zones ),
 				'neutral' => self::NEUTRAL,
 			),
 			200

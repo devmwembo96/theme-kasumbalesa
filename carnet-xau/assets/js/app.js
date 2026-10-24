@@ -518,12 +518,28 @@ async function scoreCard(){
   const K={asia:"Session Asie",london:"Plan de Londres",premarket:"Pré-marché US",us:"Plan de New York"},rows=[];let n=0,ok=0;
   for(const k of ["asia","london","premarket","us"]){const v=(d.kinds||{})[k];if(!v)continue;n+=v.n;ok+=v.ok;rows.push([K[k],String(v.n),String(v.ok),Math.round(100*v.ok/v.n)+" %"])}
   if(n)rows.push([el("b",{text:"Total"}),String(n),String(ok),el("b",{text:Math.round(100*ok/n)+" %"})]);
-  return card("Fiabilité de Claude",n?table(["Analyse","Notées","Biais justes","Réussite"],rows):el("p",{class:"hint",text:"Pas encore d’analyse notée : chaque plan est noté par le carnet après sa séance (Londres à "+tzAt("America/New_York",8,15)+", New York à "+tzAt("America/New_York",16,0)+", heure de Lubumbashi)."}),
-    el("p",{class:"hint",style:"margin-top:8px",text:"Noté par le carnet sur les bougies, sans avis de Claude : mouvement entre la publication et la fin de la séance visée. Au-delà de ± "+fmt(100*d.neutral,0)+" % de l’ATR journalier il est haussier ou baissier, sinon neutre."}));
+  const pc=v=>v==null?"—":v+" %",ca=(d.cards||{}).all||{},zo=(d.zones||{}).all||{},sc=d.scenarios||{};
+  const cardRow=(name,x)=>[name,String(x.published||0),String(x.triggered||0),String(x.tp||0),String(x.sl||0),x.triggered?(x.sum_r>0?"+":"")+fmt(x.sum_r,1)+"R":"—"];
+  const cr=[];for(const k of ["london","us"]){const x=((d.cards||{}).kinds||{})[k];if(x)cr.push(cardRow(K[k],x))}
+  if(sc.published)cr.push(cardRow("Scénarios de la semaine",sc));
+  const zr=Object.entries((d.zones||{}).kinds||{}).filter(([,x])=>x.n).map(([k,x])=>[k,String(x.n),String(x.reached),String(x.reacted),String(x.broken),pc(x.react_pc)]);
+  const les=(d.lessons||[]);
+  return card("Fiabilité de Claude",
+    el("p",{class:"hint",text:"Tout est mesuré par le carnet sur les bougies du courtier, sans avis de Claude. Claude lit ces chiffres avant chaque plan."}),
+    el("h4",{class:"sub",text:"Fiches et scénarios rejoués (sans gestion : objectif ou stop)"}),
+    cr.length?table(["Plan","Publiées","Déclenchées","Objectif","Stop","Total"],cr):el("p",{class:"hint",text:"Pas encore de fiche rejouée : chaque fiche l’est après sa séance."}),
+    el("h4",{class:"sub",text:"Zones données à l’EA"+(zo.n?" : "+zo.reached+" atteintes sur "+zo.n+", "+pc(zo.react_pc)+" ont donné 2R avant le stop":"")}),
+    zr.length?table(["Zone","Données","Atteintes","2R","Cassées","Réussite"],zr):el("p",{class:"hint",text:"Pas encore de zone rejouée."}),
+    el("h4",{class:"sub",text:"Leçons apprises (8 cas au moins)"}),
+    les.length?el("ul",null,...les.map(x=>el("li",{class:x.verdict==="eviter"?"ko":"ok",text:x.text}))):el("p",{class:"hint",text:"Pas encore assez de cas : une leçon apparaît dès 8 fiches ou 8 zones de la même famille."}),
+    el("h4",{class:"sub",text:"Biais des analyses de séance"}),
+    n?table(["Analyse","Notées","Biais justes","Réussite"],rows):el("p",{class:"hint",text:"Pas encore d’analyse notée : chaque plan est noté par le carnet après sa séance (Londres à "+tzAt("America/New_York",8,15)+", New York à "+tzAt("America/New_York",16,0)+", heure de Lubumbashi)."}),
+    el("p",{class:"hint",style:"margin-top:8px",text:"Biais : mouvement entre la publication et la fin de la séance visée. Au-delà de ± "+fmt(100*d.neutral,0)+" % de l’ATR journalier il est haussier ou baissier, sinon neutre. Zone : entrée au bord touché en premier, stop 1 $ derrière l’autre bord ; elle « réagit » si le prix fait 2R avant le stop."}));
 }
 function renderPlanView(p){
   const box=$("#plan-view");
-  if(!p){box.replaceChildren(el("div",{class:"empty",text:"Le plan de cette semaine n’a pas encore été publié par Claude."}));return}
+  if(!p){box.replaceChildren(el("div",{class:"empty",text:"Le plan de cette semaine n’a pas encore été publié par Claude."}));
+    const g=box._g=(box._g||0)+1;scoreCard().then(sc=>{if(box._g===g&&sc)box.append(sc)});return}
   let c=p.content;
   if(!c){ // plan d'origine (avant le plan élargi)
     const lv=(p.levels||[]).filter(x=>x.price);
@@ -619,7 +635,7 @@ function renderPlanView(p){
   out.push(det);
   box.replaceChildren(...out);
   const gen=box._g=(box._g||0)+1;
-  scoreCard().then(sc=>{if(box._g!==gen||!sc)return;sc.classList.remove("panel");sub("Fiabilité des analyses de séance",sc)});
+  scoreCard().then(sc=>{if(box._g!==gen||!sc)return;box.prepend(sc)});
 }
 /* ---------- aujourd'hui : ce qu'il faut exécuter maintenant ---------- */
 function renderToday(){

@@ -295,3 +295,15 @@ scénarios du plan de la semaine sont rejoués de la même façon du lundi au ve
 déclenchées, objectif, stop, réussite, R total et moyen, minutes moyennes jusqu’à l’objectif). La
 relecture du soir s’en sert pour corriger ce qui rate : une fiche jamais déclenchée est une zone mal
 placée, un stop touché vite est un stop mal placé.
+
+## Zones rejouées et leçons apprises
+
+Chaque zone donnée à l’EA (`zones` du plan de la semaine, versions du dimanche et mise à jour, et
+`zones` des plans de séance) est rejouée par le carnet comme l’EA la trade : entrée au bord touché en
+premier, stop 1 $ derrière l’autre bord (1,50 $ au moins) ; `reacted` = 2R avant le stop, `broken` =
+stop d’abord, `not_reached`, `wrong_side` (prix déjà de l’autre côté à la publication), `touched`.
+Résultats dans `content.zone_score` et `sessions[].zone_score`. `GET /claude-score` donne `zones`
+(par famille « OB H4 achat »…, par source) et `lessons` : dès 8 cas d’une même famille (fiches par
+séance, setup et sens ; zones par type, unité et sens), « à éviter » sous 34 % de réussite,
+« à privilégier » au-dessus de 50 %. Claude ne publie jamais une famille « à éviter » et préfère
+celles « à privilégier ». Bulletin de fiabilité sur Telegram le samedi à partir de 9 h.

@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.31.1
+Stable tag: 2.32.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -150,6 +150,11 @@ Calculateur XAU version 4 : outil position et ticket d’ordre façon TradingVie
   Lubumbashi (il le lisait en UTC : 2 h d’écart), et l’image envoyée sur Telegram fait partir zones
   et niveaux de leur bougie d’origine. Les plans de séance acceptent `origin` pour leurs zones et
   niveaux.
+* Zones et leçons (version 2.32.0) : chaque zone donnée à l'EA (plan de la semaine et plans de
+  séance) est rejouée sur les bougies comme l'EA la trade (atteinte, 2R avant le stop, cassée, mal
+  placée) ; leçons apprises dès 8 cas d'une même famille (à éviter sous 34 %, à privilégier au-dessus
+  de 50 %), lues par Claude avant chaque plan ; carte « Fiabilité de Claude » en tête de l'onglet
+  Plan ; bulletin de fiabilité le samedi sur Telegram.
 * Fiabilité de Claude (version 2.31.0, EA Carnet 2.17) : signaux suivis sans gestion (objectif ou
   stop), message de clôture avec le temps mis ; chaque fiche des plans de séance et chaque scénario
   du plan de la semaine sont rejoués sur les bougies (entrée touchée, annulée, objectif ou stop,
