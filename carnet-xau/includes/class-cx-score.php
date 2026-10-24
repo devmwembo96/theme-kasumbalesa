@@ -109,7 +109,7 @@ class CX_Score {
 			return;
 		}
 		$c       = $p['content'];
-		$changed = self::score_cards( $c ) | self::score_scenarios( $c, $week );
+		$changed = self::score_cards( $c ) | self::score_scenarios( $c, $week, (string) ( $p['publishedAt'] ?? '' ) );
 		$atr     = (float) ( $c['refs']['atr_d'] ?? 0 );
 		$thr     = round( self::NEUTRAL * ( $atr > 0 ? $atr : 40 ), 2 );
 		foreach ( (array) ( $c['sessions'] ?? array() ) as $i => $s ) {
@@ -211,23 +211,29 @@ class CX_Score {
 	}
 
 	/**
-	 * Premier prix d'un texte (« 4 158,00–4 162,00 » → 4158.00).
+	 * Prix d'entrée d'un scénario : bord de la zone touché en premier (« 4 140–4 148 » : 4 148 pour un
+	 * achat, 4 140 pour une vente), ou le prix seul.
 	 *
-	 * @param mixed $v Texte ou nombre.
+	 * @param mixed $v    Texte ou nombre.
+	 * @param bool  $buy  Achat.
 	 * @return float|null
 	 */
-	private static function first_price( $v ) {
+	private static function entry_price( $v, $buy ) {
 		if ( is_numeric( $v ) ) {
 			return (float) $v;
 		}
-		if ( preg_match( '/[0-9][0-9\s\x{00A0}\x{202F}]{2,}[.,][0-9]+|[0-9]{3,}(?:[.,][0-9]+)?/u', (string) $v, $m ) ) {
-			return (float) str_replace( ',', '.', preg_replace( '/[\s\x{00A0}\x{202F}]/u', '', $m[0] ) );
+		preg_match_all( '/\d{1,3}(?:[\s\x{00A0}\x{202F}]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?/u', (string) $v, $m );
+		$n = array_values( array_filter( array_map( fn( $x ) => (float) str_replace( ',', '.', preg_replace( '/[\s\x{00A0}\x{202F}]/u', '', $x ) ), $m[0] ), fn( $x ) => $x >= 100 ) );
+		if ( ! $n ) {
+			return null;
 		}
-		return null;
+		$n = array_slice( $n, 0, 2 );
+		return $buy ? max( $n ) : min( $n );
 	}
 
 	/**
-	 * Rejeu d'un ordre sans gestion : en attente jusqu'à ce que l'entrée soit touchée (annulé si la
+	 * Rejeu d'un ordre sans gestion : en attente jusqu'à ce que le prix passe par l'entrée (dans un
+	 * sens ou dans l'autre : ordre limite ou cassure ; annulé si la
 	 * règle d'annulation est clôturée avant, ou à $until), puis stop (en premier) ou objectif ; clôture
 	 * au dernier cours 24 h après l'entrée.
 	 *
@@ -257,6 +263,7 @@ class CX_Score {
 		$fill   = null;
 		$mfe    = 0.0;
 		$last   = 0;
+		$prev   = null;
 		$base   = array(
 			'tf' => $tf,
 			'rr' => $rr,
@@ -274,7 +281,10 @@ class CX_Score {
 				if ( $o0 >= $until ) {
 					return $base + array( 'status' => 'not_filled' );
 				}
-				if ( $buy ? $lo <= $e : $hi >= $e ) {
+				// Le prix passe par l'entrée : la bougie la contient, ou un écart la saute.
+				$gap  = null !== $prev && ( $prev - $e ) * ( (float) $b[1] - $e ) < 0;
+				$prev = (float) $b[4];
+				if ( ( $lo <= $e && $hi >= $e ) || $gap ) {
 					$fill = $o0;
 				} elseif ( $rule && $sec <= $rule[0] && 0 === $t % $rule[0] && ( $rule[1] ? (float) $b[4] > $rule[2] : (float) $b[4] < $rule[2] ) ) {
 					return $base + array(
@@ -312,8 +322,10 @@ class CX_Score {
 				);
 			}
 		}
-		// Pas encore d'issue : on attend de nouvelles bougies, 2 jours au plus.
-		if ( null === $fill && $last >= $until ) {
+		// Pas encore d'issue : on attend de nouvelles bougies, 2 jours au plus. Ordre en attente : jamais
+		// touché si les bougies vont jusqu'à sa fin de validité (à 2 h près : clôture du marché le vendredi).
+		$end = (int) end( $bars )[0] + $sec;
+		if ( null === $fill && ( $last >= $until || ( time() > $until && $end >= $until - 2 * HOUR_IN_SECONDS ) ) ) {
 			return $base + array( 'status' => 'not_filled' );
 		}
 		return time() > max( $until, $fill ?? 0 ) + 2 * DAY_IN_SECONDS ? $base + array( 'status' => 'no_data' ) : null;
@@ -355,14 +367,15 @@ class CX_Score {
 	}
 
 	/**
-	 * Scénarios du plan de la semaine, rejoués du lundi 00:00 au vendredi 23:59 (Lubumbashi), une fois
-	 * la semaine terminée ; résultat dans scenario_score.
+	 * Scénarios du plan de la semaine, rejoués de leur publication (ou de la dernière relecture qui les
+	 * a refaits) au vendredi 23:59 (Lubumbashi), une fois la semaine terminée ; résultat dans scenario_score.
 	 *
 	 * @param array  $c    Contenu du plan (modifié).
-	 * @param string $week Lundi.
+	 * @param string $week      Lundi.
+	 * @param string $published Publication du plan (heure du carnet).
 	 * @return bool
 	 */
-	private static function score_scenarios( &$c, $week ) {
+	private static function score_scenarios( &$c, $week, $published = '' ) {
 		if ( isset( $c['scenario_score'] ) || empty( $c['scenarios'] ) ) {
 			return false;
 		}
@@ -371,23 +384,48 @@ class CX_Score {
 		if ( time() < $to ) {
 			return false;
 		}
-		$out = array();
-		foreach ( array_values( $c['scenarios'] ) as $n => $x ) {
-			$o   = array(
-				'side'  => $x['side'] ?? '',
-				'entry' => self::first_price( $x['entry'] ?? '' ),
-				'sl'    => $x['sl'] ?? null,
-				'tp'    => $x['tp'] ?? null,
-			);
-			$res = self::replay_order( $o, self::close_rule( $x['invalidation'] ?? '' ), $mon->getTimestamp(), $to );
-			if ( null === $res ) {
-				return false;
+		// Versions des scénarios : celle du dimanche (`initial`, gardée avant la première mise à jour) de la
+		// publication à la première relecture « mis_a_jour », puis la dernière depuis la dernière (17:00 New York).
+		$ny    = new DateTimeZone( 'America/New_York' );
+		$start = $mon->getTimestamp();
+		if ( $published ) {
+			$start = max( $start, ( new DateTimeImmutable( $published, CX_Repo::tz() ) )->getTimestamp() );
+		}
+		$ups = array();
+		foreach ( (array) ( $c['updates'] ?? array() ) as $u ) {
+			if ( 'mis_a_jour' === ( $u['status'] ?? '' ) && ! empty( $u['date'] ) ) {
+				$ups[] = ( new DateTimeImmutable( $u['date'] . ' 17:00', $ny ) )->getTimestamp();
 			}
-			$out[] = array(
-				'n'     => $n + 1,
-				'side'  => $o['side'],
-				'setup' => $x['setup'] ?? '',
-			) + $res;
+		}
+		sort( $ups );
+		$runs = array();
+		if ( $ups && ! empty( $c['initial']['scenarios'] ) ) {
+			$runs[] = array( 'initial', $c['initial']['scenarios'], $start, min( $to, $ups[0] ) );
+		}
+		$runs[] = array( 'final', $c['scenarios'], $ups ? max( $start, end( $ups ) ) : $start, $to );
+		$out = array();
+		foreach ( $runs as list( $version, $list, $from, $until ) ) {
+			if ( $from >= $until ) {
+				continue;
+			}
+			foreach ( array_values( (array) $list ) as $n => $x ) {
+				$o   = array(
+					'side'  => $x['side'] ?? '',
+					'entry' => self::entry_price( $x['entry'] ?? '', 'vente' !== ( $x['side'] ?? '' ) ),
+					'sl'    => $x['sl'] ?? null,
+					'tp'    => $x['tp'] ?? null,
+				);
+				$res = self::replay_order( $o, self::close_rule( $x['invalidation'] ?? '' ), $from, $until );
+				if ( null === $res ) {
+					return false;
+				}
+				$out[] = array(
+					'n'       => $n + 1,
+					'version' => $version,
+					'side'    => $o['side'],
+					'setup'   => $x['setup'] ?? '',
+				) + $res;
+			}
 		}
 		$c['scenario_score'] = $out;
 		return true;
