@@ -44,7 +44,8 @@ class CX_Score {
 	/** Tâche du carnet : notes des séances, puis remplissage des anciens trades MT5 (une fois). */
 	public static function run() {
 		$now = new DateTimeImmutable( 'now', CX_Repo::tz() );
-		foreach ( array( CX_Live::week(), CX_Telegram::monday( $now->modify( '-7 days' ) ) ) as $week ) {
+		// Semaine en cours (celle qui vient de finir le week-end) et la précédente.
+		foreach ( array( CX_Telegram::monday( $now ), CX_Telegram::monday( $now->modify( '-7 days' ) ) ) as $week ) {
 			self::score_week( $week );
 		}
 		// Samedi à partir de 9 h : bulletin de fiabilité de la semaine écoulée, une fois.
