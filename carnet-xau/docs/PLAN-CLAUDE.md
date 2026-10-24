@@ -264,3 +264,13 @@ fvg (0,10–1,50 $), slbuf (0,10–1,00 $), limitmin (15–120), cooldown (15–
 10 lignes au plus, chiffrées ; `focus` = un seul objectif ; `score` = discipline (règles du compte).
 Envoyé en privé sur Telegram (pas sur la chaîne). Une note par jour et par type : la dernière
 remplace la précédente. `GET /coach` : les 60 dernières notes (relire l’objectif précédent).
+
+## Playbook des annonces (`/news-playbook`)
+
+Chaque annonce USD à fort impact est mesurée par le carnet sur les bougies du compte de référence
+(M1, sinon M5, sinon M15), 65 minutes après sa sortie : amplitude haute et basse des 15 premières
+minutes, clôture à +15 et +60 min (en dollars depuis l’ouverture de la bougie de l’annonce), sens de
+la première impulsion d’au moins 1 $ et retournement à +60 min. Les 300 dernières sont gardées.
+`GET /news-playbook` donne le résumé par annonce (`n`, `range15`, `abs60`, `reverse_pc`) ;
+`?title=CPI m/m` filtre une annonce. Les plans de Londres et de New York s’en servent pour chiffrer
+la réaction attendue d’une annonce du jour (jamais pour assouplir la fenêtre sans trade).

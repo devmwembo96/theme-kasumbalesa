@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.28.0
+Stable tag: 2.29.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -150,6 +150,9 @@ Calculateur XAU version 4 : outil position et ticket d’ordre façon TradingVie
   Lubumbashi (il le lisait en UTC : 2 h d’écart), et l’image envoyée sur Telegram fait partir zones
   et niveaux de leur bougie d’origine. Les plans de séance acceptent `origin` pour leurs zones et
   niveaux.
+* Playbook des annonces (version 2.29.0) : réaction de l'or à chaque annonce USD à fort impact
+  (amplitude des 15 premières minutes, clôture à +60 min, retournement), mesurée sur les bougies
+  du compte de référence et gardée ; GET /news-playbook, lu par les plans de Londres et de New York.
 * Coach de Claude (version 2.28.0) : débrief des trades du jour après la relecture du soir et
   bilan de la semaine le dimanche, envoyés en privé sur Telegram (POST /claude/coach, jeton du
   plan ; GET /coach pour l’historique et l’objectif en cours).
