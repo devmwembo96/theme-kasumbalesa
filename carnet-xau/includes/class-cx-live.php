@@ -401,6 +401,21 @@ class CX_Live {
 		$send = ! empty( $tg['chat'] ) && ! empty( $tg['alerts']['signals'] );
 
 		if ( 'signal' === $type ) {
+			// Signaux : un seul EA fait foi, celui du compte de référence (VPS allumé en continu). Un autre
+			// EA (PC personnel) est ignoré tant que la référence envoie ses bougies : pas de doublon.
+			$ref_id = self::ref_account_id();
+			if ( $ref_id && (int) $acc['id'] !== $ref_id ) {
+				$rd = self::candle_data( $ref_id );
+				if ( ! empty( $rd['received'] ) && strtotime( CX_Repo::clock() ) - strtotime( $rd['received'] ) < 30 * MINUTE_IN_SECONDS ) {
+					return new WP_REST_Response(
+						array(
+							'ok'      => true,
+							'ignored' => 'signal du compte de référence',
+						),
+						200
+					);
+				}
+			}
 			$side = 'sell' === ( $in['side'] ?? '' ) ? 'sell' : 'buy';
 			$kind = CX_Repo::pick( (string) ( $in['kind'] ?? '' ), array( 'now', 'limit', 'retest' ), 'now' );
 			// Variante « retour FVG » : suivie pour comparer les entrées, sans message.
@@ -463,13 +478,19 @@ class CX_Live {
 			);
 			// Calculateur XAU à l'arrêt (pertes, plancher) : le signal reste suivi, mais ne se prend pas.
 			$note = CX_Repo::text( $in['note'] ?? '', 200 );
+			// Lot du compte actif (celui que l'utilisateur trade), calculé comme l'onglet Jour.
+			$rk = CX_Telegram::exec_risk();
+			if ( null !== $data['stop'] && $data['stop'] > 0 && $rk['risk'] > 0 ) {
+				$data['lot'] = floor( $rk['risk'] / ( $data['stop'] * $rk['contract'] + $rk['commission'] ) * 100 + 1e-9 ) / 100;
+			}
+			$active = CX_Telegram::active();
 			if ( $send ) {
 				CX_Telegram::send(
 					sprintf(
 						"%s <b>%s</b>\n%s\n\nZone : %s\n\n• Entrée : %s\n• Stop : %s\n• Objectif : %s (%sR)\n• Lot : %s (stop %s $)" . ( 'limit' === $kind ? "\n\nOrdre limite : valable 30 min, en attente d’un repli." : '' ) . ( null === $retest ? '' : "\n\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ) . ( '' === $note ? '' : "\n\n⛔ " . esc_html( $note ) ),
 						'sell' === $side ? '🔴' : '🟢',
 						esc_html( $label ),
-						esc_html( $acc['name'] ),
+						esc_html( $active ? $active['name'] : $acc['name'] ),
 						esc_html( $data['zone'] ),
 						$usd( $data['entry'] ),
 						$usd( $data['sl'] ),
