@@ -8,6 +8,9 @@
  *   à New York ; anciennes analyses Asie : 08:30, pré-marché : 16:00). Au-delà de ± 0,2 × ATR
  *   journalier le mouvement est haussier ou baissier, sinon neutre ; le biais est juste s'il
  *   correspond. GET /claude-score en fait le bilan.
+ * - Chaque fiche d'exécution d'un plan de séance, et chaque scénario du plan de la semaine, est
+ *   rejoué sur les bougies, sans gestion : entrée touchée ou non (annulée si sa condition « Annulé
+ *   si » est clôturée avant), puis stop (vérifié en premier) ou objectif, avec le temps mis.
  * - Un trade importé de MT5 reçoit le setup du signal Claude correspondant, la zone et le niveau
  *   du plan, et le biais du moment ; l'utilisateur ne complète que les règles et l'émotion.
  *
@@ -102,14 +105,14 @@ class CX_Score {
 	private static function score_week( $week ) {
 		global $wpdb;
 		$p = CX_Repo::plan( $week );
-		if ( ! $p || ! is_array( $p['content'] ) || empty( $p['content']['sessions'] ) ) {
+		if ( ! $p || ! is_array( $p['content'] ) ) {
 			return;
 		}
 		$c       = $p['content'];
+		$changed = self::score_cards( $c ) | self::score_scenarios( $c, $week );
 		$atr     = (float) ( $c['refs']['atr_d'] ?? 0 );
 		$thr     = round( self::NEUTRAL * ( $atr > 0 ? $atr : 40 ), 2 );
-		$changed = false;
-		foreach ( $c['sessions'] as $i => $s ) {
+		foreach ( (array) ( $c['sessions'] ?? array() ) as $i => $s ) {
 			if ( isset( $s['score'] ) || empty( $s['bias'] ) || empty( $s['at'] ) ) {
 				continue;
 			}
@@ -157,6 +160,263 @@ class CX_Score {
 		}
 	}
 
+	/* ------------------------------------------------------------------
+	 * Rejeu des fiches et des scénarios
+	 * ------------------------------------------------------------------ */
+
+	/** Unités pour le rejeu, de la plus fine à la plus large. */
+	const REPLAY_TF = array(
+		'M1'  => 60,
+		'M5'  => 300,
+		'M15' => 900,
+		'H1'  => 3600,
+	);
+
+	/**
+	 * Bougies les plus fines du compte de référence qui commencent avant $from.
+	 *
+	 * @param int $from Début (Unix).
+	 * @return array|null [unité, durée (s), bougies]
+	 */
+	private static function bars_from( $from ) {
+		$tf = (array) ( CX_Live::candle_data()['tf'] ?? array() );
+		foreach ( self::REPLAY_TF as $k => $sec ) {
+			$rows = (array) ( $tf[ $k ] ?? array() );
+			if ( count( $rows ) > 1 && (int) $rows[0][0] <= $from ) {
+				return array( $k, $sec, $rows );
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Condition « Clôture M15 au-dessus de 4 165,80 » lue dans un texte : [durée de l'unité, au-dessus ?, prix].
+	 *
+	 * @param string $text Texte de la fiche (cancel) ou du scénario (invalidation).
+	 * @return array|null
+	 */
+	public static function close_rule( $text ) {
+		$u = array(
+			'M1'  => 60,
+			'M5'  => 300,
+			'M15' => 900,
+			'M30' => 1800,
+			'H1'  => 3600,
+		);
+		if ( ! preg_match( '/cl[ôo]ture\s+(M1|M5|M15|M30|H1)\b[^0-9]*?(au-dessus|au dessus|sous|en dessous|en-dessous)\s+(?:de\s+|du\s+)?([0-9][0-9\s\x{00A0}\x{202F}]*[.,]?[0-9]*)/iu', (string) $text, $m ) ) {
+			return null;
+		}
+		$price = (float) str_replace( ',', '.', preg_replace( '/[\s\x{00A0}\x{202F}]/u', '', $m[3] ) );
+		return $price > 0 ? array( $u[ strtoupper( $m[1] ) ], 0 === stripos( $m[2], 'au' ), $price ) : null;
+	}
+
+	/**
+	 * Premier prix d'un texte (« 4 158,00–4 162,00 » → 4158.00).
+	 *
+	 * @param mixed $v Texte ou nombre.
+	 * @return float|null
+	 */
+	private static function first_price( $v ) {
+		if ( is_numeric( $v ) ) {
+			return (float) $v;
+		}
+		if ( preg_match( '/[0-9][0-9\s\x{00A0}\x{202F}]{2,}[.,][0-9]+|[0-9]{3,}(?:[.,][0-9]+)?/u', (string) $v, $m ) ) {
+			return (float) str_replace( ',', '.', preg_replace( '/[\s\x{00A0}\x{202F}]/u', '', $m[0] ) );
+		}
+		return null;
+	}
+
+	/**
+	 * Rejeu d'un ordre sans gestion : en attente jusqu'à ce que l'entrée soit touchée (annulé si la
+	 * règle d'annulation est clôturée avant, ou à $until), puis stop (en premier) ou objectif ; clôture
+	 * au dernier cours 24 h après l'entrée.
+	 *
+	 * @param array      $o     {side, entry, sl, tp}.
+	 * @param array|null $rule  close_rule() de l'annulation.
+	 * @param int        $from  Publication (Unix).
+	 * @param int        $until Fin de validité de l'ordre en attente (Unix).
+	 * @return array|null Résultat, null si les bougies ne permettent pas encore de conclure.
+	 */
+	public static function replay_order( $o, $rule, $from, $until ) {
+		$e  = (float) $o['entry'];
+		$sl = (float) $o['sl'];
+		$tp = (float) $o['tp'];
+		$st = abs( $e - $sl );
+		if ( $e <= 0 || $sl <= 0 || $tp <= 0 || $st <= 0 ) {
+			return array( 'status' => 'incomplete' );
+		}
+		$src = self::bars_from( $from );
+		if ( ! $src ) {
+			return time() > $until + 2 * DAY_IN_SECONDS ? array( 'status' => 'no_data' ) : null;
+		}
+		list( $tf, $sec, $bars ) = $src;
+		$tz     = CX_Repo::tz();
+		$hm     = fn( $ts ) => wp_date( 'd/m H:i', $ts, $tz );
+		$buy    = 'vente' !== ( $o['side'] ?? '' );
+		$rr     = round( abs( $tp - $e ) / $st, 2 );
+		$fill   = null;
+		$mfe    = 0.0;
+		$last   = 0;
+		$base   = array(
+			'tf' => $tf,
+			'rr' => $rr,
+		);
+		foreach ( $bars as $b ) {
+			$o0 = (int) $b[0];
+			$t  = $o0 + $sec;
+			if ( $t <= $from ) {
+				continue;
+			}
+			$last = $t;
+			$hi   = (float) $b[2];
+			$lo   = (float) $b[3];
+			if ( null === $fill ) {
+				if ( $o0 >= $until ) {
+					return $base + array( 'status' => 'not_filled' );
+				}
+				if ( $buy ? $lo <= $e : $hi >= $e ) {
+					$fill = $o0;
+				} elseif ( $rule && $sec <= $rule[0] && 0 === $t % $rule[0] && ( $rule[1] ? (float) $b[4] > $rule[2] : (float) $b[4] < $rule[2] ) ) {
+					return $base + array(
+						'status' => 'cancelled',
+						'close'  => $hm( $t ),
+					);
+				} else {
+					continue;
+				}
+			}
+			$up   = $buy ? ( $hi - $e ) / $st : ( $e - $lo ) / $st;
+			$down = $buy ? ( $lo - $e ) / $st : ( $e - $hi ) / $st;
+			$mfe  = max( $mfe, $up );
+			$r    = null;
+			$what = '';
+			if ( $down <= -1.0 ) {
+				$r    = -1.0;
+				$what = 'sl';
+			} elseif ( $up >= $rr ) {
+				$r    = $rr;
+				$what = 'tp';
+			} elseif ( $t - $fill > 24 * HOUR_IN_SECONDS ) {
+				$r    = round( $buy ? ( (float) $b[4] - $e ) / $st : ( $e - (float) $b[4] ) / $st, 2 );
+				$what = '24h';
+			}
+			if ( null !== $r ) {
+				return $base + array(
+					'status'  => $what,
+					'r'       => $r,
+					'fill'    => $hm( $fill ),
+					'close'   => $hm( $t ),
+					'to_fill' => (int) round( max( 0, $fill - $from ) / 60 ),
+					'to_out'  => (int) round( ( $t - $fill ) / 60 ),
+					'mfe'     => round( $mfe, 2 ),
+				);
+			}
+		}
+		// Pas encore d'issue : on attend de nouvelles bougies, 2 jours au plus.
+		if ( null === $fill && $last >= $until ) {
+			return $base + array( 'status' => 'not_filled' );
+		}
+		return time() > max( $until, $fill ?? 0 ) + 2 * DAY_IN_SECONDS ? $base + array( 'status' => 'no_data' ) : null;
+	}
+
+	/**
+	 * Fiches des plans de séance terminés : rejouées une fois, résultat dans session.cards.
+	 *
+	 * @param array $c Contenu du plan (modifié).
+	 * @return bool Vrai si quelque chose a changé.
+	 */
+	private static function score_cards( &$c ) {
+		$changed = false;
+		foreach ( (array) ( $c['sessions'] ?? array() ) as $i => $s ) {
+			if ( isset( $s['cards'] ) || empty( $s['positions'] ) || empty( $s['at'] ) ) {
+				continue;
+			}
+			$to = self::end_ts( $s );
+			if ( ! $to || time() < $to + 600 ) {
+				continue;
+			}
+			$from  = ( new DateTimeImmutable( $s['at'], CX_Repo::tz() ) )->getTimestamp();
+			$cards = array();
+			foreach ( array_values( $s['positions'] ) as $n => $p ) {
+				$res = self::replay_order( $p, self::close_rule( $p['cancel'] ?? '' ), $from, $to );
+				if ( null === $res ) {
+					continue 2;
+				}
+				$cards[] = array(
+					'n'     => $n + 1,
+					'side'  => $p['side'] ?? '',
+					'setup' => $p['setup'] ?? '',
+				) + $res;
+			}
+			$c['sessions'][ $i ]['cards'] = $cards;
+			$changed                      = true;
+		}
+		return $changed;
+	}
+
+	/**
+	 * Scénarios du plan de la semaine, rejoués du lundi 00:00 au vendredi 23:59 (Lubumbashi), une fois
+	 * la semaine terminée ; résultat dans scenario_score.
+	 *
+	 * @param array  $c    Contenu du plan (modifié).
+	 * @param string $week Lundi.
+	 * @return bool
+	 */
+	private static function score_scenarios( &$c, $week ) {
+		if ( isset( $c['scenario_score'] ) || empty( $c['scenarios'] ) ) {
+			return false;
+		}
+		$mon = new DateTimeImmutable( $week . ' 00:00', CX_Repo::tz() );
+		$to  = $mon->modify( '+5 days' )->getTimestamp();
+		if ( time() < $to ) {
+			return false;
+		}
+		$out = array();
+		foreach ( array_values( $c['scenarios'] ) as $n => $x ) {
+			$o   = array(
+				'side'  => $x['side'] ?? '',
+				'entry' => self::first_price( $x['entry'] ?? '' ),
+				'sl'    => $x['sl'] ?? null,
+				'tp'    => $x['tp'] ?? null,
+			);
+			$res = self::replay_order( $o, self::close_rule( $x['invalidation'] ?? '' ), $mon->getTimestamp(), $to );
+			if ( null === $res ) {
+				return false;
+			}
+			$out[] = array(
+				'n'     => $n + 1,
+				'side'  => $o['side'],
+				'setup' => $x['setup'] ?? '',
+			) + $res;
+		}
+		$c['scenario_score'] = $out;
+		return true;
+	}
+
+	/**
+	 * Bilan des fiches : publiées, déclenchées, objectif, stop, R moyen, temps moyen.
+	 *
+	 * @param array[] $cards Fiches rejouées.
+	 * @return array
+	 */
+	public static function card_stats( $cards ) {
+		$done = array_values( array_filter( $cards, fn( $x ) => isset( $x['r'] ) ) );
+		$tp   = array_values( array_filter( $done, fn( $x ) => 'tp' === $x['status'] ) );
+		$n    = count( $done );
+		return array(
+			'published'  => count( array_filter( $cards, fn( $x ) => ! in_array( $x['status'], array( 'incomplete', 'no_data' ), true ) ) ),
+			'triggered'  => $n,
+			'tp'         => count( $tp ),
+			'sl'         => count( array_filter( $done, fn( $x ) => 'sl' === $x['status'] ) ),
+			'not_filled' => count( array_filter( $cards, fn( $x ) => 'not_filled' === $x['status'] ) ),
+			'cancelled'  => count( array_filter( $cards, fn( $x ) => 'cancelled' === $x['status'] ) ),
+			'win'        => $n ? (int) round( 100 * count( array_filter( $done, fn( $x ) => $x['r'] > 0 ) ) / $n ) : 0,
+			'sum_r'      => round( array_sum( array_column( $done, 'r' ) ), 2 ),
+			'avg_r'      => $n ? round( array_sum( array_column( $done, 'r' ) ) / $n, 2 ) : 0,
+			'tp_minutes' => $tp ? (int) round( array_sum( array_column( $tp, 'to_out' ) ) / count( $tp ) ) : null,
+		);
+	}
+
 	/**
 	 * Bilan des notes sur les 12 dernières semaines.
 	 *
@@ -166,9 +426,20 @@ class CX_Score {
 		$now   = new DateTimeImmutable( 'now', CX_Repo::tz() );
 		$kinds = array();
 		$last  = array();
+		$cards = array();
+		$recent = array();
+		$scen  = array();
 		for ( $w = 0; $w < 12; $w++ ) {
 			$p = CX_Repo::plan( CX_Telegram::monday( $now->modify( '-' . ( 7 * $w ) . ' days' ) ) );
+			$scen = array_merge( $scen, (array) ( $p['content']['scenario_score'] ?? array() ) );
 			foreach ( (array) ( $p['content']['sessions'] ?? array() ) as $s ) {
+				foreach ( (array) ( $s['cards'] ?? array() ) as $x ) {
+					$cards[ $s['kind'] ][] = $x;
+					$recent[]              = array(
+						'date' => $s['date'],
+						'kind' => $s['kind'],
+					) + $x;
+				}
 				if ( ! isset( $s['score']['ok'] ) || null === $s['score']['ok'] ) {
 					continue;
 				}
@@ -187,6 +458,13 @@ class CX_Score {
 			array(
 				'kinds'   => (object) $kinds,
 				'last'    => array_slice( $last, 0, 15 ),
+				// Fiches rejouées sur les bougies, sans gestion (objectif ou stop) : par séance et les 20 dernières.
+				'cards'   => array(
+					'all'    => self::card_stats( array_merge( array(), ...array_values( $cards ) ) ),
+					'kinds'  => (object) array_map( array( __CLASS__, 'card_stats' ), $cards ),
+					'recent' => array_slice( array_reverse( $recent ), 0, 20 ),
+				),
+				'scenarios' => self::card_stats( $scen ),
 				'neutral' => self::NEUTRAL,
 			),
 			200

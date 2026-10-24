@@ -138,7 +138,7 @@ defined( 'ABSPATH' ) || exit;
 			<div><h4 class="sub">Par émotion</h4><div class="bars" id="by-emotion"></div></div>
 		</div>
 		<h4 class="sub">Fiabilité des plans de Claude</h4><div id="reliability"></div>
-		<h4 class="sub">Signaux de l’EA suivis comme des trades virtuels</h4><p class="hint">50 % à 2R puis stop au prix d’entrée. Résultats séparés de vos trades.</p><div id="csignals"></div>
+		<h4 class="sub">Signaux de l’EA suivis comme des trades virtuels</h4><p class="hint">Sans gestion : objectif ou stop. Résultats séparés de vos trades.</p><div id="csignals"></div>
 	</details>
 
 	<div class="row" style="margin:18px 0 10px">
@@ -298,7 +298,7 @@ defined( 'ABSPATH' ) || exit;
 				<li>Dans MT5 : Outils › Options › Expert Advisors, cochez « Autoriser WebRequest » et ajoutez l’adresse <code id="mt5-host"></code>.</li>
 				<li>Glissez l’EA sur un graphique XAUUSD, collez l’adresse <code id="mt5-url"></code> et la clé du compte.</li>
 			</ol>
-			<p class="hint">Prise de position : <a id="calc-link" download="CalculateurXAU.mq5">CalculateurXAU.mq5</a> (version 4.02). Outil position et ticket d’ordre comme sur TradingView, même police : Sell ou Buy, stop et objectif réglés à la souris, Marché, Limite ou Stop. Risque, limites du jour, étape et objectif du compte viennent du carnet par l’EA Carnet XAU (version 2.16), sur le même compte. À glisser sur un second graphique XAUUSD.</p>
+			<p class="hint">Prise de position : <a id="calc-link" download="CalculateurXAU.mq5">CalculateurXAU.mq5</a> (version 4.02). Outil position et ticket d’ordre comme sur TradingView, même police : Sell ou Buy, stop et objectif réglés à la souris, Marché, Limite ou Stop. Risque, limites du jour, étape et objectif du compte viennent du carnet par l’EA Carnet XAU (version 2.17), sur le même compte. À glisser sur un second graphique XAUUSD.</p>
 			<div class="secret" id="mt5-key-box" hidden></div>
 			<label class="f" style="margin-top:10px">Bougies utilisées par Claude pour l’analyse<select id="candles-ref"></select></label>
 			<p class="hint" id="candles-hint"></p>

@@ -572,20 +572,59 @@ class CX_Live {
 		}
 		$wpdb->update( $t, $data, array( 'id' => (int) $row->id ) );
 		if ( $send && 'retest' !== $row->genre && in_array( $status, array( 'gagne', 'perdu', 'be' ), true ) ) {
-			$r = (float) ( $data['resultat_r'] ?? 0 );
-			CX_Telegram::send(
-				sprintf(
-					"%s Signal Claude %s du %s : <b>%s%sR</b>%s",
-					$r > 0 ? '✅' : ( $r < 0 ? '❌' : '➖' ),
-					'sell' === $row->sens ? 'SELL' : 'BUY',
-					substr( $row->signale_le, 11, 5 ),
-					$r > 0 ? '+' : ( $r < 0 ? '−' : '' ),
-					number_format( abs( $r ), 1, ',', '' ),
-					$data['atteint_2r'] ? "\n2R atteint en cours de trade" : ''
-				)
-			);
+			CX_Telegram::send( self::close_message( $row, $data ) );
 		}
 		return new WP_REST_Response( array( 'ok' => true ), 200 );
+	}
+
+	/**
+	 * Message de clôture d'un signal : objectif ou stop, résultat en R et temps mis pour l'atteindre
+	 * (depuis l'entrée, et depuis le signal quand c'était un ordre limite).
+	 *
+	 * @param object $row  Signal.
+	 * @param array  $data Colonnes de clôture (ferme_le, resultat_r, ouvert_le éventuel).
+	 * @return string
+	 */
+	public static function close_message( $row, $data ) {
+		$tz     = CX_Repo::tz();
+		$r      = (float) ( $data['resultat_r'] ?? 0 );
+		$rr     = null === $row->rr ? null : (float) $row->rr;
+		$sig    = ( new DateTimeImmutable( $row->signale_le, $tz ) )->getTimestamp();
+		$open   = $data['ouvert_le'] ?? $row->ouvert_le;
+		$opened = $open ? ( new DateTimeImmutable( $open, $tz ) )->getTimestamp() : $sig;
+		$closed = ( new DateTimeImmutable( $data['ferme_le'], $tz ) )->getTimestamp();
+		$what   = $r <= -0.95 ? '❌ <b>Stop touché</b>' : ( null !== $rr && $r >= $rr - 0.05 ? '✅ <b>Objectif atteint</b>' : '⏱ <b>Clôturé au bout de 24 h</b>' );
+		$lines  = array(
+			$what,
+			'Signal Claude ' . ( 'sell' === $row->sens ? 'VENTE' : 'ACHAT' ) . ' de ' . substr( $row->signale_le, 11, 5 ),
+			'',
+			'• Résultat : ' . ( $r > 0 ? '+' : ( $r < 0 ? '−' : '' ) ) . number_format( abs( $r ), 1, ',', '' ) . 'R',
+			'• Durée depuis l’entrée : ' . self::duration( $closed - $opened ),
+		);
+		if ( $opened - $sig >= 60 ) {
+			$lines[] = '• Entrée déclenchée ' . self::duration( $opened - $sig ) . ' après le signal';
+		}
+		if ( $r < 0 && ! empty( $data['atteint_2r'] ) ) {
+			$lines[] = '• 2R avait été atteint avant le stop';
+		}
+		return implode( "\n", $lines );
+	}
+
+	/**
+	 * Durée lisible : « 45 min », « 1 h 12 », « 1 j 3 h ».
+	 *
+	 * @param int $sec Secondes.
+	 * @return string
+	 */
+	public static function duration( $sec ) {
+		$m = max( 1, (int) round( $sec / 60 ) );
+		if ( $m < 60 ) {
+			return $m . ' min';
+		}
+		if ( $m < 1440 ) {
+			return intdiv( $m, 60 ) . ' h ' . str_pad( (string) ( $m % 60 ), 2, '0', STR_PAD_LEFT );
+		}
+		return intdiv( $m, 1440 ) . ' j ' . intdiv( $m % 1440, 60 ) . ' h';
 	}
 
 	/** Durée de suivi d'un trade virtuel par l'EA (TRACK_MAX_HOURS), en heures. */
@@ -667,9 +706,9 @@ class CX_Live {
 	}
 
 	/**
-	 * Gestion de l'EA (ProcessBar), bougie par bougie : ordre limite déclenché ou annulé au bout de
-	 * $lim minutes, stop vérifié en premier, 50 % à 2R puis stop à l'entrée, objectif, clôture au
-	 * dernier cours au bout de 24 h.
+	 * Suivi de l'EA (ProcessBar), bougie par bougie : ordre limite déclenché ou annulé au bout de
+	 * $lim minutes, puis stop (vérifié en premier) ou objectif, sans gestion ; clôture au dernier
+	 * cours au bout de 24 h.
 	 *
 	 * @param object       $r     Ligne du signal.
 	 * @param array        $bars  Bougies [unix UTC, ouverture, haut, bas, clôture].
@@ -721,23 +760,14 @@ class CX_Live {
 			$mfe   = max( $mfe, $up );
 			$mae   = min( $mae, $down );
 			$close = null;
-			if ( ! $hit ) {
-				if ( $down <= -1.0 ) {
-					$close = -1.0;
-				} elseif ( $up >= 2.0 ) {
-					$hit = true;
-					if ( $up >= $rr_tp ) {
-						$close = 1.0 + 0.5 * $rr_tp;
-					}
-				}
+			$hit   = $hit || $up >= 2.0;
+			if ( $down <= -1.0 ) {
+				$close = -1.0;
 			} elseif ( $up >= $rr_tp ) {
-				$close = 1.0 + 0.5 * $rr_tp;
-			} elseif ( $down <= 0 ) {
-				$close = 1.0;
+				$close = $rr_tp;
 			}
 			if ( null === $close && $t - $opened > self::TRACK_HOURS * 3600 ) {
-				$now   = $buy ? ( (float) $b[4] - $e ) / $st : ( $e - (float) $b[4] ) / $st;
-				$close = $hit ? 1.0 + 0.5 * $now : $now;
+				$close = $buy ? ( (float) $b[4] - $e ) / $st : ( $e - (float) $b[4] ) / $st;
 			}
 			if ( null !== $close ) {
 				return array(

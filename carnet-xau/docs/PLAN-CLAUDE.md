@@ -283,3 +283,15 @@ York, ny : 08:15 → 16:00 New York, off), `hour` (heure de Lubumbashi) et `side
 l’historique (`total`) et sur 30 jours (`30d`) ; `journal.rules` compare les trades complétés où
 les règles sont respectées ou non. Les plans de séance mettent en premier la fiche du setup et de la
 séance qui gagnent (au moins 5 trades pour conclure) ; le coach s’en sert pour ses bilans.
+
+## Fiabilité des fiches (`/claude-score`)
+
+Après la fin de chaque séance, le carnet rejoue chaque fiche (`positions`) sur les bougies du compte
+de référence, sans gestion : entrée touchée ou non (fiche annulée si la condition « Clôture M15
+au-dessus / sous de … » de `cancel` est clôturée avant), puis stop (vérifié en premier) ou objectif,
+clôture au dernier cours au bout de 24 h ; avec le temps jusqu’à l’entrée et jusqu’à l’issue. Les
+scénarios du plan de la semaine sont rejoués de la même façon du lundi au vendredi (`invalidation`).
+`GET /claude-score` : `cards.all`, `cards.kinds` (london, us), `cards.recent`, `scenarios` (publiées,
+déclenchées, objectif, stop, réussite, R total et moyen, minutes moyennes jusqu’à l’objectif). La
+relecture du soir s’en sert pour corriger ce qui rate : une fiche jamais déclenchée est une zone mal
+placée, un stop touché vite est un stop mal placé.

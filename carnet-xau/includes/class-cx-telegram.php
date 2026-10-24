@@ -864,7 +864,8 @@ class CX_Telegram {
 				}
 			}
 		}
-		$bt = (array) ( $u['backtest'] ?? array() );
+		$lines = array_merge( $lines, self::card_results( $c, $u['date'] ) );
+		$bt    = (array) ( $u['backtest'] ?? array() );
 		if ( ! empty( $bt['summary'] ) || ! empty( $bt['missed'] ) || ! empty( $bt['wrong'] ) ) {
 			$lines[] = '';
 			$lines[] = '🔁 <b>Rejeu de la journée</b>';
@@ -888,6 +889,41 @@ class CX_Telegram {
 		$lines[] = '';
 		$lines[] = 'Plan : ' . get_permalink( CX_Front::page_id() );
 		return implode( "\n", $lines );
+	}
+
+	/**
+	 * Fiches des plans de séance d'un jour, rejouées par le carnet sur les bougies (objectif ou stop).
+	 *
+	 * @param array  $c    Contenu du plan.
+	 * @param string $date Jour (AAAA-MM-JJ).
+	 * @return string[]
+	 */
+	public static function card_results( $c, $date ) {
+		$out  = array();
+		$name = array(
+			'london' => '🇬🇧 Londres',
+			'us'     => '🇺🇸 New York',
+		);
+		foreach ( (array) ( $c['sessions'] ?? array() ) as $s ) {
+			if ( $s['date'] !== $date || empty( $s['cards'] ) ) {
+				continue;
+			}
+			foreach ( $s['cards'] as $x ) {
+				$side  = 'vente' === $x['side'] ? 'VENTE' : 'ACHAT';
+				$r     = isset( $x['r'] ) ? ( $x['r'] > 0 ? '+' : ( $x['r'] < 0 ? '−' : '' ) ) . number_format( abs( (float) $x['r'] ), 1, ',', '' ) . 'R' : '';
+				$what  = array(
+					'tp'         => '✅ objectif ' . $r . ' en ' . CX_Live::duration( 60 * (int) ( $x['to_out'] ?? 0 ) ),
+					'sl'         => '❌ stop ' . $r . ' en ' . CX_Live::duration( 60 * (int) ( $x['to_out'] ?? 0 ) ),
+					'24h'        => '⏱ clôturée après 24 h ' . $r,
+					'not_filled' => '➖ entrée jamais touchée',
+					'cancelled'  => '✖ annulée avant l’entrée',
+					'no_data'    => '… bougies manquantes',
+					'incomplete' => '… prix incomplets',
+				)[ $x['status'] ] ?? $x['status'];
+				$out[] = ( $name[ $s['kind'] ] ?? $s['kind'] ) . ' ' . $x['n'] . '. ' . $side . ' : ' . $what;
+			}
+		}
+		return $out ? array_merge( array( '', '📏 <b>Fiches rejouées sur les bougies</b>' ), $out ) : array();
 	}
 
 	/**

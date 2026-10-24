@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.16.0                                   |
+//| CarnetXAU.mq5 — version 2.17.0                                   |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1 à M1), toutes |
@@ -16,7 +16,7 @@
 //| position. Vous décidez et passez l'ordre vous-même.              |
 //|                                                                  |
 //| Chaque signal est suivi comme un trade virtuel « Signal Claude » |
-//| (50 % à 2R puis stop au prix d'entrée) jusqu'à sa clôture ; le   |
+//| (objectif ou stop, sans gestion) jusqu'à sa clôture ; le         |
 //| résultat en R part au carnet : taux de réussite propre aux       |
 //| signaux, séparé de vos trades.                                   |
 //|                                                                  |
@@ -54,6 +54,7 @@
 //| 2.16 : départ des niveaux et zones sur leur bougie d'origine     |
 //| (champ « origin » du plan, heure du serveur), sinon sur la mèche |
 //| H1 qui marque le prix (côté selon le type H / L), sinon au bord. |
+//| 2.17 : signal suivi sans gestion, objectif ou stop seulement.    |
 //|                                                                  |
 //| Règles du signal (calculées à partir du plan de Claude) :        |
 //| - le prix touche une zone de Claude non cassée ;                 |
@@ -82,7 +83,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.16"
+#property version   "2.17"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 #include <Canvas\Canvas.mqh>
@@ -151,7 +152,7 @@ double   g_fvg = 0.30, g_slbuf = 0.30;
 bool     g_planOk = false;
 
 //--- Trade virtuel « Signal Claude » : chaque signal est suivi jusqu'à sa clôture, pris ou non,
-//    avec la gestion du carnet (50 % à 2R, puis stop au prix d'entrée). Sauvegardé dans un fichier.
+//    sans gestion : objectif ou stop, rien d'autre. Sauvegardé dans un fichier.
 struct CxTrack
   {
    string   ref;       // identifiant envoyé au carnet
@@ -433,8 +434,8 @@ void ProcessTracks()
      }
   }
 
-//--- Une bougie M1 clôturée (à l'heure t) : limite déclenchée ou annulée, stop, 2R, objectif,
-//    retour au prix d'entrée, clôture au bout de 24 h. late = bougie rattrapée après un arrêt.
+//--- Une bougie M1 clôturée (à l'heure t) : limite déclenchée ou annulée, puis stop ou objectif,
+//    sans sortie partielle ni stop déplacé ; clôture au bout de 24 h. late = bougie rattrapée après un arrêt.
 void ProcessBar(double hi, double lo, double cl, datetime t, bool late)
   {
    bool   changed = false;
@@ -477,30 +478,15 @@ void ProcessBar(double hi, double lo, double cl, datetime t, bool late)
       g_tracks[i].mae = MathMin(g_tracks[i].mae, down);
       double rrTp = MathAbs(g_tracks[i].tp - e) / st;
       changed = true;
-      if(!g_tracks[i].hit2r)
-        {
-         if(down <= -1.0)
-            CloseTrack(i, -1.0, when, t);                     // stop touché (prudence : vérifié en premier)
-         else if(up >= 2.0)
-           {
-            g_tracks[i].hit2r = true;                      // 50 % sortis à 2R, stop au prix d'entrée
-            if(up >= rrTp)
-               CloseTrack(i, 1.0 + 0.5 * rrTp, when, t);
-           }
-        }
-      else
-        {
-         if(up >= rrTp)
-            CloseTrack(i, 1.0 + 0.5 * rrTp, when, t);         // objectif atteint
-         else if(down <= 0)
-            CloseTrack(i, 1.0, when, t);                      // retour au prix d'entrée : +1R acquis à 2R
-        }
+      if(up >= 2.0)
+         g_tracks[i].hit2r = true;                         // 2R atteint (information seulement)
+      if(down <= -1.0)
+         CloseTrack(i, -1.0, when, t);                        // stop touché (prudence : vérifié en premier)
+      else if(up >= rrTp)
+         CloseTrack(i, rrTp, when, t);                        // objectif atteint
       // Au-delà de 24 h : clôture virtuelle au dernier cours.
       if(g_tracks[i].status == 1 && t - g_tracks[i].opened > TRACK_MAX_HOURS * 3600)
-        {
-         double now = buy ? (cl - e) / st : (e - cl) / st;
-         CloseTrack(i, g_tracks[i].hit2r ? 1.0 + 0.5 * now : now, when, t);
-        }
+         CloseTrack(i, buy ? (cl - e) / st : (e - cl) / st, when, t);
      }
    if(changed)
       SaveTracks();
