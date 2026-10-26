@@ -3,9 +3,14 @@
  * Coach de Claude : débrief des trades du jour (après la relecture du soir) et bilan de la semaine
  * (dimanche), envoyés en privé sur Telegram et gardés dans le carnet pour suivre les objectifs.
  *
+ * Le coach évalue aussi Claude : là où ses plans, fiches et zones ont mal fait, et les améliorations
+ * qu'il lui soumet. Les plans de Claude lisent GET /coach (`claude`) et doivent y répondre.
+ *
  * - POST /claude/coach (jeton du plan, en-tête X-CX-Key) :
- *   {"kind": "day"|"week", "date": "AAAA-MM-JJ", "lines": ["…"], "focus": "…", "score": 0-10}
- * - GET  /coach : les 60 derniers débriefs (le coach relit l'objectif précédent avant d'écrire).
+ *   {"kind": "day"|"week", "date": "AAAA-MM-JJ", "lines": ["…"], "focus": "…", "score": 0-10,
+ *    "claude": {"score": 0-10, "lines": ["…"], "improve": ["…"]}}
+ * - GET  /coach : les 60 derniers débriefs (le coach relit l'objectif précédent avant d'écrire)
+ *   et `claude` : les 10 dernières évaluations de Claude.
  *
  * @package CarnetXAU
  */
@@ -49,7 +54,15 @@ class CX_Coach {
 
 	/** @return WP_REST_Response */
 	public static function list_notes() {
-		return new WP_REST_Response( array( 'notes' => self::notes() ), 200 );
+		$notes  = self::notes();
+		$claude = array_values( array_filter( array_map( fn( $n ) => empty( $n['claude'] ) ? null : array( 'kind' => $n['kind'], 'date' => $n['date'] ) + $n['claude'], $notes ) ) );
+		return new WP_REST_Response(
+			array(
+				'notes'  => $notes,
+				'claude' => array_slice( $claude, -10 ),
+			),
+			200
+		);
 	}
 
 	/**
@@ -72,10 +85,21 @@ class CX_Coach {
 		if ( ! $kind || ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
 			return CX_Repo::invalid( '« kind » (day ou week) et « date » (AAAA-MM-JJ) obligatoires.' );
 		}
-		$lines = array_values( array_filter( array_map( fn( $l ) => CX_Repo::text( $l, 400 ), array_slice( (array) ( $in['lines'] ?? array() ), 0, 10 ) ) ) );
-		$focus = CX_Repo::text( $in['focus'] ?? '', 300 );
-		if ( ! $lines || '' === $focus ) {
-			return CX_Repo::invalid( '« lines » (10 au plus) et « focus » (l’objectif) obligatoires.' );
+		$list   = fn( $v, $n ) => array_values( array_filter( array_map( fn( $l ) => CX_Repo::text( $l, 400 ), array_slice( (array) $v, 0, $n ) ) ) );
+		$lines  = $list( $in['lines'] ?? array(), 10 );
+		$focus  = CX_Repo::text( $in['focus'] ?? '', 300 );
+		$c      = (array) ( $in['claude'] ?? array() );
+		$claude = array(
+			'score'   => isset( $c['score'] ) && is_numeric( $c['score'] ) ? max( 0, min( 10, (int) $c['score'] ) ) : null,
+			'lines'   => $list( $c['lines'] ?? array(), 5 ),
+			'improve' => $list( $c['improve'] ?? array(), 5 ),
+		);
+		if ( ! $claude['lines'] && ! $claude['improve'] ) {
+			$claude = null;
+		}
+		// Un jour sans trade : seule l'évaluation de Claude suffit.
+		if ( ( ! $lines || '' === $focus ) && ! $claude ) {
+			return CX_Repo::invalid( '« lines » (10 au plus) et « focus » (l’objectif) obligatoires, ou « claude ».' );
 		}
 		$score = isset( $in['score'] ) && is_numeric( $in['score'] ) ? max( 0, min( 10, (int) $in['score'] ) ) : null;
 		$note  = array(
@@ -83,8 +107,9 @@ class CX_Coach {
 			'date'  => $date,
 			'lines' => $lines,
 			'focus' => $focus,
-			'score' => $score,
-			'at'    => CX_Repo::clock(),
+			'score'  => $score,
+			'claude' => $claude,
+			'at'     => CX_Repo::clock(),
 		);
 		// Une note par jour et par type : la dernière remplace la précédente.
 		$all   = array_values( array_filter( self::notes(), fn( $n ) => ! ( $n['kind'] === $kind && $n['date'] === $date ) ) );
@@ -93,9 +118,23 @@ class CX_Coach {
 
 		$when = wp_date( 'd/m', strtotime( $date . ' 12:00' ), CX_Repo::tz() );
 		$head = 'week' === $kind ? '🧭 <b>Coach · bilan de la semaine</b> (' . $when . ')' : '🎯 <b>Coach · débrief du ' . $when . '</b>';
-		$text = $head . ( null !== $score ? "\nDiscipline : " . $score . '/10' : '' ) . "\n\n"
-			. implode( "\n\n", array_map( fn( $l ) => '• ' . esc_html( $l ), $lines ) )
-			. "\n\n🎯 <b>Objectif</b>\n" . esc_html( $focus );
+		$bul  = fn( $l ) => implode( "\n\n", array_map( fn( $x ) => '• ' . esc_html( $x ), $l ) );
+		$text = $head;
+		if ( $lines ) {
+			$text .= ( null !== $score ? "\nDiscipline : " . $score . '/10' : '' ) . "\n\n" . $bul( $lines );
+		}
+		if ( '' !== $focus ) {
+			$text .= "\n\n🎯 <b>Objectif</b>\n" . esc_html( $focus );
+		}
+		if ( $claude ) {
+			$text .= "\n\n━━━━━━━━━━━━\n🤖 <b>Claude évalué</b>" . ( null !== $claude['score'] ? ' : ' . $claude['score'] . '/10' : '' );
+			if ( $claude['lines'] ) {
+				$text .= "\n\n<b>Là où il a mal fait</b>\n" . $bul( $claude['lines'] );
+			}
+			if ( $claude['improve'] ) {
+				$text .= "\n\n<b>Améliorations soumises</b>\n" . $bul( $claude['improve'] );
+			}
+		}
 		$sent = CX_Telegram::send( $text, true );
 		return new WP_REST_Response(
 			array(
