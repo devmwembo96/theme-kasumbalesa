@@ -876,6 +876,8 @@ class CX_Score {
 				),
 				// Leçons tirées des résultats (8 cas au moins) : à respecter dans les prochains plans.
 				'lessons'   => self::lessons( array_merge( array(), ...array_values( $cards ) ), $zones ),
+				// Évaluations de Claude par le coach : chaque amélioration soumise est appliquée ou refusée avec un fait dans `ideas`.
+				'coach'     => array_slice( (array) CX_Coach::list_notes()->get_data()['claude'], -5 ),
 				'neutral' => self::NEUTRAL,
 			),
 			200
