@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.35.1
+Stable tag: 2.36.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -150,6 +150,11 @@ Calculateur XAU version 4 : outil position et ticket d’ordre façon TradingVie
   Lubumbashi (il le lisait en UTC : 2 h d’écart), et l’image envoyée sur Telegram fait partir zones
   et niveaux de leur bougie d’origine. Les plans de séance acceptent `origin` pour leurs zones et
   niveaux.
+* Or seulement (version 2.36.0, EA Carnet 2.19) : un EA posé par erreur sur un autre graphique
+  (BTC, argent…) ne fausse plus le carnet. Bougies, signaux, invalidation et zones à plus de 15 %
+  du cours de l'or du compte de référence sont refusés ; l'invalidation et les zones ne viennent que
+  de l'EA de référence tant qu'il envoie ses bougies ; un état du plan déjà faussé est réparé tout
+  seul. L'EA 2.19 refuse de démarrer sur un autre graphique que XAUUSD.
 * Coach de Claude et note du système (version 2.35.1) : le coach évalue aussi Claude (champ
   `claude` de POST /claude/coach : note sur 10, là où il a mal fait, améliorations soumises ; GET
   /coach et B/claude-score `coach` les rendent aux plans, qui doivent y répondre). Un agent note chaque semaine le système sur

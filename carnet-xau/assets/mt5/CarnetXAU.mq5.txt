@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.18.0                                   |
+//| CarnetXAU.mq5 — version 2.19.0                                   |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1 à M1), toutes |
@@ -56,6 +56,7 @@
 //| H1 qui marque le prix (côté selon le type H / L), sinon au bord. |
 //| 2.17 : signal suivi sans gestion, objectif ou stop seulement.    |
 //| 2.18 : signaux de l'EA du VPS redessinés au retour du PC.        |
+//| 2.19 : refuse tout autre graphique que l'or (BTC, argent…).      |
 //|                                                                  |
 //| Règles du signal (calculées à partir du plan de Claude) :        |
 //| - le prix touche une zone de Claude non cassée ;                 |
@@ -84,7 +85,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.18"
+#property version   "2.19"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 #include <Canvas\Canvas.mqh>
@@ -227,6 +228,14 @@ int OnInit()
      {
       Alert("Carnet XAU : collez la clé MT5 du compte dans les paramètres de l'EA.");
       return(INIT_PARAMETERS_INCORRECT);
+     }
+   // Seulement sur l'or : posé sur un autre graphique (BTC, argent…), l'EA enverrait de faux prix au carnet.
+   string sym = _Symbol;
+   StringToUpper(sym);
+   if(StringFind(sym, "XAUUSD") < 0 && StringFind(sym, "GOLD") != 0)
+     {
+      Alert("Carnet XAU : cet EA ne fonctionne que sur le graphique de l'or (XAUUSD). Graphique " + _Symbol + " : EA arrêté.");
+      return(INIT_FAILED);
      }
    EventSetTimer((int)MathMax(15, InpSnapshotSec));
    g_touch = InpTouchBars; g_swing = InpSwingBars; g_fvg = InpFvgMin; g_slbuf = InpSLBuffer; g_limitMin = InpLimitMin; g_cooldown = InpCooldownMin;

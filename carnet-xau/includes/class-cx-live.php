@@ -53,6 +53,47 @@ class CX_Live {
 	 */
 	public static function init() {
 		add_action( 'rest_api_init', array( __CLASS__, 'routes' ) );
+		add_action( CX_Telegram::CRON, array( __CLASS__, 'repair_foreign' ), 5 );
+	}
+
+	/**
+	 * État du plan faussé par un EA posé sur un autre graphique (BTC…) : invalidation à un prix qui
+	 * n'est pas celui de l'or levée, avec les zones « cassées » au même instant ; zone marquée à un
+	 * prix qui n'est pas celui de l'or remise à son état d'avant.
+	 */
+	public static function repair_foreign() {
+		global $wpdb;
+		$week = self::week();
+		$p    = CX_Repo::plan( $week );
+		if ( ! $p || ! is_array( $p['content'] ) || empty( $p['content']['live'] ) ) {
+			return;
+		}
+		$c    = $p['content'];
+		$live = (array) $c['live'];
+		$bad  = array();
+		if ( ! empty( $live['invalidated'] ) && null !== ( $live['invalidated']['price'] ?? null ) && ! self::gold_ok( (float) $live['invalidated']['price'] ) ) {
+			$bad[] = $live['invalidated']['at'];
+			unset( $live['invalidated'] );
+		}
+		$fix = (bool) $bad;
+		foreach ( (array) ( $live['zones'] ?? array() ) as $k => $z ) {
+			if ( in_array( $z['at'] ?? '', $bad, true ) || ( isset( $z['price'] ) && ! self::gold_ok( (float) $z['price'] ) ) ) {
+				unset( $live['zones'][ $k ] );
+				$fix = true;
+			}
+		}
+		if ( ! $fix ) {
+			return;
+		}
+		$c['live'] = $live;
+		$wpdb->update(
+			CX_Install::table( 'plans' ),
+			array( 'contenu' => wp_json_encode( $c, JSON_UNESCAPED_UNICODE ) ),
+			array(
+				'account_id' => 0,
+				'semaine'    => $week,
+			)
+		);
 	}
 
 	/**
@@ -413,6 +454,28 @@ class CX_Live {
 		$tg   = CX_Telegram::cfg();
 		$send = ! empty( $tg['chat'] ) && ! empty( $tg['alerts']['signals'] );
 
+		// Prix d'un autre symbole (EA posé sur BTC…) : ni signal, ni invalidation, ni zone cassée.
+		$px = $num( 'signal' === $type ? 'entry' : 'price' );
+		if ( 'signal_update' !== $type && ! self::gold_ok( $px ) ) {
+			return self::not_gold( $px );
+		}
+		// Invalidation et zones : seul l'EA du compte de référence fait foi tant qu'il envoie ses bougies.
+		if ( in_array( $type, array( 'invalidation', 'zone' ), true ) ) {
+			$ref_id = self::ref_account_id();
+			if ( $ref_id && (int) $acc['id'] !== $ref_id ) {
+				$rd = self::candle_data( $ref_id );
+				if ( ! empty( $rd['received'] ) && strtotime( CX_Repo::clock() ) - strtotime( $rd['received'] ) < 30 * MINUTE_IN_SECONDS ) {
+					return new WP_REST_Response(
+						array(
+							'ok'      => true,
+							'ignored' => 'état du plan suivi par le compte de référence',
+						),
+						200
+					);
+				}
+			}
+		}
+
 		if ( 'signal' === $type ) {
 			// Signaux : un seul EA fait foi, celui du compte de référence (VPS allumé en continu). Un autre
 			// EA (PC personnel) est ignoré tant que la référence envoie ses bougies : pas de doublon.
@@ -543,6 +606,7 @@ class CX_Live {
 				$live['zones'][ $key ] = array(
 					'state' => $state,
 					'at'    => $at->format( 'Y-m-d H:i:s' ),
+					'price' => $px,
 				);
 				if ( 'cassee' === $state ) {
 					// « ld-4100.00-4110.00-b » → « 4100.00-4110.00 (achat, plan de Londres) ».
@@ -895,6 +959,21 @@ class CX_Live {
 			usort( $rows, fn( $a, $b ) => $a[0] <=> $b[0] );
 			$out[ $tf ] = array_slice( $rows, -self::CANDLE_MAX[ $tf ] );
 		}
+		// Graphique d'un autre symbole (BTC, argent…) : rien n'est gardé. Référence : les bougies déjà
+		// reçues de ce compte, sinon le cours du compte de référence.
+		$own  = self::candle_data( (int) $acc['id'] );
+		$mine = null;
+		foreach ( array( 'M1', 'M5', 'M15', 'H1' ) as $k ) {
+			if ( null === $mine && ! empty( $own['tf'][ $k ] ) ) {
+				$mine = (float) end( $own['tf'][ $k ] )[4];
+			}
+		}
+		foreach ( $out as $rows ) {
+			$close = (float) end( $rows )[4];
+			if ( ! self::gold_ok( $close, $mine ?? self::gold_ref() ) ) {
+				return self::not_gold( $close );
+			}
+		}
 		// « at » = heure des données : clôture de la dernière bougie M1 si elle est plus ancienne que la
 		// réception (terminal déconnecté du courtier : l'EA renvoie de vieilles bougies). « received » = réception.
 		$now = CX_Repo::clock();
@@ -955,6 +1034,44 @@ class CX_Live {
 		$id = $id ? (int) $id : self::ref_account_id();
 		$d  = $id ? get_option( self::OPT . $id, array() ) : array();
 		return is_array( $d ) ? $d : array();
+	}
+
+	/**
+	 * Cours de l'or qui fait foi : dernière clôture des bougies du compte de référence, sinon prix du plan.
+	 *
+	 * @return float|null
+	 */
+	public static function gold_ref() {
+		$d = self::candle_data();
+		foreach ( array( 'M1', 'M5', 'M15', 'H1' ) as $tf ) {
+			if ( ! empty( $d['tf'][ $tf ] ) ) {
+				return (float) end( $d['tf'][ $tf ] )[4];
+			}
+		}
+		$p = CX_Repo::plan( self::week() );
+		$v = $p['content']['refs']['price'] ?? null;
+		return is_numeric( $v ) && $v > 0 ? (float) $v : null;
+	}
+
+	/**
+	 * Prix plausible pour l'or : à moins de 15 % du cours de référence (500 à 20 000 $ s'il n'y en a pas).
+	 * Un EA posé par erreur sur un autre graphique (BTC, argent…) envoie des prix sans rapport : refusés.
+	 *
+	 * @param float|null $price Prix reçu.
+	 * @param float|null $ref   Cours de référence (null : gold_ref()).
+	 * @return bool
+	 */
+	public static function gold_ok( $price, $ref = null ) {
+		if ( null === $price || $price <= 0 ) {
+			return false;
+		}
+		$ref = $ref ?? self::gold_ref();
+		return $ref ? abs( $price / $ref - 1 ) <= 0.15 : ( $price >= 500 && $price <= 20000 );
+	}
+
+	/** @return WP_Error Refus d'un prix qui n'est pas celui de l'or. */
+	private static function not_gold( $price ) {
+		return new WP_Error( 'cx_symbol', 'Prix ' . $price . ' : ce n’est pas l’or (XAUUSD). L’EA Carnet XAU ne fonctionne que sur le graphique de l’or.', array( 'status' => 422 ) );
 	}
 
 	/**
