@@ -9,6 +9,10 @@
  *
  * L'EA les reçoit avec le plan (ligne « S| ») et les applique sans réinstallation.
  *
+ * Arrêté depuis la version 2.37.0 (LOCKED) : le backtest de l'or sur 4 ans a montré qu'aucune autre
+ * valeur ne fait mieux que les réglages actuels et que le réglage du soir suivait du bruit. Les
+ * réglages restent fixes ; PUT /claude/ea-params est refusé.
+ *
  * @package CarnetXAU
  */
 
@@ -17,6 +21,9 @@ defined( 'ABSPATH' ) || exit;
 class CX_Tuning {
 
 	const OPT = 'cx_ea_params';
+
+	/** Réglage automatique du soir arrêté (backtest de l'or, 28/10/2026). */
+	const LOCKED = true;
 
 	/** Réglage => [ défaut, minimum, maximum, libellé ]. */
 	const PARAMS = array(
@@ -109,6 +116,9 @@ class CX_Tuning {
 		}
 		if ( ! CX_Guard::matches( (string) $req->get_header( 'x_cx_key' ), (string) ( CX_Guard::settings()['plan'] ?? '' ) ) ) {
 			return CX_Guard::refuse( 'plan', 'jeton du plan invalide' );
+		}
+		if ( self::LOCKED ) {
+			return new WP_Error( 'cx_locked', 'Réglage automatique arrêté le 28/10/2026 : le backtest de l’or (4 ans) montre qu’aucune autre valeur ne fait mieux et que le réglage du soir suivait du bruit. Les réglages de l’EA restent fixes.', array( 'status' => 423 ) );
 		}
 		$in     = (array) $req->get_json_params();
 		$key    = (string) ( $in['key'] ?? '' );

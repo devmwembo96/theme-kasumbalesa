@@ -366,6 +366,20 @@ class CX_Score {
 					$changed                           = true;
 				}
 			}
+			// Objectif à 3R suivi en parallèle (backtest de l'or) : fiches déjà rejouées sans ce champ.
+			if ( isset( $s['cards'] ) && ! empty( $s['positions'] ) ) {
+				$pos = array_values( $s['positions'] );
+				foreach ( $s['cards'] as $k => $x ) {
+					if ( array_key_exists( 'r3', $x ) || ! isset( $pos[ $k ] ) ) {
+						continue;
+					}
+					$r3 = self::replay_3r( $pos[ $k ], $from, $to );
+					if ( false !== $r3 ) {
+						$c['sessions'][ $i ]['cards'][ $k ] += $r3;
+						$changed = true;
+					}
+				}
+			}
 			if ( isset( $s['cards'] ) || empty( $s['positions'] ) ) {
 				continue;
 			}
@@ -375,11 +389,12 @@ class CX_Score {
 				if ( null === $res ) {
 					continue 2;
 				}
+				$r3      = self::replay_3r( $p, $from, $to );
 				$cards[] = array(
 					'n'     => $n + 1,
 					'side'  => $p['side'] ?? '',
 					'setup' => $p['setup'] ?? '',
-				) + $res;
+				) + $res + ( false === $r3 ? array() : $r3 );
 			}
 			$c['sessions'][ $i ]['cards'] = $cards;
 			$changed                      = true;
@@ -793,6 +808,58 @@ class CX_Score {
 		return $out;
 	}
 
+	/** @return array {n, sum_r, sum_r3, win, win3} sur les signaux soldés rejoués à 3R. */
+	private static function shadow_stats() {
+		global $wpdb;
+		$sh = CX_Live::shadow_values();
+		$sh = array_filter( $sh, fn( $v ) => null !== $v );
+		if ( ! $sh ) {
+			return array( 'n' => 0 );
+		}
+		$t    = CX_Install::table( 'csignals' );
+		$ids  = implode( ',', array_map( 'intval', array_keys( $sh ) ) );
+		$rows = $wpdb->get_results( "SELECT id, resultat_r FROM $t WHERE id IN ($ids) AND resultat_r IS NOT NULL" ); // phpcs:ignore WordPress.DB.PreparedSQL
+		$r    = array_map( fn( $x ) => (float) $x->resultat_r, $rows );
+		$r3   = array_map( fn( $x ) => (float) $sh[ (string) $x->id ], $rows );
+		$n    = count( $rows );
+		return array(
+			'n'      => $n,
+			'sum_r'  => round( array_sum( $r ), 2 ),
+			'sum_r3' => round( array_sum( $r3 ), 2 ),
+			'win'    => $n ? (int) round( 100 * count( array_filter( $r, fn( $v ) => $v > 0 ) ) / $n ) : 0,
+			'win3'   => $n ? (int) round( 100 * count( array_filter( $r3, fn( $v ) => $v > 0 ) ) / $n ) : 0,
+		);
+	}
+
+	/**
+	 * Même fiche rejouée avec un objectif fixe à 3R (même entrée, même stop, même annulation) : suivi
+	 * en parallèle décidé après le backtest de l'or, pour comparer à l'objectif de la fiche.
+	 *
+	 * @param array $p    Position de la fiche.
+	 * @param int   $from Publication (Unix).
+	 * @param int   $to   Fin de séance (Unix).
+	 * @return array|false {r3, status3} ; r3 = null si la fiche n'a pas été déclenchée ; false tant que
+	 *                     les bougies ne permettent pas de conclure.
+	 */
+	private static function replay_3r( $p, $from, $to ) {
+		$e  = (float) ( $p['entry'] ?? 0 );
+		$sl = (float) ( $p['sl'] ?? 0 );
+		if ( $e <= 0 || $sl <= 0 || $e === $sl ) {
+			return array(
+				'r3'      => null,
+				'status3' => 'incomplete',
+			);
+		}
+		$res = self::replay_order( array( 'tp' => $e + 3 * ( $e - $sl ) ) + $p, self::close_rule( $p['cancel'] ?? '' ), $from, $to );
+		if ( null === $res ) {
+			return false;
+		}
+		return array(
+			'r3'      => $res['r'] ?? null,
+			'status3' => $res['status'],
+		);
+	}
+
 	/**
 	 * Bilan des fiches : publiées, déclenchées, objectif, stop, R moyen, temps moyen.
 	 *
@@ -803,6 +870,7 @@ class CX_Score {
 		$done = array_values( array_filter( $cards, fn( $x ) => isset( $x['r'] ) ) );
 		$tp   = array_values( array_filter( $done, fn( $x ) => 'tp' === $x['status'] ) );
 		$n    = count( $done );
+		$both = array_filter( $done, fn( $x ) => isset( $x['r3'] ) );
 		return array(
 			'published'  => count( array_filter( $cards, fn( $x ) => ! in_array( $x['status'], array( 'incomplete', 'no_data' ), true ) ) ),
 			'triggered'  => $n,
@@ -814,6 +882,10 @@ class CX_Score {
 			'sum_r'      => round( array_sum( array_column( $done, 'r' ) ), 2 ),
 			'avg_r'      => $n ? round( array_sum( array_column( $done, 'r' ) ) / $n, 2 ) : 0,
 			'tp_minutes' => $tp ? (int) round( array_sum( array_column( $tp, 'to_out' ) ) / count( $tp ) ) : null,
+			// Objectif à 3R en parallèle, sur les fiches déclenchées qui ont les deux rejeux.
+			'with_3r'    => count( $both ),
+			'sum_r_ref'  => round( array_sum( array_column( $both, 'r' ) ), 2 ),
+			'sum_r3'     => round( array_sum( array_column( $both, 'r3' ) ), 2 ),
 		);
 	}
 
@@ -878,6 +950,8 @@ class CX_Score {
 				'lessons'   => self::lessons( array_merge( array(), ...array_values( $cards ) ), $zones ),
 				// Évaluations de Claude par le coach : chaque amélioration soumise est appliquée ou refusée avec un fait dans `ideas`.
 				'coach'     => array_slice( (array) CX_Coach::list_notes()->get_data()['claude'], -5 ),
+				// Signaux de l'EA : objectif actuel contre objectif fixe à 3R, sur les mêmes signaux (suivi en parallèle).
+				'shadow_3r' => self::shadow_stats(),
 				'neutral' => self::NEUTRAL,
 			),
 			200

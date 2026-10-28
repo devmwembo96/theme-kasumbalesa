@@ -54,6 +54,54 @@ class CX_Live {
 	public static function init() {
 		add_action( 'rest_api_init', array( __CLASS__, 'routes' ) );
 		add_action( CX_Telegram::CRON, array( __CLASS__, 'repair_foreign' ), 5 );
+		add_action( CX_Telegram::CRON, array( __CLASS__, 'shadow_3r' ), 30 );
+	}
+
+	const SHADOW = 'cx_shadow3r';
+
+	/** @return array id du signal => R avec un objectif fixe à 3R (null : pas de bougies pour conclure). */
+	public static function shadow_values() {
+		$d = get_option( self::SHADOW, array() );
+		return is_array( $d ) ? $d : array();
+	}
+
+	/**
+	 * Objectif à 3R suivi en parallèle (backtest de l'or, 28/10/2026) : chaque signal soldé est rejoué
+	 * sur les bougies avec la même entrée et le même stop, objectif 3R, sans gestion. Rien ne change
+	 * pour l'utilisateur ; la comparaison s'affiche dans B/claude-score (`shadow_3r`).
+	 */
+	public static function shadow_3r() {
+		global $wpdb;
+		$t    = CX_Install::table( 'csignals' );
+		$done = self::shadow_values();
+		$rows = $wpdb->get_results( "SELECT * FROM $t WHERE statut IN ('gagne','perdu','be') AND resultat_r IS NOT NULL ORDER BY id DESC LIMIT 200" ); // phpcs:ignore WordPress.DB.PreparedSQL
+		$tz   = CX_Repo::tz();
+		$lim  = (int) CX_Tuning::values()['limitmin'];
+		$new  = 0;
+		foreach ( $rows as $r ) {
+			if ( array_key_exists( (string) $r->id, $done ) || $new >= 20 ) {
+				continue;
+			}
+			$e  = (float) $r->entree;
+			$sl = (float) $r->stop_prix;
+			if ( $e <= 0 || $sl <= 0 || $e === $sl ) {
+				$done[ (string) $r->id ] = null;
+				continue;
+			}
+			$c           = clone $r;
+			$c->objectif = $e + 3 * ( $e - $sl );
+			$c->stop_usd = abs( $e - $sl );
+			$c->statut   = $r->ouvert_le ? 'ouvert' : 'attente';
+			$out         = self::replay_signal( $c, $lim, $tz );
+			if ( ! $out && strtotime( $r->signale_le ) > strtotime( CX_Repo::clock() ) - 8 * DAY_IN_SECONDS ) {
+				continue;   // Bougies pas encore là : on réessaie au prochain passage.
+			}
+			$done[ (string) $r->id ] = $out && isset( $out['resultat_r'] ) ? (float) $out['resultat_r'] : null;
+			++$new;
+		}
+		if ( $new ) {
+			update_option( self::SHADOW, array_slice( $done, -2000, null, true ), false );
+		}
 	}
 
 	/**
@@ -563,7 +611,7 @@ class CX_Live {
 			if ( $send ) {
 				CX_Telegram::send(
 					sprintf(
-						"%s <b>%s</b>\n%s\n\nZone : %s\n\n• Entrée : %s\n• Stop : %s\n• Objectif : %s (%sR)\n• Lot : %s (stop %s $)" . ( 'limit' === $kind ? "\n\nOrdre limite : valable 30 min, en attente d’un repli." : '' ) . ( null === $retest ? '' : "\n\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ) . ( '' === $note ? '' : "\n\n⛔ " . esc_html( $note ) ),
+						"%s <b>%s</b>\n%s\n\nZone : %s\n\n• Entrée : %s\n• Stop : %s\n• Objectif : %s (%sR)\n• Lot : %s (stop %s $)" . ( 'limit' === $kind ? "\n\nOrdre limite : valable 30 min, en attente d’un repli." : '' ) . ( null === $retest ? '' : "\n\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ) . ( '' === $note ? '' : "\n\n⛔ " . esc_html( $note ) ) . "\n\nℹ️ Information à valider par toi : le backtest de l’or (4 ans) n’a pas prouvé d’avantage à ces signaux.",
 						'sell' === $side ? '🔴' : '🟢',
 						esc_html( $label ),
 						esc_html( $active ? $active['name'] : $acc['name'] ),
@@ -892,6 +940,7 @@ class CX_Live {
 		$t      = CX_Install::table( 'csignals' );
 		$rows   = $wpdb->get_results( "SELECT * FROM $t ORDER BY signale_le DESC, id DESC LIMIT 500" ); // phpcs:ignore WordPress.DB.PreparedSQL
 		$trades = CX_Repo::trades();
+		$shadow = self::shadow_values();
 		$out    = array();
 		foreach ( $rows as $r ) {
 			$ts    = strtotime( $r->signale_le );
@@ -926,6 +975,8 @@ class CX_Live {
 				'account'  => (int) $r->account_id,
 				// Unité rejouée par le carnet quand l'EA n'a pas soldé le signal, vide sinon.
 				'settled'  => (string) ( $r->cloture_carnet ?? '' ),
+				// Même signal avec un objectif fixe à 3R (suivi en parallèle), null tant qu'il n'est pas rejoué.
+				'r3'       => $shadow[ (string) $r->id ] ?? null,
 			);
 		}
 		return new WP_REST_Response( $out, 200 );
