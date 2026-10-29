@@ -298,7 +298,7 @@ defined( 'ABSPATH' ) || exit;
 				<li>Dans MT5 : Outils › Options › Expert Advisors, cochez « Autoriser WebRequest » et ajoutez l’adresse <code id="mt5-host"></code>.</li>
 				<li>Glissez l’EA sur un graphique XAUUSD, collez l’adresse <code id="mt5-url"></code> et la clé du compte.</li>
 			</ol>
-			<p class="hint">Prise de position : <a id="calc-link" download="CalculateurXAU.mq5">CalculateurXAU.mq5</a> (version 4.02). Outil position et ticket d’ordre comme sur TradingView, même police : Sell ou Buy, stop et objectif réglés à la souris, Marché, Limite ou Stop. Risque, limites du jour, étape et objectif du compte viennent du carnet par l’EA Carnet XAU (version 2.19), sur le même compte. À glisser sur un second graphique XAUUSD.</p>
+			<p class="hint">Prise de position : <a id="calc-link" download="CalculateurXAU.mq5">CalculateurXAU.mq5</a> (version 4.04). Outil position et ticket d’ordre comme sur TradingView, même police : Sell ou Buy, stop et objectif réglés à la souris, Marché, Limite ou Stop. Sans restrictions : les règles du carnet s’affichent en avertissement, aucune ne bloque l’ouverture. Sons des ordres (copier order_filled.wav dans le dossier Sounds de MT5). Risque, limites du jour, étape et objectif du compte viennent du carnet par l’EA Carnet XAU (version 2.19), sur le même compte. À glisser sur un second graphique XAUUSD.</p>
 			<div class="secret" id="mt5-key-box" hidden></div>
 			<label class="f" style="margin-top:10px">Bougies utilisées par Claude pour l’analyse<select id="candles-ref"></select></label>
 			<p class="hint" id="candles-hint"></p>
