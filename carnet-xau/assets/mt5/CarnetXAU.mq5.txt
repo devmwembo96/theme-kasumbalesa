@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.19.0                                   |
+//| CarnetXAU.mq5 — version 2.20.0                                   |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1 à M1), toutes |
@@ -57,6 +57,8 @@
 //| 2.17 : signal suivi sans gestion, objectif ou stop seulement.    |
 //| 2.18 : signaux de l'EA du VPS redessinés au retour du PC.        |
 //| 2.19 : refuse tout autre graphique que l'or (BTC, argent…).      |
+//| 2.20 : stratégie autonome « Sweep M15 → CHoCH M5 → FVG M5 »      |
+//|        (InpStrategy), sans les zones du carnet.                  |
 //|                                                                  |
 //| Règles du signal (calculées à partir du plan de Claude) :        |
 //| - le prix touche une zone de Claude non cassée ;                 |
@@ -85,10 +87,17 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.19"
+#property version   "2.20"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 #include <Canvas\Canvas.mqh>
+
+//--- Stratégie des signaux : zones du plan de Claude (carnet), ou stratégie autonome sur les bougies.
+enum ENUM_CX_STRAT
+  {
+   STRAT_CARNET = 0, // Zones du plan de Claude (carnet)
+   STRAT_SWEEP  = 1  // Sweep M15 → CHoCH M5 → FVG M5 (autonome)
+  };
 
 input string InpUrl         = "https://revnefty.store/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
 input string InpKey         = "";    // Clé MT5 du compte (onglet Comptes)
@@ -109,6 +118,17 @@ input int    InpLimitMin    = 30;    // Validité d'un signal limite, en minutes
 input bool   InpAlertPopup  = true;  // Alerte : fenêtre et son MT5
 input bool   InpAlertPush   = true;  // Alerte : notification mobile MT5
 input bool   InpAlertCarnet = true;  // Alerte : carnet et Telegram
+input ENUM_CX_STRAT InpStrategy = STRAT_CARNET; // Stratégie des signaux
+input double InpSfRiskPct   = 0.5;   // Autonome : risque par trade (% du solde) pour le lot affiché
+input int    InpSfLookback  = 20;    // Autonome : bougies M15 du plus haut / plus bas balayé
+input double InpSfBuffer    = 0.50;  // Autonome : marge du stop au-delà de la mèche du sweep ($, + spread)
+input double InpSfRR        = 3.0;   // Autonome : objectif en R (distance du stop × R)
+input int    InpSfChochBars = 24;    // Autonome : bougies M5 après le sweep pour le CHoCH (sinon abandon)
+input double InpSfFvgMin    = 0.30;  // Autonome : taille minimale du FVG M5 ($)
+input int    InpSfLimitMin  = 60;    // Autonome : validité de l'ordre limite (minutes)
+input double InpSfStopMin   = 1.0;   // Autonome : stop minimum ($ de prix)
+input double InpSfStopMax   = 15.0;  // Autonome : stop maximum ($ de prix)
+input bool   InpSfNews      = true;  // Autonome : pas de signal à ±15 min d'une annonce forte USD/EUR (calendrier MT5)
 
 //--- Plan reçu du carnet
 struct CxZone
@@ -333,7 +353,9 @@ void OnTick()
    Monitor();                   // invalidation et zones sur clôture M15 (et rattrapage après un arrêt)
    ProcessTracks();             // signaux en cours, bougie par bougie depuis la dernière traitée
    DrawPanel();                 // zones les plus proches du prix
-   if(InpSignals && g_planOk && !PendingLimit())
+   if(InpSignals && InpStrategy == STRAT_SWEEP)
+      CheckSweepFvg();            // stratégie autonome : rien ne vient du carnet
+   else if(InpSignals && g_planOk && !PendingLimit())
       CheckSignals();
   }
 
@@ -2405,6 +2427,316 @@ void CheckSignals()
       g_lastSignal = TimeCurrent();
       return;
      }
+  }
+
+//+------------------------------------------------------------------+
+//| Stratégie autonome : Sweep M15 → CHoCH M5 → FVG M5 → limite M1    |
+//| Rien ne vient du carnet (ni zones, ni biais, ni réglages) : l'EA   |
+//| lit les bougies en temps réel, envoie l'alerte et trace la         |
+//| position comme pour les autres signaux. Il ne passe aucun ordre.   |
+//| Fenêtres : 08:00–10:30 Londres (09:00–11:30 Paris) et 09:30–12:00  |
+//| New York (15:30–18:00 Paris), changements d'heure compris.         |
+//+------------------------------------------------------------------+
+struct CxSweep
+  {
+   bool     active;
+   double   level;     // niveau balayé (plus haut ou bas des N bougies, PDH/PDL, égaux)
+   double   ext;       // extrême de la mèche du sweep
+   datetime t0;        // ouverture de la bougie M15 du sweep (heure serveur)
+   datetime last;      // dernière bougie M5 examinée
+   string   src;
+  };
+CxSweep  g_sf[2];          // 0 : haut balayé (vente), 1 : bas balayé (achat)
+datetime g_sfM15 = 0;
+
+//--- Dernier dimanche du mois (00:00 UTC).
+datetime LastSunday(int year, int mon)
+  {
+   MqlDateTime d;
+   d.year = (mon == 12) ? year + 1 : year; d.mon = (mon == 12) ? 1 : mon + 1; d.day = 1;
+   d.hour = 0; d.min = 0; d.sec = 0;
+   datetime t = StructToTime(d) - 86400;
+   TimeToStruct(t, d);
+   return t - d.day_of_week * 86400;
+  }
+
+//--- N-ième dimanche du mois (00:00 UTC).
+datetime NthSunday(int year, int mon, int n)
+  {
+   MqlDateTime d;
+   d.year = year; d.mon = mon; d.day = 1; d.hour = 0; d.min = 0; d.sec = 0;
+   datetime t = StructToTime(d);
+   TimeToStruct(t, d);
+   return t + ((7 - d.day_of_week) % 7) * 86400 + (n - 1) * 7 * 86400;
+  }
+
+bool EuDst(datetime utc)
+  {
+   MqlDateTime d;
+   TimeToStruct(utc, d);
+   return utc >= LastSunday(d.year, 3) + 3600 && utc < LastSunday(d.year, 10) + 3600;
+  }
+
+bool UsDst(datetime utc)
+  {
+   MqlDateTime d;
+   TimeToStruct(utc, d);
+   return utc >= NthSunday(d.year, 3, 2) + 7 * 3600 && utc < NthSunday(d.year, 11, 1) + 6 * 3600;
+  }
+
+int MinuteOfDay(datetime t)
+  {
+   MqlDateTime d;
+   TimeToStruct(t, d);
+   return d.hour * 60 + d.min;
+  }
+
+//--- Instant (UTC) dans une des deux fenêtres de la stratégie.
+bool InSfSession(datetime utc)
+  {
+   int ldn = MinuteOfDay(utc + (EuDst(utc) ? 3600 : 0));
+   int ny  = MinuteOfDay(utc - 5 * 3600 + (UsDst(utc) ? 3600 : 0));
+   return (ldn >= 8 * 60 && ldn < 10 * 60 + 30) || (ny >= 9 * 60 + 30 && ny < 12 * 60);
+  }
+
+//--- Annonce forte USD ou EUR à ±15 min (calendrier économique de MT5, heure serveur).
+bool SfNewsNear(string &why)
+  {
+   if(!InpSfNews)
+      return false;
+   datetime now = TimeTradeServer();
+   string cur[2] = {"USD", "EUR"};
+   for(int c = 0; c < 2; c++)
+     {
+      MqlCalendarValue v[];
+      if(CalendarValueHistory(v, now - 15 * 60, now + 15 * 60, NULL, cur[c]) <= 0)
+         continue;
+      for(int i = 0; i < ArraySize(v); i++)
+        {
+         MqlCalendarEvent e;
+         if(CalendarEventById(v[i].event_id, e) && e.importance == CALENDAR_IMPORTANCE_HIGH)
+           {
+            why = cur[c] + " " + e.name;
+            return true;
+           }
+        }
+     }
+   return false;
+  }
+
+//--- ATR simple (14) des bougies r[from..from+13] (séries : r[0] la plus récente).
+double SfAtr(MqlRates &r[], int from)
+  {
+   double s = 0;
+   int    n = 0;
+   for(int i = from; i < from + 14 && i + 1 < ArraySize(r); i++)
+     {
+      s += MathMax(r[i].high, r[i + 1].close) - MathMin(r[i].low, r[i + 1].close);
+      n++;
+     }
+   return n ? s / n : 0;
+  }
+
+//--- Sweep sur la bougie M15 qui vient de clôturer (r[1]) : mèche au-delà d'un niveau, clôture en deçà.
+void SfDetectSweep()
+  {
+   MqlRates r[];
+   ArraySetAsSeries(r, true);
+   int need = InpSfLookback + 20;
+   if(CopyRates(_Symbol, PERIOD_M15, 0, need, r) < need)
+      return;
+   double atr = SfAtr(r, 2);
+   if(atr <= 0)
+      return;
+   datetime close_utc = r[1].time + 900 - (datetime)ServerOffset();
+   if(!InSfSession(close_utc))
+      return;
+   double pdh = iHigh(_Symbol, PERIOD_D1, 1), pdl = iLow(_Symbol, PERIOD_D1, 1);
+   datetime day0 = iTime(_Symbol, PERIOD_D1, 0);
+   for(int side = 0; side < 2; side++)
+     {
+      bool   hi   = (side == 0);
+      double best = 0;
+      string src  = "";
+      // Plus haut (bas) des N bougies précédentes.
+      double ext = hi ? r[2].high : r[2].low;
+      for(int j = 2; j <= InpSfLookback + 1; j++)
+         ext = hi ? MathMax(ext, r[j].high) : MathMin(ext, r[j].low);
+      double lv[3];
+      string nm[3];
+      lv[0] = ext; nm[0] = (hi ? "plus haut " : "plus bas ") + IntegerToString(InpSfLookback) + " M15";
+      // Veille : PDH / PDL pas encore pris aujourd'hui avant la bougie du sweep.
+      lv[1] = hi ? pdh : pdl; nm[1] = hi ? "PDH" : "PDL";
+      for(int j = 2; j < need && r[j].time >= day0; j++)
+         if(hi ? r[j].high > lv[1] : r[j].low < lv[1])
+            lv[1] = 0;
+      // Égaux : deux pivots (2 bougies de chaque côté) à 0,1 ATR près, 5 bougies d'écart au moins.
+      lv[2] = 0; nm[2] = hi ? "EQH" : "EQL";
+      for(int a = 4; a <= InpSfLookback && lv[2] == 0; a++)
+        {
+         double pa = hi ? r[a].high : r[a].low;
+         bool piva = hi ? (pa > MathMax(r[a + 1].high, r[a + 2].high) && pa >= MathMax(r[a - 1].high, r[a - 2].high))
+                        : (pa < MathMin(r[a + 1].low, r[a + 2].low) && pa <= MathMin(r[a - 1].low, r[a - 2].low));
+         if(!piva)
+            continue;
+         for(int b = a + 5; b <= InpSfLookback + 1 && b + 2 < need; b++)
+           {
+            double pb = hi ? r[b].high : r[b].low;
+            bool pivb = hi ? (pb > MathMax(r[b + 1].high, r[b + 2].high) && pb >= MathMax(r[b - 1].high, r[b - 2].high))
+                           : (pb < MathMin(r[b + 1].low, r[b + 2].low) && pb <= MathMin(r[b - 1].low, r[b - 2].low));
+            if(pivb && MathAbs(pa - pb) <= 0.1 * atr)
+              {
+               double L = hi ? MathMax(pa, pb) : MathMin(pa, pb);
+               bool taken = false;
+               for(int j = 2; j < a; j++)
+                  if(hi ? r[j].high > L : r[j].low < L)
+                     taken = true;
+               if(!taken)
+                  lv[2] = L;
+               break;
+              }
+           }
+        }
+      for(int k = 0; k < 3; k++)
+        {
+         double L = lv[k];
+         if(L <= 0)
+            continue;
+         double pen = hi ? r[1].high - L : L - r[1].low;
+         bool   back = hi ? r[1].close < L : r[1].close > L;
+         if(back && pen >= 0.05 * atr && pen < atr && (best == 0 || (hi ? L > best : L < best)))
+           {
+            best = L;
+            src  = nm[k];
+           }
+        }
+      if(best > 0)
+        {
+         g_sf[side].active = true;
+         g_sf[side].level  = best;
+         g_sf[side].ext    = hi ? r[1].high : r[1].low;
+         g_sf[side].t0     = r[1].time;
+         g_sf[side].last   = r[1].time;
+         g_sf[side].src    = src;
+         g_status = "Sweep " + src + " " + Fr(best, 2) + " à " + TimeToString(r[1].time + 900, TIME_MINUTES) + " : CHoCH M5 attendu.";
+        }
+     }
+  }
+
+//--- CHoCH M5 puis FVG M5 dans l'impulsion : signal limite au premier tiers du FVG.
+void SfCheckChoch(int side)
+  {
+   bool sell = (side == 0);
+   MqlRates r[];
+   ArraySetAsSeries(r, false);
+   datetime from = g_sf[side].t0 - 4 * 3600;
+   int n = CopyRates(_Symbol, PERIOD_M5, from, TimeCurrent(), r);
+   if(n < 10)
+      return;
+   n--;                                    // la dernière bougie M5 n'est pas close
+   int x = -1;                             // bougie M5 de l'extrême du sweep
+   for(int i = 0; i < n; i++)
+      if(r[i].time >= g_sf[side].t0 && r[i].time < g_sf[side].t0 + 900
+         && (x < 0 || (sell ? r[i].high > r[x].high : r[i].low < r[x].low)))
+         x = i;
+   if(x < 0)
+      return;
+   // Dernier creux (sommet) pivot M5 avant l'extrême, confirmé 2 bougies plus tard.
+   double ref = 0;
+   for(int j = x - 1; j >= 2 && ref == 0; j--)
+      if(j + 2 < n)
+        {
+         bool piv = sell ? (r[j].low < MathMin(r[j - 1].low, r[j - 2].low) && r[j].low <= MathMin(r[j + 1].low, r[j + 2].low))
+                         : (r[j].high > MathMax(r[j - 1].high, r[j - 2].high) && r[j].high >= MathMax(r[j + 1].high, r[j + 2].high));
+         if(piv)
+            ref = sell ? r[j].low : r[j].high;
+        }
+   if(ref == 0)
+      return;
+   for(int c = x + 1; c < n; c++)
+     {
+      if(r[c].time <= g_sf[side].last)
+         continue;
+      g_sf[side].last = r[c].time;
+      // Mèche au-delà de l'extrême du sweep avant le CHoCH : scénario abandonné.
+      if(sell ? r[c].high > g_sf[side].ext : r[c].low < g_sf[side].ext)
+        {
+         g_sf[side].active = false;
+         return;
+        }
+      if(c - x > InpSfChochBars)
+        {
+         g_sf[side].active = false;
+         return;
+        }
+      bool choch = sell ? r[c].close < ref : r[c].close > ref;
+      if(!choch)
+         continue;
+      g_sf[side].active = false;
+      // FVG M5 de l'impulsion (de l'extrême au CHoCH) : le plus récent.
+      double ftop = 0, fbot = 0;
+      for(int i = c; i >= x + 2 && ftop == 0; i--)
+        {
+         if(sell && r[i - 2].low > r[i].high && r[i - 2].low - r[i].high >= InpSfFvgMin)
+           { ftop = r[i - 2].low; fbot = r[i].high; }
+         if(!sell && r[i].low > r[i - 2].high && r[i].low - r[i - 2].high >= InpSfFvgMin)
+           { ftop = r[i].low; fbot = r[i - 2].high; }
+        }
+      if(ftop == 0)
+         return;
+      string why = "";
+      datetime utc = TimeGMT();
+      if(!InSfSession(utc) || SfNewsNear(why))
+        {
+         g_status = "Setup sweep/FVG ignoré : " + (why != "" ? "annonce " + why : "hors des fenêtres") + ".";
+         return;
+        }
+      double spread = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      // Premier tiers du FVG, côté où le prix revient.
+      double entry = sell ? fbot + (ftop - fbot) / 3.0 : ftop - (ftop - fbot) / 3.0;
+      double sl    = sell ? g_sf[side].ext + InpSfBuffer + spread : g_sf[side].ext - InpSfBuffer - spread;
+      double stop  = MathAbs(entry - sl);
+      double bid   = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      if(stop < InpSfStopMin || stop > InpSfStopMax || (sell ? bid >= entry : bid <= entry))
+        {
+         g_status = "Setup sweep/FVG ignoré : stop " + Fr(stop, 2) + " $ ou prix déjà dans le FVG.";
+         return;
+        }
+      double tp       = sell ? entry - InpSfRR * stop : entry + InpSfRR * stop;
+      double contract = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE);
+      double step     = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+      double risk     = AccountInfoDouble(ACCOUNT_BALANCE) * InpSfRiskPct / 100.0;
+      double lot      = (contract > 0 && step > 0) ? MathFloor(risk / (stop * contract) / step) * step : 0;
+      lot = MathMax(lot, SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN));
+      CxZone z;
+      z.type = "Sweep " + g_sf[side].src + " + FVG";
+      z.tf   = "M5";
+      z.lo   = fbot;
+      z.hi   = ftop;
+      z.buy  = !sell;
+      ShowSignal(!sell, "LIMIT", "4", z, entry, sl, tp, InpSfRR, lot, stop, r[c].time, 0);
+      int k = ArraySize(g_tracks) - 1;
+      if(k >= 0)
+        {
+         g_tracks[k].expires = TimeCurrent() + InpSfLimitMin * 60;
+         SaveTracks();
+        }
+      g_lastSignal = TimeCurrent();
+      return;
+     }
+  }
+
+void CheckSweepFvg()
+  {
+   datetime m15 = iTime(_Symbol, PERIOD_M15, 0);
+   if(m15 != g_sfM15)
+     {
+      g_sfM15 = m15;
+      SfDetectSweep();
+     }
+   for(int side = 0; side < 2; side++)
+      if(g_sf[side].active && !PendingLimit())
+         SfCheckChoch(side);
   }
 
 void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, double sl, double tp, double rr, double lot, double stop, datetime t, double retest)

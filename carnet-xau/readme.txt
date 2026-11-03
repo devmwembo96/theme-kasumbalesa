@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.39.0
+Stable tag: 2.40.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -150,6 +150,14 @@ Calculateur XAU version 4 : outil position et ticket d’ordre façon TradingVie
   Lubumbashi (il le lisait en UTC : 2 h d’écart), et l’image envoyée sur Telegram fait partir zones
   et niveaux de leur bougie d’origine. Les plans de séance acceptent `origin` pour leurs zones et
   niveaux.
+* Stratégie autonome de l'EA (version 2.40.0, EA Carnet 2.20) : paramètre InpStrategy = « Sweep M15 →
+  CHoCH M5 → FVG M5 ». L'EA n'utilise plus rien du carnet pour ses signaux : sweep M15 (plus haut / bas
+  des N bougies, PDH/PDL ou égaux, mèche au-delà et clôture en deçà, pénétration 0,05 à 1 ATR), CHoCH M5
+  (clôture au-delà du dernier pivot avant l'extrême), FVG M5 de l'impulsion, ordre limite au premier tiers
+  du FVG, stop derrière la mèche du sweep + marge + spread, objectif 3R, lot à 0,5 % du solde ; fenêtres
+  08:00–10:30 Londres et 09:30–12:00 New York (09:00–11:30 et 15:30–18:00 Paris, changements d'heure
+  compris) ; pas de signal à ±15 min d'une annonce forte USD/EUR (calendrier de MT5). Alerte, tracé et
+  suivi comme les autres signaux ; le carnet les range en setup 4. Aucun ordre passé.
 * Analyse à cinq rôles (version 2.39.0) : prompts versionnés (dossier prompts/, GET /prompts :
   règles communes, contexte, SMC, chercheur haussier, chercheur baissier, Chief Analyst). Plan de
   séance : `decision` (achat, vente, ou deux_scenarios avec `lean` et `pivot`, l'événement qui valide

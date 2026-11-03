@@ -547,7 +547,8 @@ class CX_Live {
 			$data = array(
 				'kind'  => $kind,
 				'side'  => $side,
-				'setup' => CX_Repo::pick( (string) ( $in['setup'] ?? '' ), array( '1', '2', '3' ), '' ),
+				// Setup 4 : stratégie autonome de l'EA (sweep M15 → CHoCH M5 → FVG M5), sans les zones du carnet.
+				'setup' => CX_Repo::pick( (string) ( $in['setup'] ?? '' ), array( '1', '2', '3', '4' ), '' ),
 				'zone'  => CX_Repo::text( $in['zone'] ?? '', 80 ),
 				'entry' => $num( 'entry' ),
 				'sl'    => $num( 'sl' ),
@@ -557,7 +558,7 @@ class CX_Live {
 				'stop'  => CX_Repo::num( $in['stop'] ?? null, 0, 1000 ),
 			);
 			$retest = $num( 'retest' );
-			$label  = ( 'sell' === $side ? 'SELL ' : 'BUY ' ) . array( 'now' => 'NOW', 'limit' => 'LIMIT', 'retest' => 'RETOUR' )[ $kind ] . ( $data['setup'] ? ' · setup ' . $data['setup'] . ( '3' === $data['setup'] ? ' (iFVG)' : '' ) : '' );
+			$label  = ( 'sell' === $side ? 'SELL ' : 'BUY ' ) . array( 'now' => 'NOW', 'limit' => 'LIMIT', 'retest' => 'RETOUR' )[ $kind ] . ( $data['setup'] ? ' · setup ' . $data['setup'] . ( '3' === $data['setup'] ? ' (iFVG)' : ( '4' === $data['setup'] ? ' (sweep + FVG)' : '' ) ) : '' );
 			// Trade virtuel « Signal Claude » : suivi jusqu'à sa clôture (signal_update), qu'il soit pris ou non.
 			$ref = preg_replace( '/[^0-9A-Za-z_-]/', '', (string) ( $in['ref'] ?? '' ) );
 			$ref = '' !== $ref ? $ref : (string) $at->getTimestamp();
@@ -613,7 +614,7 @@ class CX_Live {
 			if ( $send ) {
 				CX_Telegram::send(
 					sprintf(
-						"%s <b>%s</b>\n%s\n\nZone : %s\n\n• Entrée : %s\n• Stop : %s\n• Objectif : %s (%sR)\n• Lot : %s (stop %s $)" . ( 'limit' === $kind ? "\n\nOrdre limite : valable 30 min, en attente d’un repli." : '' ) . ( null === $retest ? '' : "\n\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ) . ( '' === $note ? '' : "\n\n⛔ " . esc_html( $note ) ) . ( $conf ? "\n\n🧩 <b>Confluence</b>\n" . implode( "\n", array_map( 'esc_html', $conf ) ) : '' ) . "\n\nℹ️ Information à valider par toi : le backtest de l’or (4 ans) n’a pas prouvé d’avantage à ces signaux.",
+						"%s <b>%s</b>\n%s\n\nZone : %s\n\n• Entrée : %s\n• Stop : %s\n• Objectif : %s (%sR)\n• Lot : %s (stop %s $)" . ( 'limit' === $kind ? ( '4' === $data['setup'] ? "\n\nOrdre limite au premier tiers du FVG M5 : valable 60 min." : "\n\nOrdre limite : valable 30 min, en attente d’un repli." ) : '' ) . ( null === $retest ? '' : "\n\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ) . ( '' === $note ? '' : "\n\n⛔ " . esc_html( $note ) ) . ( $conf ? "\n\n🧩 <b>Confluence</b>\n" . implode( "\n", array_map( 'esc_html', $conf ) ) : '' ) . "\n\nℹ️ Information à valider par toi : le backtest de l’or (4 ans) n’a pas prouvé d’avantage à ces signaux.",
 						'sell' === $side ? '🔴' : '🟢',
 						esc_html( $label ),
 						esc_html( $active ? $active['name'] : $acc['name'] ),
