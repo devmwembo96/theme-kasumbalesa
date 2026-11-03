@@ -997,7 +997,7 @@ class CX_Telegram {
 		}
 		// Ce qu'il faut exécuter, dans l'ordre : une fiche par scénario, séparées par un trait.
 		$lines[] = '';
-		$lines[] = '<b>▶ À EXÉCUTER</b>';
+		$lines[] = '<b>▶ À EXÉCUTER</b>' . ( count( (array) ( $s['positions'] ?? array() ) ) > 1 ? ' (ordre sans importance)' : '' );
 		$rk      = self::exec_risk();
 		foreach ( array_values( (array) ( $s['positions'] ?? array() ) ) as $i => $p ) {
 			$lines = array_merge( $lines, array( '━━━━━━━━━━━━' ), self::card_lines( $p, $i + 1, $rk ) );
