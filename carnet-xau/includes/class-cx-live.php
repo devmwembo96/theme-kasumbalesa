@@ -608,10 +608,12 @@ class CX_Live {
 				$data['lot'] = floor( $rk['risk'] / ( $data['stop'] * $rk['contract'] + $rk['commission'] ) * 100 + 1e-9 ) / 100;
 			}
 			$active = CX_Telegram::active();
+			// Confluence en faits : sens du plan du jour, zone calculée, sweep récent.
+			$conf = $send ? CX_Structure::confluence( $side, $data['entry'] ) : array();
 			if ( $send ) {
 				CX_Telegram::send(
 					sprintf(
-						"%s <b>%s</b>\n%s\n\nZone : %s\n\n• Entrée : %s\n• Stop : %s\n• Objectif : %s (%sR)\n• Lot : %s (stop %s $)" . ( 'limit' === $kind ? "\n\nOrdre limite : valable 30 min, en attente d’un repli." : '' ) . ( null === $retest ? '' : "\n\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ) . ( '' === $note ? '' : "\n\n⛔ " . esc_html( $note ) ) . "\n\nℹ️ Information à valider par toi : le backtest de l’or (4 ans) n’a pas prouvé d’avantage à ces signaux.",
+						"%s <b>%s</b>\n%s\n\nZone : %s\n\n• Entrée : %s\n• Stop : %s\n• Objectif : %s (%sR)\n• Lot : %s (stop %s $)" . ( 'limit' === $kind ? "\n\nOrdre limite : valable 30 min, en attente d’un repli." : '' ) . ( null === $retest ? '' : "\n\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ) . ( '' === $note ? '' : "\n\n⛔ " . esc_html( $note ) ) . ( $conf ? "\n\n🧩 <b>Confluence</b>\n" . implode( "\n", array_map( 'esc_html', $conf ) ) : '' ) . "\n\nℹ️ Information à valider par toi : le backtest de l’or (4 ans) n’a pas prouvé d’avantage à ces signaux.",
 						'sell' === $side ? '🔴' : '🟢',
 						esc_html( $label ),
 						esc_html( $active ? $active['name'] : $acc['name'] ),

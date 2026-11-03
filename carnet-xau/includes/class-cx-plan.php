@@ -95,6 +95,7 @@ class CX_Plan {
 			'status'  => array( 'maintenu', 'mis_a_jour' ),
 			'kind'    => array( 'asia', 'london', 'premarket', 'us' ),
 			'istate'  => array( 'proposee', 'test', 'appliquee', 'abandonnee' ),
+			'decision' => array( 'achat', 'vente', 'deux_scenarios' ),
 		);
 		switch ( $type ) {
 			case 'bool':
@@ -397,12 +398,132 @@ class CX_Plan {
 					'wait'    => 'text',
 					'trigger' => 'text',
 					'cancel'  => 'text',
+					// Identifiant de la zone dans B/structures (« M15:fvg:1793709900 »).
+					'zone_id' => 'text',
 				),
 				3,
 			),
 			// Proposition de Claude née de cette analyse (trade, setup, gestion), facultative.
 			'idea'      => 'long',
+			// Analyse à cinq rôles (prompts B/prompts) : contexte, SMC, thèses haussière et baissière, décision.
+			// decision : achat ou vente quand le Chief Analyst tranche ; sinon deux_scenarios, avec `lean`
+			// (le scénario à privilégier) et `pivot` (l'événement qui valide l'un et invalide l'autre).
+			'decision'  => 'decision',
+			'lean'      => 'side',
+			'pivot'     => 'long',
+			'chief'     => 'long',
+			'context'   => 'long',
+			'smc'       => 'long',
+			'bull'      => self::thesis_spec(),
+			'bear'      => self::thesis_spec(),
+			'prompts'   => 'text',
 		);
+	}
+
+	/** Thèse d'un chercheur (haussier ou baissier). */
+	private static function thesis_spec() {
+		return array(
+			'thesis'   => 'long',
+			'evidence' => array( 'list', 'text', 6 ),
+			'confirm'  => 'text',
+			'invalid'  => 'text',
+			'target'   => 'num',
+		);
+	}
+
+	/**
+	 * Analyse de séance nettoyée puis contrôlée par le code (couche de risque) : une fiche incohérente est
+	 * retirée et rangée dans `rejected` avec la raison, même si le Chief Analyst l'a proposée.
+	 *
+	 * @param array $raw Séance reçue.
+	 * @return array
+	 */
+	public static function prepare_session( $raw ) {
+		$s   = self::clean( $raw, self::session_spec() );
+		$keep = array();
+		$rej  = array();
+		foreach ( (array) $s['positions'] as $p ) {
+			$why = self::check_position( $p, $s['decision'] );
+			if ( $why ) {
+				$rej[] = array(
+					'label'  => $p['label'],
+					'side'   => $p['side'],
+					'entry'  => $p['entry'],
+					'reason' => $why,
+				);
+			} else {
+				$keep[] = $p;
+			}
+		}
+		$s['positions'] = $keep;
+		$s['rejected']  = $rej;
+		return $s;
+	}
+
+	/**
+	 * Couche de risque déterministe : raison du refus d'une fiche, '' si elle est cohérente.
+	 *
+	 * @param array  $p        Fiche.
+	 * @param string $decision Décision du Chief Analyst.
+	 * @return string
+	 */
+	public static function check_position( $p, $decision ) {
+		$e   = $p['entry'];
+		$sl  = $p['sl'];
+		$tp  = $p['tp'];
+		$buy = 'achat' === $p['side'];
+		$usd = fn( $v ) => number_format( (float) $v, 2, ',', ' ' );
+		if ( null === $e || null === $sl || null === $tp || '' === $p['side'] ) {
+			return 'Entrée, stop, objectif et sens obligatoires.';
+		}
+		if ( ( 'achat' === $decision && ! $buy ) || ( 'vente' === $decision && $buy ) ) {
+			return 'Fiche contraire à la décision du Chief Analyst (' . $decision . ').';
+		}
+		if ( $buy ? ! ( $sl < $e && $e < $tp ) : ! ( $sl > $e && $e > $tp ) ) {
+			return 'Stop et objectif du mauvais côté de l’entrée.';
+		}
+		$risk = abs( $e - $sl );
+		if ( $risk < CX_Live::STOP_MIN || $risk > CX_Live::STOP_MAX ) {
+			return 'Stop à ' . $usd( $risk ) . ' $ de l’entrée, hors de 1,50–8,00 $.';
+		}
+		$rr = abs( $tp - $e ) / $risk;
+		if ( $rr < 2 ) {
+			return 'Objectif à ' . number_format( $rr, 1, ',', '' ) . 'R, moins de 2R.';
+		}
+		$snap = CX_Structure::snapshot();
+		if ( empty( $snap['ok'] ) ) {
+			return '';
+		}
+		$price = (float) ( $snap['prix'] ?? 0 );
+		$atr   = (float) ( $snap['ut']['H1']['atr'] ?? 0 );
+		if ( $price > 0 && $atr > 0 && abs( $e - $price ) > 4 * $atr ) {
+			return 'Entrée à ' . $usd( abs( $e - $price ) ) . ' $ du prix, plus de 4 ATR H1 (' . $usd( 4 * $atr ) . ' $).';
+		}
+		if ( empty( $p['zone_id'] ) ) {
+			return 'Pas de zone_id : chaque fiche part d’une zone calculée (B/structures).';
+		}
+		{
+			$zone = null;
+			foreach ( (array) $snap['ut'] as $u ) {
+				foreach ( array( 'fvg', 'ifvg', 'ob', 'breakers' ) as $k ) {
+					foreach ( (array) ( $u[ $k ] ?? array() ) as $z ) {
+						if ( $z['id'] === $p['zone_id'] ) {
+							$zone = $z;
+						}
+					}
+				}
+			}
+			if ( ! $zone ) {
+				return 'Zone ' . $p['zone_id'] . ' absente des structures actives (B/structures).';
+			}
+			if ( $e < $zone['bas'] - 0.5 || $e > $zone['haut'] + 0.5 ) {
+				return 'Entrée hors de la zone ' . $usd( $zone['bas'] ) . '–' . $usd( $zone['haut'] ) . '.';
+			}
+			if ( $buy ? $sl >= $zone['bas'] : $sl <= $zone['haut'] ) {
+				return 'Stop pas derrière la zone (invalidation) ' . $usd( $zone['bas'] ) . '–' . $usd( $zone['haut'] ) . '.';
+			}
+		}
+		return '';
 	}
 
 	/* ------------------------------------------------------------------
@@ -442,11 +563,14 @@ class CX_Plan {
 		}
 		// Analyse de séance : envoyée dès sa publication (elle sert à l'exécution).
 		if ( isset( $in['session'] ) && empty( $req->get_param( 'silent' ) ) ) {
-			CX_Telegram::send( CX_Telegram::session_summary( self::clean( $in['session'], self::session_spec() ) ) );
+			CX_Telegram::send( CX_Telegram::session_summary( self::prepare_session( $in['session'] ) ) );
 		}
+		$rej = isset( $in['session'] ) ? self::prepare_session( $in['session'] )['rejected'] : array();
 		return new WP_REST_Response(
 			array(
-				'ok'   => true,
+				'ok'       => true,
+				// Fiches refusées par la couche de risque (raison) : à corriger et republier si besoin.
+				'rejected' => $rej,
 				'week' => $week,
 				'url'  => get_permalink( CX_Front::page_id() ),
 			),
@@ -470,7 +594,7 @@ class CX_Plan {
 		if ( isset( $in['update'] ) && ( '' === $update['date'] || '' === $update['status'] ) ) {
 			return CX_Repo::invalid( 'Relecture : « date » (AAAA-MM-JJ) et « status » (maintenu ou mis_a_jour) obligatoires.' );
 		}
-		$session = isset( $in['session'] ) ? self::clean( $in['session'], self::session_spec() ) : null;
+		$session = isset( $in['session'] ) ? self::prepare_session( $in['session'] ) : null;
 		if ( isset( $in['session'] ) && ( '' === $session['date'] || '' === $session['kind'] ) ) {
 			return CX_Repo::invalid( 'Séance : « date » (AAAA-MM-JJ) et « kind » (london ou us) obligatoires.' );
 		}

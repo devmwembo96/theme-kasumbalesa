@@ -965,6 +965,36 @@ class CX_Telegram {
 			$lines[] = '';
 			$lines[] = $e( $s['summary'] );
 		}
+		// Décision du Chief Analyst : achat, vente, ou deux scénarios et l'événement qui départage.
+		if ( ! empty( $s['decision'] ) ) {
+			$lines[] = '';
+			if ( 'deux_scenarios' === $s['decision'] ) {
+				$lines[] = '🧠 <b>Décision : deux scénarios</b>' . ( ! empty( $s['lean'] ) ? ' · privilégier ' . ( 'achat' === $s['lean'] ? '🟢 l’achat' : '🔴 la vente' ) : '' );
+				if ( ! empty( $s['pivot'] ) ) {
+					$lines[] = '⚖️ ' . $e( $s['pivot'] );
+				}
+			} else {
+				$lines[] = '🧠 <b>Décision : ' . ( 'achat' === $s['decision'] ? '🟢 ACHAT' : '🔴 VENTE' ) . '</b>';
+			}
+			if ( ! empty( $s['chief'] ) ) {
+				$lines[] = $e( $s['chief'] );
+			}
+			foreach ( array( 'bull' => '🐂 <b>Thèse haussière</b>', 'bear' => '🐻 <b>Thèse baissière</b>' ) as $k => $label ) {
+				$t = (array) ( $s[ $k ] ?? array() );
+				if ( empty( $t['thesis'] ) ) {
+					continue;
+				}
+				$lines[] = '';
+				$lines[] = $label;
+				$lines[] = $e( $t['thesis'] );
+				if ( ! empty( $t['confirm'] ) ) {
+					$lines[] = '• Confirmée si : ' . $e( $t['confirm'] );
+				}
+				if ( ! empty( $t['invalid'] ) ) {
+					$lines[] = '• Invalidée si : ' . $e( $t['invalid'] );
+				}
+			}
+		}
 		// Ce qu'il faut exécuter, dans l'ordre : une fiche par scénario, séparées par un trait.
 		$lines[] = '';
 		$lines[] = '<b>▶ À EXÉCUTER</b>';
@@ -977,6 +1007,13 @@ class CX_Telegram {
 		}
 		if ( empty( $s['positions'] ) ) {
 			$lines[] = 'Aucun scénario exécutable pour l’instant : on ne force pas de trade.';
+		}
+		if ( ! empty( $s['rejected'] ) ) {
+			$lines[] = '';
+			$lines[] = '🛡 <b>Fiches refusées par le contrôle du risque</b>';
+			foreach ( $s['rejected'] as $x ) {
+				$lines[] = '• ' . $e( ( $x['label'] ? $x['label'] . ' : ' : '' ) . $x['reason'] );
+			}
 		}
 		if ( ! empty( $s['execution'] ) ) {
 			$lines[] = '';

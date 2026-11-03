@@ -860,6 +860,58 @@ class CX_Structure {
 		return $out;
 	}
 
+	/**
+	 * Confluence d'un signal de l'EA, en faits (pas de note) : sens de la décision de Claude pour la séance
+	 * du jour, zone calculée sous l'entrée, sweep récent dans le même sens.
+	 *
+	 * @param string $side  buy|sell.
+	 * @param float  $entry Entrée.
+	 * @return string[]
+	 */
+	public static function confluence( $side, $entry ) {
+		$out  = array();
+		$buy  = 'buy' === $side;
+		$want = $buy ? 'achat' : 'vente';
+		$p    = CX_Repo::plan( CX_Live::week() );
+		$day  = wp_date( 'Y-m-d', time(), CX_Repo::tz() );
+		$ses  = array_values( array_filter( (array) ( $p['content']['sessions'] ?? array() ), fn( $x ) => $x['date'] === $day && ! empty( $x['decision'] ) ) );
+		if ( $ses ) {
+			$s    = end( $ses );
+			$name = 'us' === $s['kind'] ? 'New York' : 'Londres';
+			if ( 'deux_scenarios' === $s['decision'] ) {
+				$out[] = ( $s['lean'] === $want ? '✅' : '➖' ) . ' Plan de ' . $name . ' : deux scénarios, ' . ( $s['lean'] ? ( 'achat' === $s['lean'] ? 'achat privilégié' : 'vente privilégiée' ) : 'aucun privilégié' );
+			} else {
+				$out[] = ( $s['decision'] === $want ? '✅ Dans le sens' : '⚠️ Contre le sens' ) . ' de la décision du plan de ' . $name . ' (' . $s['decision'] . ')';
+			}
+		}
+		$snap = self::snapshot();
+		if ( empty( $snap['ok'] ) || null === $entry ) {
+			return $out;
+		}
+		$zone = null;
+		// La zone la plus fine d'abord (M5, puis M15, H1, H4).
+		foreach ( array( 'M5', 'M15', 'H1', 'H4' ) as $tf ) {
+			foreach ( array( 'ob' => 'OB', 'fvg' => 'FVG', 'ifvg' => 'iFVG', 'breakers' => 'Breaker' ) as $k => $lab ) {
+				foreach ( (array) ( $snap['ut'][ $tf ][ $k ] ?? array() ) as $z ) {
+					if ( null === $zone && $entry >= $z['bas'] - 0.5 && $entry <= $z['haut'] + 0.5 && ( $buy ? 'haussier' : 'baissier' ) === $z['sens'] ) {
+						$zone = $lab . ' ' . $tf . ' ' . number_format( $z['bas'], 2, ',', ' ' ) . '–' . number_format( $z['haut'], 2, ',', ' ' );
+					}
+				}
+			}
+		}
+		$out[] = $zone ? '✅ Entrée dans une zone calculée : ' . $zone : '➖ Aucune zone calculée du même sens sous l’entrée';
+		$sweep = null;
+		foreach ( array( 'M5', 'M15' ) as $tf ) {
+			foreach ( (array) ( $snap['ut'][ $tf ]['sweeps'] ?? array() ) as $w ) {
+				if ( ( $buy ? 'haussier' : 'baissier' ) === $w['sens'] ) {
+					$sweep = 'sweep ' . $tf . ' de ' . number_format( $w['prix'], 2, ',', ' ' ) . ' (' . $w['confirme'] . ')';
+				}
+			}
+		}
+		$out[] = $sweep ? '✅ Liquidité balayée avant : ' . $sweep : '➖ Pas de sweep récent dans ce sens';
+		return $out;
+	}
+
 	/** @return WP_REST_Response */
 	public static function rest() {
 		return new WP_REST_Response( self::snapshot(), 200 );

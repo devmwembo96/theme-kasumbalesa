@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.38.0
+Stable tag: 2.39.0
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -150,6 +150,14 @@ Calculateur XAU version 4 : outil position et ticket d’ordre façon TradingVie
   Lubumbashi (il le lisait en UTC : 2 h d’écart), et l’image envoyée sur Telegram fait partir zones
   et niveaux de leur bougie d’origine. Les plans de séance acceptent `origin` pour leurs zones et
   niveaux.
+* Analyse à cinq rôles (version 2.39.0) : prompts versionnés (dossier prompts/, GET /prompts :
+  règles communes, contexte, SMC, chercheur haussier, chercheur baissier, Chief Analyst). Plan de
+  séance : `decision` (achat, vente, ou deux_scenarios avec `lean` et `pivot`, l'événement qui valide
+  l'un et invalide l'autre), `chief`, `context`, `smc`, `bull`, `bear`, fiches avec `zone_id`. Couche
+  de risque à la publication (CX_Plan::check_position) : sens, stop 1,50–8,00 $, 2R, distance au prix,
+  zone calculée existante, entrée dans la zone, stop derrière ; fiche refusée rangée dans `rejected`
+  et signalée sur Telegram. Signaux de l'EA : confluence en faits (sens du plan du jour, zone calculée,
+  sweep récent).
 * Structures calculées (version 2.38.0) : GET /structures donne, pour D1, H4, H1, M15 et M5, les
   structures calculées par le carnet sur les bougies closes du compte de référence (bougie en cours à
   part) : swings confirmés, BOS/CHoCH à la clôture, FVG et iFVG, order blocks et breakers, EQH/EQL et
