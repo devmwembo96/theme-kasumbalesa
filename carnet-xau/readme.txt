@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.40.0
+Stable tag: 2.40.1
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -157,7 +157,8 @@ Calculateur XAU version 4 : outil position et ticket d’ordre façon TradingVie
   du FVG, stop derrière la mèche du sweep + marge + spread, objectif 3R, lot à 0,5 % du solde ; fenêtres
   08:00–10:30 Londres et 09:30–12:00 New York (09:00–11:30 et 15:30–18:00 Paris, changements d'heure
   compris) ; pas de signal à ±15 min d'une annonce forte USD/EUR (calendrier de MT5). Alerte, tracé et
-  suivi comme les autres signaux ; le carnet les range en setup 4. Aucun ordre passé.
+  suivi comme les autres signaux ; le carnet les range en setup 4. Aucun ordre passé. Par défaut
+  (2.40.1), les deux stratégies tournent ensemble, chacune avec son propre ordre limite en attente.
 * Analyse à cinq rôles (version 2.39.0) : prompts versionnés (dossier prompts/, GET /prompts :
   règles communes, contexte, SMC, chercheur haussier, chercheur baissier, Chief Analyst). Plan de
   séance : `decision` (achat, vente, ou deux_scenarios avec `lean` et `pivot`, l'événement qui valide

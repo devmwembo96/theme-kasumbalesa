@@ -96,7 +96,8 @@
 enum ENUM_CX_STRAT
   {
    STRAT_CARNET = 0, // Zones du plan de Claude (carnet)
-   STRAT_SWEEP  = 1  // Sweep M15 → CHoCH M5 → FVG M5 (autonome)
+   STRAT_SWEEP  = 1, // Sweep M15 → CHoCH M5 → FVG M5 (autonome)
+   STRAT_BOTH   = 2  // Les deux (par défaut)
   };
 
 input string InpUrl         = "https://revnefty.store/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
@@ -118,7 +119,7 @@ input int    InpLimitMin    = 30;    // Validité d'un signal limite, en minutes
 input bool   InpAlertPopup  = true;  // Alerte : fenêtre et son MT5
 input bool   InpAlertPush   = true;  // Alerte : notification mobile MT5
 input bool   InpAlertCarnet = true;  // Alerte : carnet et Telegram
-input ENUM_CX_STRAT InpStrategy = STRAT_CARNET; // Stratégie des signaux
+input ENUM_CX_STRAT InpStrategy = STRAT_BOTH;   // Stratégie des signaux (les deux par défaut)
 input double InpSfRiskPct   = 0.5;   // Autonome : risque par trade (% du solde) pour le lot affiché
 input int    InpSfLookback  = 20;    // Autonome : bougies M15 du plus haut / plus bas balayé
 input double InpSfBuffer    = 0.50;  // Autonome : marge du stop au-delà de la mèche du sweep ($, + spread)
@@ -353,19 +354,22 @@ void OnTick()
    Monitor();                   // invalidation et zones sur clôture M15 (et rattrapage après un arrêt)
    ProcessTracks();             // signaux en cours, bougie par bougie depuis la dernière traitée
    DrawPanel();                 // zones les plus proches du prix
-   if(InpSignals && InpStrategy == STRAT_SWEEP)
+   // Les deux stratégies tournent côte à côte ; chacune n'est bloquée que par son propre ordre limite.
+   if(InpSignals && InpStrategy != STRAT_CARNET)
       CheckSweepFvg();            // stratégie autonome : rien ne vient du carnet
-   else if(InpSignals && g_planOk && !PendingLimit())
+   if(InpSignals && InpStrategy != STRAT_SWEEP && g_planOk && !PendingLimit(false))
       CheckSignals();
   }
 
 //+------------------------------------------------------------------+
 //| Suivi des signaux (trades virtuels)                               |
 //+------------------------------------------------------------------+
-bool PendingLimit()
+//--- Ordre limite en attente d'une stratégie (sweep = autonome, repérée par « SFVG » dans le libellé).
+bool PendingLimit(bool sweep = false)
   {
    for(int i = 0; i < ArraySize(g_tracks); i++)
-      if(g_tracks[i].status == 0 && StringFind(g_tracks[i].label, "RETOUR") < 0)
+      if(g_tracks[i].status == 0 && StringFind(g_tracks[i].label, "RETOUR") < 0
+         && (StringFind(g_tracks[i].label, "SFVG") >= 0) == sweep)
          return true;                               // la variante « retour FVG » ne bloque rien
    return false;
   }
@@ -484,10 +488,10 @@ void ProcessBar(double hi, double lo, double cl, datetime t, bool late)
            {
             g_tracks[i].status = 2;
             changed = true;
-            DrawUpdate(g_tracks[i].id, g_tracks[i].label + " annulé (prix non atteint en " + IntegerToString(g_limitMin) + " min)", true);
+            DrawUpdate(g_tracks[i].id, g_tracks[i].label + " annulé (prix non atteint en " + IntegerToString(StringFind(g_tracks[i].label, "SFVG") >= 0 ? InpSfLimitMin : g_limitMin) + " min)", true);
             bool variant = StringFind(g_tracks[i].label, "RETOUR") >= 0;   // variante suivie sans alerte
             if(!late && !variant)
-               Notify("Carnet XAU : " + g_tracks[i].label + " " + Fr(e, 2) + " annulé, prix non atteint en " + IntegerToString(g_limitMin) + " min.");
+               Notify("Carnet XAU : " + g_tracks[i].label + " " + Fr(e, 2) + " annulé, prix non atteint en " + IntegerToString(StringFind(g_tracks[i].label, "SFVG") >= 0 ? InpSfLimitMin : g_limitMin) + " min.");
             TrackEvent(i, "annule", "", t);
             g_status = g_tracks[i].label + " annulé (délai écoulé).";
             ChartRedraw();
@@ -2721,7 +2725,6 @@ void SfCheckChoch(int side)
          g_tracks[k].expires = TimeCurrent() + InpSfLimitMin * 60;
          SaveTracks();
         }
-      g_lastSignal = TimeCurrent();
       return;
      }
   }
@@ -2735,17 +2738,19 @@ void CheckSweepFvg()
       SfDetectSweep();
      }
    for(int side = 0; side < 2; side++)
-      if(g_sf[side].active && !PendingLimit())
+      if(g_sf[side].active && !PendingLimit(true))
          SfCheckChoch(side);
   }
 
 void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, double sl, double tp, double rr, double lot, double stop, datetime t, double retest)
   {
    g_signalCount++;
-   string id = PFX_SIG + IntegerToString((long)t);
+   // Stratégie autonome (setup 4) : libellé « SFVG » et référence à part, pour ne pas se mêler aux autres.
+   bool   sf = (setup == "4");
+   string id = PFX_SIG + IntegerToString((long)t) + (sf ? "s" : "");
    datetime t2 = t + 60 * 60;
-   string label = (buy ? "BUY " : "SELL ") + kind;
-   string ref = IntegerToString((long)t);
+   string label = (buy ? "BUY " : "SELL ") + kind + (sf ? " SFVG" : "");
+   string ref = IntegerToString((long)t) + (sf ? "s" : "");
    int k = ArraySize(g_tracks);
    ArrayResize(g_tracks, k + 1);
    g_tracks[k].ref     = ref;
