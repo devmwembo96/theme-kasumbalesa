@@ -483,8 +483,8 @@ class CX_Plan {
 			return 'Stop et objectif du mauvais côté de l’entrée.';
 		}
 		$risk = abs( $e - $sl );
-		if ( $risk < CX_Live::STOP_MIN || $risk > CX_Live::STOP_MAX ) {
-			return 'Stop à ' . $usd( $risk ) . ' $ de l’entrée, hors de 1,50–8,00 $.';
+		if ( $risk < CX_Live::STOP_MIN ) {
+			return 'Stop à ' . $usd( $risk ) . ' $ de l’entrée : moins que le spread de l’or (0,50 $ au moins).';
 		}
 		$rr = abs( $tp - $e ) / $risk;
 		if ( $rr < 2 ) {

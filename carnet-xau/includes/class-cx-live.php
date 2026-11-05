@@ -35,8 +35,11 @@ defined( 'ABSPATH' ) || exit;
 class CX_Live {
 
 	/** Plage du stop (écart entrée → stop, en $) envoyée à l'EA : jusqu'à 8 $, le lot baisse et le risque reste le même. */
-	const STOP_MIN = 1.5;
-	const STOP_MAX = 8.0;
+	// Plus de plage de stop imposée (05/11/2026) : seulement un plancher technique (le spread de l'or est
+	// d'environ 0,40 $) ; un maximum très haut pour les EA d'avant 2.22, qui convertissaient un stop trop
+	// large en ordre limite.
+	const STOP_MIN = 0.5;
+	const STOP_MAX = 1000.0;
 
 	/** Unités de temps reçues de l'EA et nombre de bougies gardées (M1 à M15 : analyses de séance et rejeu du soir). */
 	const CANDLE_MAX = array(

@@ -286,7 +286,6 @@ function calc(){
     const lot=Math.floor(risk/lotCost(stop,p)*100+1e-9)/100;CALC={lot,stop};
     q.replaceChildren(el("b",{text:fmt(lot,2)+" lot"}),document.createTextNode(" · risque réel "+money2(lot*lotCost(stop,p))+((num(p.commission)||0)>0?" commission comprise":"")+" · 2R à "+fmt(stop*2,2)+" $ de mouvement"));
     if(lot<0.01)alerts.push(["stop","Stop trop large pour ce risque : le lot tombe sous 0,01."]);
-    if(stop<1.5||stop>8)alerts.push(["warn","Stop hors de la plage 1,50 – 8,00 $ : passez votre tour ou attendez l’ordre limite."]);
   }else q.textContent="Risque "+money2(risk)+" par trade : saisissez la distance du stop pour le lot.";
   const box=$("#alerts");box.replaceChildren(...alerts.map(([c,t])=>el("div",{class:"alert "+c,text:t})));box.hidden=!alerts.length;
   DAY_STATE={light:alerts.some(a=>a[0]==="stop")?"stop":alerts.some(a=>a[0]==="warn")?"warn":"go",why:alerts.filter(a=>a[0]!=="go").map(a=>a[1])};
@@ -470,12 +469,11 @@ function execCard(x,i){
   ol.append(step("Ordre",(sell?"Vente ":"Achat ")+(en.range?"dans ":"")+en.txt+(Number.isFinite(sl)?" · stop "+px(sl)+(Number.isFinite(stop)&&!en.range?" ("+fmt(stop,2)+" $)":""):"")+(Number.isFinite(tp)?" · objectif "+px(tp)+(Number.isFinite(rr)?" ("+ap+fmt(rr,1)+"R)":""):""),"order"));
   const p=ACTIVE?ACTIVE.params:null;
   // Entrée en fourchette (scénario de la semaine) : l'ordre exact se décide au déclenchement.
-  if(p&&en.range)ol.append(step("Lot","Au déclenchement : stop derrière la mèche (1,50 – 8,00 $), "+(DAY_RISK>0?money2(DAY_RISK)+" de risque ; le Calculateur XAU donne le lot.":"mais une limite du jour est atteinte : pas de trade."),"lot"));
+  if(p&&en.range)ol.append(step("Lot","Au déclenchement : stop derrière la mèche, "+(DAY_RISK>0?money2(DAY_RISK)+" de risque ; le Calculateur XAU donne le lot.":"mais une limite du jour est atteinte : pas de trade."),"lot"));
   else if(p&&stop>0){
     let t;
     if(!(DAY_RISK>0))t="Pas de trade : une limite du jour est atteinte.";
     else{const lot=Math.floor(DAY_RISK/lotCost(stop,p)*100+1e-9)/100;t=lot>=0.01?ap+fmt(lot,2)+" lot pour "+money2(DAY_RISK)+" de risque ("+ACTIVE.name+")":"Stop trop large pour le risque du jour : passe ton tour."}
-    if(stop<1.5||stop>8)t+=" Écart hors de 1,50 – 8,00 $ : ordre limite au prix où le stop revient à 8,00 $, sinon passer.";
     ol.append(step("Lot",t,"lot"));
   }
   if(x.cancel)ol.append(step("Annulé si",x.cancel,"ko"));

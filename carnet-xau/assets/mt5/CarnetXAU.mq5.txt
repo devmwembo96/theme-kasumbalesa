@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.21.0                                   |
+//| CarnetXAU.mq5 — version 2.22.0                                   |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1 à M1), toutes |
@@ -60,6 +60,7 @@
 //| 2.20 : stratégie autonome « Sweep M15 → CHoCH M5 → FVG M5 »      |
 //|        (InpStrategy), sans les zones du carnet.                  |
 //| 2.21 : signaux seulement pendant la séance de New York.          |
+//| 2.22 : touche tolérée à 0,50 $ du bord ; plus de plage de stop.  |
 //|                                                                  |
 //| Règles du signal (calculées à partir du plan de Claude) :        |
 //| - le prix touche une zone de Claude non cassée ;                 |
@@ -88,7 +89,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.21"
+#property version   "2.22"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 #include <Canvas\Canvas.mqh>
@@ -113,6 +114,7 @@ input double InpSLBuffer    = 0.30;  // Marge du stop derrière l'extrême ($, e
 input int    InpTouchBars   = 30;    // Bougies M1 où chercher la touche de zone
 input int    InpSwingBars   = 20;    // Bougies M1 avant l'extrême où chercher le sommet / creux pivot et le FVG
 input double InpFvgMin      = 0.30;  // Taille minimale d'un FVG ($)
+input double InpTouchTol    = 0.50;  // Touche de zone tolérée à X $ du bord (le prix s'arrête juste avant)
 input bool   InpRetest      = true;  // Suivre aussi l'entrée « retour FVG » (trade virtuel, sans alerte)
 input int    InpCooldownMin = 60;    // Minutes sans nouveau signal sur la même zone
 input bool   InpUseLimit    = true;  // Stop trop large : proposer un ordre limite (stop ramené au maximum)
@@ -129,7 +131,7 @@ input int    InpSfChochBars = 24;    // Autonome : bougies M5 après le sweep po
 input double InpSfFvgMin    = 0.30;  // Autonome : taille minimale du FVG M5 ($)
 input int    InpSfLimitMin  = 60;    // Autonome : validité de l'ordre limite (minutes)
 input double InpSfStopMin   = 1.0;   // Autonome : stop minimum ($ de prix)
-input double InpSfStopMax   = 15.0;  // Autonome : stop maximum ($ de prix)
+input double InpSfStopMax   = 0;     // Autonome : stop maximum ($ de prix, 0 = aucun)
 input bool   InpSfNews      = true;  // Autonome : pas de signal à ±15 min d'une annonce forte USD/EUR (calendrier MT5)
 
 //--- Plan reçu du carnet
@@ -161,7 +163,7 @@ int      g_bull = 0, g_bear = 0, g_range = 0;
 double   g_inval = 0, g_rlo = 0, g_rhi = 0, g_ref = 0;
 bool     g_invalidated = false;
 double   g_risk = 50, g_riskRed = 35, g_redAt = 300, g_contract = 100, g_spreadMax = 15;
-double   g_stopMin = 1.5, g_stopMax = 8.0, g_dailyLim = 300, g_size = 6000, g_floor = 5400;
+double   g_stopMin = 0.5, g_stopMax = 1000.0, g_dailyLim = 300, g_size = 6000, g_floor = 5400;
 int      g_maxTrades = 4, g_maxLoss = 3;
 //--- Étape du compte (ligne « G| » du plan), transmise au Calculateur XAU avec le risque et les limites.
 string   g_phase = "";
@@ -2285,7 +2287,8 @@ void CheckSignals()
       int e = -1;
       for(int k = 1; k <= g_touch; k++)
         {
-         bool touched = (r[k].low <= z.hi && r[k].high >= z.lo);
+         // Touche à InpTouchTol $ près : un prix qui s'arrête juste avant le bord compte (2.22).
+         bool touched = (r[k].low <= z.hi + InpTouchTol && r[k].high >= z.lo - InpTouchTol);
          if(!touched)
             continue;
          if(e < 0 || (buy ? r[k].low < r[e].low : r[k].high > r[e].high))
@@ -2708,7 +2711,7 @@ void SfCheckChoch(int side)
       double sl    = sell ? g_sf[side].ext + InpSfBuffer + spread : g_sf[side].ext - InpSfBuffer - spread;
       double stop  = MathAbs(entry - sl);
       double bid   = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      if(stop < InpSfStopMin || stop > InpSfStopMax || (sell ? bid >= entry : bid <= entry))
+      if(stop < InpSfStopMin || (InpSfStopMax > 0 && stop > InpSfStopMax) || (sell ? bid >= entry : bid <= entry))
         {
          g_status = "Setup sweep/FVG ignoré : stop " + Fr(stop, 2) + " $ ou prix déjà dans le FVG.";
          return;
