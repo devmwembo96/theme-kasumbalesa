@@ -8,6 +8,7 @@ Exige des preuves : zone de demande calculée (id), liquidité visée (id), conf
 Si aucun achat propre n'existe, dis-le.
 Préfère la zone de demande active la plus proche du prix actuel (en ATR H1), que le prix peut atteindre pendant
 la séance ; une zone lointaine seulement si elle est nettement mieux étayée.
+Entrée dans le premier tiers haut de la zone de demande (le prix arrive par le haut), jamais au fond.
 Sortie :
 {"thesis": "2 phrases chiffrées", "evidence": ["id : fait"], "zone_id": "id ou null",
  "entry": 0.0, "sl": 0.0, "tp": 0.0, "confirm": "événement qui confirme", "invalid": "événement qui invalide",

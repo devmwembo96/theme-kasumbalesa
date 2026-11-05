@@ -519,6 +519,12 @@ class CX_Plan {
 			if ( $e < $zone['bas'] - 0.5 || $e > $zone['haut'] + 0.5 ) {
 				return 'Entrée hors de la zone ' . $usd( $zone['bas'] ) . '–' . $usd( $zone['haut'] ) . '.';
 			}
+			// Entrée au bord par lequel le prix arrive (premier tiers de la zone) : une entrée au fond de la
+			// zone n'est presque jamais déclenchée (audit du 05/11 : 10 fiches manquées, de 1 à 26 $).
+			$third = ( $zone['haut'] - $zone['bas'] ) / 3;
+			if ( $buy ? $e < $zone['haut'] - $third - 0.5 : $e > $zone['bas'] + $third + 0.5 ) {
+				return 'Entrée trop au fond de la zone ' . $usd( $zone['bas'] ) . '–' . $usd( $zone['haut'] ) . ' : la placer dans le premier tiers, côté prix (' . ( $buy ? 'au-dessus de ' . $usd( $zone['haut'] - $third ) : 'en dessous de ' . $usd( $zone['bas'] + $third ) ) . ').';
+			}
 			if ( $buy ? $sl >= $zone['bas'] : $sl <= $zone['haut'] ) {
 				return 'Stop pas derrière la zone (invalidation) ' . $usd( $zone['bas'] ) . '–' . $usd( $zone['haut'] ) . '.';
 			}
