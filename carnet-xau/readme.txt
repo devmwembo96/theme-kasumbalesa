@@ -1,7 +1,7 @@
 === Carnet XAU ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.40.2
+Stable tag: 2.40.3
 
 Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -150,6 +150,9 @@ Calculateur XAU version 4 : outil position et ticket d’ordre façon TradingVie
   Lubumbashi (il le lisait en UTC : 2 h d’écart), et l’image envoyée sur Telegram fait partir zones
   et niveaux de leur bougie d’origine. Les plans de séance acceptent `origin` pour leurs zones et
   niveaux.
+* Séance de Londres retirée (version 2.40.3, EA Carnet 2.21) : plus de plan de Londres ; l'EA ne
+  signale que pendant la séance de New York (zones du plan 08:15–16:00 New York, stratégie autonome
+  09:30–12:00 New York).
 * Prompts 2.40.2 : fiches sans ordre d'importance (une d'achat et une de vente possibles, jugées
   chacune sur ses preuves), rien d'interdit d'avance, zones les plus proches du prix en priorité.
 * Stratégie autonome de l'EA (version 2.40.0, EA Carnet 2.20) : paramètre InpStrategy = « Sweep M15 →

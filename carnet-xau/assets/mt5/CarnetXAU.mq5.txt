@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.20.0                                   |
+//| CarnetXAU.mq5 — version 2.21.0                                   |
 //|                                                                  |
 //| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
 //|    la perte du jour et les bougies du courtier (D1 à M1), toutes |
@@ -59,6 +59,7 @@
 //| 2.19 : refuse tout autre graphique que l'or (BTC, argent…).      |
 //| 2.20 : stratégie autonome « Sweep M15 → CHoCH M5 → FVG M5 »      |
 //|        (InpStrategy), sans les zones du carnet.                  |
+//| 2.21 : signaux seulement pendant la séance de New York.          |
 //|                                                                  |
 //| Règles du signal (calculées à partir du plan de Claude) :        |
 //| - le prix touche une zone de Claude non cassée ;                 |
@@ -87,7 +88,7 @@
 //|   non touchée dans ce sens.                                      |
 //+------------------------------------------------------------------+
 #property copyright "Carnet XAU"
-#property version   "2.20"
+#property version   "2.21"
 #property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
 
 #include <Canvas\Canvas.mqh>
@@ -357,8 +358,8 @@ void OnTick()
    // Les deux stratégies tournent côte à côte ; chacune n'est bloquée que par son propre ordre limite.
    if(InpSignals && InpStrategy != STRAT_CARNET)
       CheckSweepFvg();            // stratégie autonome : rien ne vient du carnet
-   if(InpSignals && InpStrategy != STRAT_SWEEP && g_planOk && !PendingLimit(false))
-      CheckSignals();
+   if(InpSignals && InpStrategy != STRAT_SWEEP && g_planOk && !PendingLimit(false) && InNySession(TimeGMT()))
+      CheckSignals();             // zones du plan : seulement pendant la séance de New York
   }
 
 //+------------------------------------------------------------------+
@@ -2438,8 +2439,8 @@ void CheckSignals()
 //| Rien ne vient du carnet (ni zones, ni biais, ni réglages) : l'EA   |
 //| lit les bougies en temps réel, envoie l'alerte et trace la         |
 //| position comme pour les autres signaux. Il ne passe aucun ordre.   |
-//| Fenêtres : 08:00–10:30 Londres (09:00–11:30 Paris) et 09:30–12:00  |
-//| New York (15:30–18:00 Paris), changements d'heure compris.         |
+//| Fenêtre : 09:30–12:00 New York (15:30–18:00 Paris), changements    |
+//| d'heure compris. La séance de Londres est retirée (2.21).          |
 //+------------------------------------------------------------------+
 struct CxSweep
   {
@@ -2495,12 +2496,18 @@ int MinuteOfDay(datetime t)
    return d.hour * 60 + d.min;
   }
 
-//--- Instant (UTC) dans une des deux fenêtres de la stratégie.
+//--- Instant (UTC) dans la fenêtre de la stratégie autonome : 09:30–12:00 New York (Londres retirée).
 bool InSfSession(datetime utc)
   {
-   int ldn = MinuteOfDay(utc + (EuDst(utc) ? 3600 : 0));
-   int ny  = MinuteOfDay(utc - 5 * 3600 + (UsDst(utc) ? 3600 : 0));
-   return (ldn >= 8 * 60 && ldn < 10 * 60 + 30) || (ny >= 9 * 60 + 30 && ny < 12 * 60);
+   int ny = MinuteOfDay(utc - 5 * 3600 + (UsDst(utc) ? 3600 : 0));
+   return ny >= 9 * 60 + 30 && ny < 12 * 60;
+  }
+
+//--- Séance de New York (08:15–16:00 New York) : seule séance où l'EA signale.
+bool InNySession(datetime utc)
+  {
+   int ny = MinuteOfDay(utc - 5 * 3600 + (UsDst(utc) ? 3600 : 0));
+   return ny >= 8 * 60 + 15 && ny < 16 * 60;
   }
 
 //--- Annonce forte USD ou EUR à ±15 min (calendrier économique de MT5, heure serveur).
