@@ -98,16 +98,16 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 - Comptes utilisateurs pour la communauté (chacun son carnet).
 
-## Tâches Claude programmées
+## Tâches Claude programmées (Nasdaq 100, depuis le 07/11/2026)
 
-- « Carnet XAU · plan de la semaine · revnefty.store » : dimanche 11:52 (Lubumbashi).
-- « Carnet XAU · plan de Londres (1 h avant l’ouverture) » : du lundi au vendredi à 06:45 à
-  Londres (08:45 Lubumbashi en hiver, 07:45 en été), publié vers 07:00 à Londres.
-- « Carnet XAU · plan de New York (1 h avant l’ouverture) » : du lundi au vendredi à 08:15 à
-  New York (14:15 Lubumbashi en heure d’été américaine, 15:15 en hiver), publié vers 08:30.
-- « Carnet XAU · relecture et rejeu de 17 h (New York) » : du lundi au vendredi à 17:20
-  New York (23:20 Lubumbashi, 00:20 en hiver) ; rejeu, réglage de l’EA ; le vendredi, verdict et
-  coaching.
-- Le pré-marché US (08:33 New York) est arrêté depuis le 23 octobre 2026.
+- « Carnet NAS100 · plan de la semaine » : dimanche 11:52 (Lubumbashi).
+- « Carnet NAS100 · plan de New York (08:15 New York) » : du lundi au vendredi, 1 h 15 avant
+  l’ouverture de 09:30 New York (15:15 Lubumbashi en hiver américain, 14:15 en été).
+- « Carnet NAS100 · relecture et rejeu de 17 h (New York) » : du lundi au vendredi à 17:20 New York ;
+  rejeu de la séance 09:30 → 16:00 ; le vendredi, verdict et coaching. Réglages de l’EA verrouillés.
+- « Carnet NAS100 · coach, débrief du soir » : du lundi au vendredi à 17:41 New York.
+- « Carnet NAS100 · coach, bilan de la semaine » : dimanche 19:41 (Lubumbashi).
+- « Carnet NAS100 · valorisation du système » : samedi 13:47 (Lubumbashi), grille neuve.
+- Plans d’Asie, de Londres et pré-marché : supprimés.
 - Elles publient sur revnefty.store seulement, avec un jeton réservé aux plans. S’il est régénéré dans
-  Comptes › Connexions, il faut le remplacer dans les quatre tâches.
+  Comptes › Connexions, il faut le remplacer dans les six tâches.
