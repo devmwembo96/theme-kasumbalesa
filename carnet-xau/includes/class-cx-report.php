@@ -380,7 +380,7 @@ class CX_Report {
 		$o      = '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">';
 		$o     .= '<title>Rapport ' . esc_html( $d['week'] ) . ' · ' . esc_html( $d['account']['name'] ) . '</title><style>' . self::css() . '</style></head><body><main>';
 		$o     .= '<div class="bar no-print"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button><span>Dans la fenêtre d’impression, choisissez « Enregistrer au format PDF ».</span></div>';
-		$o     .= '<header><div class="brand">Carnet XAU</div><h1>Rapport de la semaine ' . esc_html( self::period( $d ) ) . '</h1>';
+		$o     .= '<header><div class="brand">Carnet NAS100</div><h1>Rapport de la semaine ' . esc_html( self::period( $d ) ) . '</h1>';
 		$o     .= '<p class="sub">' . esc_html( $d['account']['name'] . ' · ' . ( $status[ $d['account']['status'] ] ?? '' ) . ' · ' . self::nf( $d['account']['size'], 0 ) . ' $ · édité le ' . wp_date( 'j F Y à H:i', null, CX_Repo::tz() ) ) . '</p></header>';
 
 		// Résultats.
@@ -487,7 +487,7 @@ class CX_Report {
 				)
 			) . '</section>';
 		}
-		return $o . '<footer>Carnet XAU · rapport généré automatiquement · heures de Lubumbashi</footer></main></body></html>';
+		return $o . '<footer>Carnet NAS100 · rapport généré automatiquement · heures de Lubumbashi</footer></main></body></html>';
 	}
 
 	/**

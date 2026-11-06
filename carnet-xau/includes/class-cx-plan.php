@@ -93,7 +93,7 @@ class CX_Plan {
 			'day'    => self::DAYS,
 			'verdict' => array( 'bonne', 'partielle', 'mauvaise' ),
 			'status'  => array( 'maintenu', 'mis_a_jour' ),
-			'kind'    => array( 'asia', 'london', 'premarket', 'us' ),
+			'kind'    => array( 'us' ),
 			'istate'  => array( 'proposee', 'test', 'appliquee', 'abandonnee' ),
 			'decision' => array( 'achat', 'vente', 'deux_scenarios' ),
 		);
@@ -345,9 +345,8 @@ class CX_Plan {
 	}
 
 	/**
-	 * Analyse de séance (clé « session ») : plan de Londres (« london ») 1 h avant l'ouverture de
-	 * Londres, plan de New York (« us ») 1 h avant celle de New York ; « asia » et « premarket »
-	 * restent lisibles dans l'historique.
+	 * Analyse de séance (clé « session ») : plan de New York (« us ») 1 h 15 avant l'ouverture de la
+	 * séance du Nasdaq 100 (09:30 New York). C'est la seule séance tradée.
 	 *
 	 * @return array
 	 */
@@ -484,7 +483,7 @@ class CX_Plan {
 		}
 		$risk = abs( $e - $sl );
 		if ( $risk < CX_Live::STOP_MIN ) {
-			return 'Stop à ' . $usd( $risk ) . ' $ de l’entrée : moins que le spread de l’or (0,50 $ au moins).';
+			return 'Stop à ' . $usd( $risk ) . ' pts de l’entrée : moins que le plancher technique du NAS100 (' . CX_Market::pts( CX_Live::STOP_MIN ) . ' au moins, au-dessus du spread).';
 		}
 		$rr = abs( $tp - $e ) / $risk;
 		if ( $rr < 2 ) {
@@ -516,13 +515,15 @@ class CX_Plan {
 			if ( ! $zone ) {
 				return 'Zone ' . $p['zone_id'] . ' absente des structures actives (B/structures).';
 			}
-			if ( $e < $zone['bas'] - 0.5 || $e > $zone['haut'] + 0.5 ) {
+			// Tolérance : 0,01 % du prix (2 pts au moins sur le NAS100).
+			$tol = max( 2.0, 0.0001 * $e );
+			if ( $e < $zone['bas'] - $tol || $e > $zone['haut'] + $tol ) {
 				return 'Entrée hors de la zone ' . $usd( $zone['bas'] ) . '–' . $usd( $zone['haut'] ) . '.';
 			}
 			// Entrée au bord par lequel le prix arrive (premier tiers de la zone) : une entrée au fond de la
-			// zone n'est presque jamais déclenchée (audit du 05/11 : 10 fiches manquées, de 1 à 26 $).
+			// zone n'est presque jamais déclenchée (audit du 05/11 : 10 fiches manquées sur l'or).
 			$third = ( $zone['haut'] - $zone['bas'] ) / 3;
-			if ( $buy ? $e < $zone['haut'] - $third - 0.5 : $e > $zone['bas'] + $third + 0.5 ) {
+			if ( $buy ? $e < $zone['haut'] - $third - $tol : $e > $zone['bas'] + $third + $tol ) {
 				return 'Entrée trop au fond de la zone ' . $usd( $zone['bas'] ) . '–' . $usd( $zone['haut'] ) . ' : la placer dans le premier tiers, côté prix (' . ( $buy ? 'au-dessus de ' . $usd( $zone['haut'] - $third ) : 'en dessous de ' . $usd( $zone['bas'] + $third ) ) . ').';
 			}
 			if ( $buy ? $sl >= $zone['bas'] : $sl <= $zone['haut'] ) {
@@ -602,7 +603,7 @@ class CX_Plan {
 		}
 		$session = isset( $in['session'] ) ? self::prepare_session( $in['session'] ) : null;
 		if ( isset( $in['session'] ) && ( '' === $session['date'] || '' === $session['kind'] ) ) {
-			return CX_Repo::invalid( 'Séance : « date » (AAAA-MM-JJ) et « kind » (london ou us) obligatoires.' );
+			return CX_Repo::invalid( 'Séance : « date » (AAAA-MM-JJ) et « kind » (us) obligatoires.' );
 		}
 		if ( $session ) {
 			// Une analyse par séance et par jour ; les 15 dernières journées sont gardées.

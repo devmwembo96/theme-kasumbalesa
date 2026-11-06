@@ -1,9 +1,9 @@
-=== Carnet XAU ===
+=== Carnet NAS100 ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.41.0
+Stable tag: 3.0.0
 
-Carnet de trading XAUUSD pour les challenges de prop firm : calcul du jour, plan
+Carnet de trading Nasdaq 100 (NAS100), séance de New York, pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
 journal des alertes TradingView, alertes Telegram.
 
@@ -11,7 +11,7 @@ journal des alertes TradingView, alertes Telegram.
 
 1. Extensions › Ajouter › Téléverser une extension : envoyer carnet-xau.zip, puis activer.
 2. L’activation crée les tables {prefix}cx_accounts, cx_trades, cx_plans, cx_payouts,
-   un premier compte (FundedNext Stellar 2-Step, 6 000 $) et la page « Carnet XAU »
+   un premier compte (FundedNext Stellar 2-Step, 6 000 $) et la page « Carnet NAS100 »
    (adresse /carnet-xau/), avec le modèle « Pleine largeur » du thème s’il existe.
 3. Ouvrir /carnet-xau/ (pas besoin d’être connecté). Sur téléphone : « Ajouter à l’écran d’accueil ».
    Nom, couleurs et icônes de l’application installée : filtre cx_app_identity (thème).
@@ -34,11 +34,37 @@ journal des alertes TradingView, alertes Telegram.
   DONOTCACHEPAGE ; son CSS et son JS sont insérés dans la page, car le cache du serveur LWS
   sert d’anciennes copies des fichiers statiques. Chaque mise à jour vide la copie en cache.
 
+== Version 3.0.0 : Nasdaq 100 (06/11/2026) ==
+
+Le carnet ne suit plus l'or : tout est conçu pour le Nasdaq 100 (CFD NAS100 ; US100, USTEC, NDX ou NQ
+selon le courtier), séance de New York seulement (09:30 → 16:00 New York).
+* Instrument : includes/class-cx-market.php (nom, symboles acceptés, séance, stop minimum 2 pts, début
+  de l'ère NAS100). Les prix, stops et distances sont en points d'indice (pts).
+* Valeur d'un point par lot : lue chez le courtier par l'EA (ligne SPEC des bougies : tick_value ÷
+  tick_size) et écrite dans le réglage « contract » du compte ; le lot du carnet, de Telegram et de
+  l'EA en découle.
+* Bougies : l'EA Carnet NAS100 envoie SPEC puis « ut|heure|o|h|l|c|volume de ticks ». Un EA sans SPEC
+  (ancien EA de l'or) ou un autre symbole est refusé (422).
+* Structures (GET /structures) : niveaux de nuit (18:00 → 09:30, ONH/ONL), séance de New York (RTH),
+  initial balance (09:30 → 10:30), jour et semaine ; bloc « new_york » : VWAP de la séance, veille
+  (haut, bas, clôture, POC, zone de valeur 70 %), gap d'ouverture, IB, 30 premières minutes. Faits
+  seulement, aucun filtre bloquant.
+* Une seule analyse de séance : le plan de New York (« us »). Asie, Londres et pré-marché supprimés.
+* Statistiques par séance (GET /edge) : ny, apres (16:00 → 18:00), nuit ; journal par tranche de la
+  séance de New York (IB, matin, midi, dernière heure).
+* Tolérances (zones, niveaux, rejeu) relatives au prix ou à l'ATR, plus de seuils en dollars de l'or.
+* Données de l'or archivées, rien d'effacé : plans de Claude déplacés (account_id 999999999), options
+  renommées *_xau (bougies, coach, playbook des annonces, valorisation, suivi 3R), signaux de l'or
+  en cours clos (« inconnu »). Trades et comptes gardés ; statistiques et listes filtrées sur l'ère NAS100.
+* EA Carnet NAS100 3.00 et Calculateur NAS100 5.00 (assets/mt5/).
+Les sections qui suivent décrivent l'histoire du carnet (ère de l'or) ; ce qui y touche à l'or ne
+s'applique plus.
+
 == Version 2 : connexions (onglet Comptes › Connexions) ==
 
 MT5
 * Bouton « Clé MT5 » sur la carte du compte : une clé secrète par compte (affichée une fois).
-* EA : assets/mt5/CarnetXAU.mq5.txt, téléchargeable depuis l’onglet Comptes (/?cx_pwa=ea). Lecture seule, n’ouvre
+* EA : assets/mt5/CarnetNAS100.mq5.txt, téléchargeable depuis l’onglet Comptes (/?cx_pwa=ea). Lecture seule, n’ouvre
   aucun ordre. Envoie POST /wp-json/carnet-xau/v1/mt5 avec l’en-tête X-CX-Key :
   positions fermées (sorties partielles additionnées, stop = SL de l’ordre d’entrée,
   heures en UTC) et, chaque minute, solde, équité et perte du jour.
@@ -316,7 +342,9 @@ includes/class-cx-plan.php     Plan élargi rédigé par Claude : format, public
 includes/class-cx-live.php     Plan pour l’EA, événements et signaux, bougies du courtier
 includes/class-cx-calendar.php Calendrier économique (ForexFactory)
 includes/class-cx-report.php   Rapport hebdomadaire, page imprimable, envoi du samedi
-assets/mt5/CarnetXAU.mq5.txt   EA MetaTrader 5
+assets/mt5/CarnetNAS100.mq5.txt      EA MetaTrader 5 (Carnet NAS100 3.00)
+assets/mt5/CalculateurNAS100.mq5.txt  Calculateur de position (5.00)
+includes/class-cx-market.php          Instrument : NAS100, séance de New York, valeur du point, ère NAS100
 templates/app.php              Balisage des onglets
 assets/                        CSS, JS, service worker, icônes
 docs/                          Brief et prototype de référence

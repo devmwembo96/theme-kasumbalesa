@@ -13,10 +13,14 @@
  * - order block : dernière bougie opposée (10 bougies au plus) avant un BOS/CHoCH accompagné d'un
  *   déplacement ; zone open–low (achat) ou high–open (vente) ; mitigé, invalidé -> breaker, expiré ;
  * - EQH / EQL : deux pivots à 0,1 ATR près, 5 bougies d'écart au moins, rien entre eux au-delà ;
- * - sweep : mèche au-delà d'un niveau (pivot, égaux, PDH/PDL, Asie) puis clôture de retour en 3 bougies,
+ * - sweep : mèche au-delà d'un niveau (pivot, égaux, PDH/PDL, haut/bas de la nuit, de la séance de New York
+ *   de la veille) puis clôture de retour en 3 bougies,
  *   pénétration >= 0,05 ATR et < 1 ATR ; sinon « cassure » ;
- * - niveaux de séance : Asie (18:00 New York → 07:00 Londres), Londres (07:00 Londres → 08:15 New York),
- *   jour serveur (PDH/PDL, calé sur les bougies D1 du courtier), semaine (PWH/PWL) ;
+ * - niveaux de séance du Nasdaq 100 (heure de New York) : nuit (18:00 → 09:30, ONH/ONL), séance de New York
+ *   (RTH 09:30 → 16:00 : haut, bas), initial balance (IB 09:30 → 10:30), jour serveur (PDH/PDL, calé sur les
+ *   bougies D1 du courtier), semaine (PWH/PWL) ;
+ * - séance de New York (bloc « new_york ») : VWAP de la séance en cours, clôture et profil de volume (POC, zone
+ *   de valeur 70 %) de la séance de la veille, gap d'ouverture, IB, haut et bas de la nuit ;
  * - premium / discount : position du prix dans le dernier range de swing H4 et dans la veille.
  * ATR de Wilder (14) connu à l'ouverture de la bougie. Seules les bougies CLOSES servent ; la bougie en
  * cours est rendue à part (`forming`). Chaque objet a un identifiant stable « UT:type:heure d'origine ».
@@ -639,15 +643,16 @@ class CX_Structure {
 		if ( $sec <= 3600 && $b ) {
 			list( $dw, $ww ) = self::day_windows( $b );
 			$ses = array_merge(
-				self::window_levels( $b, self::windows( $b, '18:00', 'America/New_York', '07:00', 'Europe/London' ), 'asie' ),
-				self::window_levels( $b, self::windows( $b, '07:00', 'Europe/London', '08:15', 'America/New_York' ), 'londres' ),
+				self::window_levels( $b, self::windows( $b, '18:00', 'America/New_York', CX_Market::RTH_OPEN, 'America/New_York' ), 'nuit' ),
+				self::window_levels( $b, self::windows( $b, CX_Market::RTH_OPEN, 'America/New_York', CX_Market::RTH_CLOSE, 'America/New_York' ), 'rth' ),
+				self::window_levels( $b, self::windows( $b, CX_Market::RTH_OPEN, 'America/New_York', '10:30', 'America/New_York' ), 'ib' ),
 				self::window_levels( $b, $dw, 'jour' ),
 				self::window_levels( $b, $ww, 'semaine' )
 			);
 		}
-		// Niveaux de liquidité balayables : pivots, égaux, haut/bas du jour et de l'Asie.
+		// Niveaux de liquidité balayables : pivots, égaux, haut/bas du jour, de la nuit et de la séance de New York.
 		$levels = array();
-		foreach ( array_merge( $piv, $eq, array_filter( $ses, fn( $e ) => preg_match( '/^(jour|asie)_/', $e['type'] ) ) ) as $e ) {
+		foreach ( array_merge( $piv, $eq, array_filter( $ses, fn( $e ) => preg_match( '/^(jour|nuit|rth)_/', $e['type'] ) ) ) as $e ) {
 			$levels[] = array(
 				'price'     => $e['price'],
 				'side'      => $e['dir'],
@@ -686,7 +691,7 @@ class CX_Structure {
 			'id'      => $tf . ':' . $e['type'] . ':' . $e['t_origin'],
 			'type'    => $e['type'],
 			// Niveaux (pivots, égaux, séances) : côté haut ou bas ; autres objets : sens haussier ou baissier.
-			'sens'    => preg_match( '/^(pivot|egaux|asie|londres|jour|semaine)/', $e['type'] ) ? ( 1 === $e['dir'] ? 'haut' : 'bas' ) : ( 1 === $e['dir'] ? 'haussier' : ( -1 === $e['dir'] ? 'baissier' : 'neutre' ) ),
+			'sens'    => preg_match( '/^(pivot|egaux|nuit|rth|ib|jour|semaine)/', $e['type'] ) ? ( 1 === $e['dir'] ? 'haut' : 'bas' ) : ( 1 === $e['dir'] ? 'haussier' : ( -1 === $e['dir'] ? 'baissier' : 'neutre' ) ),
 			'prix'    => $e['price'],
 			'haut'    => $e['top'],
 			'bas'     => $e['bottom'],
@@ -843,7 +848,7 @@ class CX_Structure {
 		$age = time() - $now;
 		$out = array(
 			'ok'       => true,
-			'symbole'  => 'XAUUSD',
+			'symbole'  => CX_Market::NAME,
 			'compte'   => $data['account'] ?? '',
 			'courtier' => $data['firm'] ?? '',
 			'donnees'  => array(
@@ -853,10 +858,152 @@ class CX_Structure {
 			),
 			'prix'     => $price,
 			'premium_discount' => $pd,
+			'new_york' => self::new_york( (array) ( $data['tf']['M5'] ?? array() ), $now ),
 			'ut'       => $tfs,
 			'regles'   => 'Objets calculés sur bougies closes seulement. BOS/CHoCH = clôture au-delà du dernier pivot confirmé (une mèche ne suffit pas). Pivot connu k=2 bougies après son sommet. Heures de Lubumbashi. Citer les objets par leur id.',
 		);
 		set_transient( $key, $out, HOUR_IN_SECONDS );
+		return $out;
+	}
+
+	/**
+	 * Séance de New York du Nasdaq 100 (bougies M5 closes, volume de ticks si l'EA l'envoie) : VWAP de la
+	 * séance en cours (ou de la dernière), séance de la veille (haut, bas, clôture, POC et zone de valeur
+	 * 70 %), nuit (ONH/ONL), gap d'ouverture et initial balance (09:30 → 10:30). Faits, aucun filtre.
+	 *
+	 * @param array $rows Bougies M5 [[unix, o, h, l, c, volume?], …].
+	 * @param int   $now  Instant des données.
+	 * @return array
+	 */
+	public static function new_york( $rows, $now ) {
+		$ny   = new DateTimeZone( 'America/New_York' );
+		$days = array();
+		foreach ( $rows as $r ) {
+			$t = (int) $r[0];
+			if ( $t + 300 > $now ) {
+				continue;
+			}
+			$d  = ( new DateTimeImmutable( '@' . $t ) )->setTimezone( $ny );
+			$hm = (int) $d->format( 'Gi' );
+			// Nuit : 18:00 → 09:30, rattachée à la séance du lendemain matin.
+			$key = $hm >= 1800 ? $d->modify( '+1 day' )->format( 'Y-m-d' ) : $d->format( 'Y-m-d' );
+			$seg = $hm >= 930 && $hm < 1600 ? 'rth' : ( ( $hm >= 1800 || $hm < 930 ) ? 'nuit' : '' );
+			if ( '' === $seg ) {
+				continue;
+			}
+			$days[ $key ][ $seg ][] = array( $t, (float) $r[1], (float) $r[2], (float) $r[3], (float) $r[4], isset( $r[5] ) ? max( 0, (float) $r[5] ) : 0.0, $hm );
+		}
+		ksort( $days );
+		$rth = array_filter( $days, fn( $x ) => ! empty( $x['rth'] ) );
+		if ( ! $rth ) {
+			return array( 'note' => 'Pas encore de séance de New York dans les bougies M5.' );
+		}
+		$keys  = array_keys( $rth );
+		$cur   = end( $keys );
+		$today = ( new DateTimeImmutable( '@' . $now ) )->setTimezone( $ny )->format( 'Y-m-d' );
+		$hmnow = (int) ( new DateTimeImmutable( '@' . $now ) )->setTimezone( $ny )->format( 'Gi' );
+		$live  = $cur === $today && $hmnow >= 930 && $hmnow < 1600;
+		// Séance de la veille : celle d'avant aujourd'hui (la dernière, si aujourd'hui n'a pas encore ouvert).
+		$prev_k = $cur === $today ? ( $keys[ count( $keys ) - 2 ] ?? null ) : $cur;
+		$vol_ok = false;
+		$prof   = function ( $bars ) use ( &$vol_ok ) {
+			$hi = max( array_column( $bars, 2 ) );
+			$lo = min( array_column( $bars, 3 ) );
+			$out = array(
+				'haut'    => $hi,
+				'bas'     => $lo,
+				'cloture' => end( $bars )[4],
+				'ouverture' => $bars[0][1],
+			);
+			$vs = array_sum( array_column( $bars, 5 ) );
+			if ( $vs <= 0 || $hi <= $lo ) {
+				return $out;
+			}
+			$vol_ok = true;
+			// Profil de volume : 60 tranches, volume de chaque bougie réparti sur son étendue.
+			$n   = 60;
+			$w   = ( $hi - $lo ) / $n;
+			$bin = array_fill( 0, $n, 0.0 );
+			foreach ( $bars as $b ) {
+				$a = max( 0, min( $n - 1, (int) floor( ( $b[3] - $lo ) / $w ) ) );
+				$z = max( 0, min( $n - 1, (int) floor( ( $b[2] - $lo ) / $w ) ) );
+				for ( $i = $a; $i <= $z; $i++ ) {
+					$bin[ $i ] += $b[5] / ( $z - $a + 1 );
+				}
+			}
+			$poc = array_keys( $bin, max( $bin ) )[0];
+			$lo_i = $poc;
+			$hi_i = $poc;
+			$acc  = $bin[ $poc ];
+			while ( $acc < 0.7 * $vs && ( $lo_i > 0 || $hi_i < $n - 1 ) ) {
+				$up = $hi_i < $n - 1 ? $bin[ $hi_i + 1 ] : -1;
+				$dn = $lo_i > 0 ? $bin[ $lo_i - 1 ] : -1;
+				if ( $up >= $dn ) {
+					$acc += $bin[ ++$hi_i ];
+				} else {
+					$acc += $bin[ --$lo_i ];
+				}
+			}
+			$out['poc'] = round( $lo + ( $poc + 0.5 ) * $w, 2 );
+			$out['vah'] = round( $lo + ( $hi_i + 1 ) * $w, 2 );
+			$out['val'] = round( $lo + $lo_i * $w, 2 );
+			return $out;
+		};
+		$out = array( 'heure_ny' => ( new DateTimeImmutable( '@' . $now ) )->setTimezone( $ny )->format( 'H:i' ), 'seance_ouverte' => $live );
+		if ( $prev_k && ! empty( $rth[ $prev_k ]['rth'] ) ) {
+			$out['veille'] = array( 'date' => $prev_k ) + $prof( $rth[ $prev_k ]['rth'] );
+		}
+		$night = $days[ $today ]['nuit'] ?? ( $days[ $cur ]['nuit'] ?? array() );
+		if ( $night ) {
+			$out['nuit'] = array(
+				'haut' => max( array_column( $night, 2 ) ),
+				'bas'  => min( array_column( $night, 3 ) ),
+			);
+		}
+		$sess = ( $cur === $today ) ? $rth[ $cur ]['rth'] : array();
+		if ( $sess ) {
+			$open = $sess[0][1];
+			$out['ouverture_0930'] = $open;
+			if ( isset( $out['veille']['cloture'] ) ) {
+				$g  = $open - $out['veille']['cloture'];
+				$va = isset( $out['veille']['vah'] ) ? ( $open > $out['veille']['vah'] ? 'au-dessus de la zone de valeur' : ( $open < $out['veille']['val'] ? 'sous la zone de valeur' : 'dans la zone de valeur' ) ) : null;
+				$out['gap'] = array(
+					'points'   => round( $g, 2 ),
+					'pct'      => round( 100 * $g / $out['veille']['cloture'], 2 ),
+					'position' => $va ?? ( $open > $out['veille']['haut'] ? 'au-dessus du haut de la veille' : ( $open < $out['veille']['bas'] ? 'sous le bas de la veille' : 'dans le range de la veille' ) ),
+				);
+			}
+			$ib = array_values( array_filter( $sess, fn( $b ) => $b[6] < 1030 ) );
+			if ( $ib ) {
+				$out['ib'] = array(
+					'haut'   => max( array_column( $ib, 2 ) ),
+					'bas'    => min( array_column( $ib, 3 ) ),
+					'complet' => end( $sess )[6] >= 1025,
+				);
+			}
+			// VWAP de la séance (prix typique pondéré par le volume de ticks).
+			$pv = 0.0;
+			$v  = 0.0;
+			foreach ( $sess as $b ) {
+				$pv += ( $b[2] + $b[3] + $b[4] ) / 3 * $b[5];
+				$v  += $b[5];
+			}
+			$last = end( $sess )[4];
+			if ( $v > 0 ) {
+				$vw          = $pv / $v;
+				$out['vwap'] = array(
+					'prix'   => round( $vw, 2 ),
+					'ecart'  => round( $last - $vw, 2 ),
+					'cote'   => $last >= $vw ? 'prix au-dessus' : 'prix en dessous',
+				);
+			}
+			$f30 = array_values( array_filter( $sess, fn( $b ) => $b[6] < 1000 ) );
+			if ( $f30 && end( $sess )[6] >= 955 ) {
+				$out['premieres_30_min'] = array( 'mouvement' => round( end( $f30 )[4] - $open, 2 ), 'sens' => end( $f30 )[4] >= $open ? 'hausse' : 'baisse' );
+			}
+		}
+		$out['volume'] = $vol_ok || isset( $out['vwap'] ) ? 'volume de ticks du courtier' : 'absent (EA sans volume) : VWAP et profil indisponibles';
+		$out['note']   = 'Heures de New York. Séance du Nasdaq 100 09:30 → 16:00 ; nuit 18:00 → 09:30 ; IB 09:30 → 10:30. Faits seulement : aucun n’interdit un trade.';
 		return $out;
 	}
 
@@ -877,7 +1024,7 @@ class CX_Structure {
 		$ses  = array_values( array_filter( (array) ( $p['content']['sessions'] ?? array() ), fn( $x ) => $x['date'] === $day && ! empty( $x['decision'] ) ) );
 		if ( $ses ) {
 			$s    = end( $ses );
-			$name = 'us' === $s['kind'] ? 'New York' : 'Londres';
+			$name = 'New York';
 			if ( 'deux_scenarios' === $s['decision'] ) {
 				$out[] = ( $s['lean'] === $want ? '✅' : '➖' ) . ' Plan de ' . $name . ' : deux scénarios, ' . ( $s['lean'] ? ( 'achat' === $s['lean'] ? 'achat privilégié' : 'vente privilégiée' ) : 'aucun privilégié' );
 			} else {
@@ -891,9 +1038,11 @@ class CX_Structure {
 		$zone = null;
 		// La zone la plus fine d'abord (M5, puis M15, H1, H4).
 		foreach ( array( 'M5', 'M15', 'H1', 'H4' ) as $tf ) {
+			// Tolérance : 0,1 × ATR de l'UT (points d'indice).
+			$tol = 0.1 * (float) ( $snap['ut'][ $tf ]['atr'] ?? 0 );
 			foreach ( array( 'ob' => 'OB', 'fvg' => 'FVG', 'ifvg' => 'iFVG', 'breakers' => 'Breaker' ) as $k => $lab ) {
 				foreach ( (array) ( $snap['ut'][ $tf ][ $k ] ?? array() ) as $z ) {
-					if ( null === $zone && $entry >= $z['bas'] - 0.5 && $entry <= $z['haut'] + 0.5 && ( $buy ? 'haussier' : 'baissier' ) === $z['sens'] ) {
+					if ( null === $zone && $entry >= $z['bas'] - $tol && $entry <= $z['haut'] + $tol && ( $buy ? 'haussier' : 'baissier' ) === $z['sens'] ) {
 						$zone = $lab . ' ' . $tf . ' ' . number_format( $z['bas'], 2, ',', ' ' ) . '–' . number_format( $z['haut'], 2, ',', ' ' );
 					}
 				}

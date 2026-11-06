@@ -149,7 +149,7 @@ class CX_Value {
 	private static function message( $n ) {
 		$bul  = fn( $l ) => implode( "\n", array_map( fn( $x ) => '• ' . esc_html( $x ), $l ) );
 		$when = wp_date( 'd/m', strtotime( $n['date'] . ' 12:00' ), CX_Repo::tz() );
-		$text = '🏆 <b>Système Carnet XAU : ' . $n['score'] . '/100</b> (' . $when . ")\nObjectif 70 atteint : voici le rapport.\n\n<b>Grille</b>\n"
+		$text = '🏆 <b>Système Carnet NAS100 : ' . $n['score'] . '/100</b> (' . $when . ")\nObjectif 70 atteint : voici le rapport.\n\n<b>Grille</b>\n"
 			. implode( "\n", array_map( fn( $c ) => '• ' . esc_html( $c['label'] ) . ' : ' . $c['score'] . '/100 (poids ' . $c['weight'] . ' %)', $n['criteria'] ) );
 		if ( $n['value_usd']['high'] ) {
 			$text .= "\n\n<b>Valeur estimée</b>\n• " . number_format( $n['value_usd']['low'], 0, ',', ' ' ) . ' à ' . number_format( $n['value_usd']['high'], 0, ',', ' ' ) . ' $'

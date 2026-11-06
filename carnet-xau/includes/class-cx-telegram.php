@@ -39,7 +39,7 @@ class CX_Telegram {
 	public static function schedules( $s ) {
 		$s['cx_5min'] = array(
 			'interval' => 5 * MINUTE_IN_SECONDS,
-			'display'  => 'Toutes les 5 minutes (Carnet XAU)',
+			'display'  => 'Toutes les 5 minutes (Carnet NAS100)',
 		);
 		return $s;
 	}
@@ -152,7 +152,7 @@ class CX_Telegram {
 	}
 
 	/**
-	 * Espace des milliers insécable : « 4 044,70 » n'est jamais coupé en fin de ligne sur le téléphone.
+	 * Espace des milliers insécable : « 21 044,70 » n’est jamais coupé en fin de ligne sur le téléphone.
 	 *
 	 * @param string $s Texte.
 	 * @return string
@@ -210,10 +210,7 @@ class CX_Telegram {
 	 */
 	public static function chart_caption( $s ) {
 		$t = array(
-			'asia'      => '🌏 <b>Session Asie</b>',
-			'london'    => '🇬🇧 <b>Plan de Londres</b>',
-			'premarket' => '🧭 <b>Pré-marché US</b>',
-			'us'        => '🇺🇸 <b>Plan de New York</b>',
+			'us' => '🇺🇸 <b>Plan de New York · NAS100</b>',
 		)[ $s['kind'] ] ?? '<b>Séance</b>';
 		$l = array( $t . ' — graphique' );
 		if ( ! empty( $s['bias'] ) ) {
@@ -241,7 +238,8 @@ class CX_Telegram {
 	}
 
 	/**
-	 * Risque par trade du compte actif, calculé comme dans l'onglet Jour, avec le contrat et la commission.
+	 * Risque par trade du compte actif, calculé comme dans l'onglet Jour, avec la valeur d'un point par lot
+	 * (lue chez le courtier par l'EA, sinon le réglage du compte) et la commission.
 	 *
 	 * @return array {risk, contract, commission}
 	 */
@@ -250,7 +248,7 @@ class CX_Telegram {
 		if ( ! $a ) {
 			return array(
 				'risk'       => 0.0,
-				'contract'   => 100.0,
+				'contract'   => CX_Market::point_value( 0, 1.0 ),
 				'commission' => 0.0,
 			);
 		}
@@ -261,7 +259,7 @@ class CX_Telegram {
 			: CX_Repo::prop_limits( $a, $snap )['risk'];
 		return array(
 			'risk'       => (float) $risk,
-			'contract'   => max( 1.0, (float) $pa['contract'] ),
+			'contract'   => CX_Market::point_value( (int) $a['id'], (float) $pa['contract'] ),
 			'commission' => (float) ( $pa['commission'] ?? 0 ),
 		);
 	}
@@ -515,7 +513,7 @@ class CX_Telegram {
 				$c['chat'] = $chat;
 				$c['code'] = '';
 				CX_Guard::set( 'telegram', $c );
-				self::send( "✅ <b>Carnet XAU</b> est relié à ce chat.\n\n" . self::help(), true );
+				self::send( "✅ <b>Carnet NAS100</b> est relié à ce chat.\n\n" . self::help(), true );
 			}
 			return $ok;
 		}
@@ -562,7 +560,7 @@ class CX_Telegram {
 			$c['channel']       = $id;
 			$c['channel_title'] = $title;
 			CX_Guard::set( 'telegram', $c );
-			self::post( $id, '📣 Cette chaîne recevra désormais les messages du <b>Carnet XAU</b> : plan de la semaine, relectures, annonces, signaux et rapports.' );
+			self::post( $id, '📣 Cette chaîne recevra désormais les messages du <b>Carnet NAS100</b> : plan de la semaine, relectures, annonces, signaux et rapports.' );
 			self::post( $c['chat'], sprintf( '✅ Chaîne « %s » reliée : tous les messages du carnet y sont aussi publiés. Vos commandes (/jour, /plan, /rapport) restent ici.', esc_html( $title ) ) );
 		} elseif ( (string) ( $c['channel'] ?? '' ) === $id && ! $admin ) {
 			unset( $c['channel'], $c['channel_title'] );
@@ -901,8 +899,7 @@ class CX_Telegram {
 	public static function card_results( $c, $date ) {
 		$out  = array();
 		$name = array(
-			'london' => '🇬🇧 Londres',
-			'us'     => '🇺🇸 New York',
+			'us' => '🇺🇸 New York',
 		);
 		foreach ( (array) ( $c['sessions'] ?? array() ) as $s ) {
 			if ( $s['date'] !== $date || empty( $s['cards'] ) ) {
@@ -942,7 +939,7 @@ class CX_Telegram {
 	}
 
 	/**
-	 * Analyse de séance (plan de Londres, plan de New York), envoyée dès sa publication.
+	 * Analyse de séance (plan de New York du Nasdaq 100), envoyée dès sa publication.
 	 *
 	 * @param array $s Séance.
 	 * @return string
@@ -950,10 +947,7 @@ class CX_Telegram {
 	public static function session_summary( $s ) {
 		$e     = fn( $v ) => esc_html( (string) $v );
 		$title = array(
-			'asia'      => '🌏 <b>Session Asie</b>',
-			'london'    => '🇬🇧 <b>Plan de Londres</b>',
-			'premarket' => '🧭 <b>Pré-marché US</b> (Asie et Londres)',
-			'us'        => '🇺🇸 <b>Plan de New York</b>',
+			'us' => '🇺🇸 <b>Plan de New York · NAS100</b>',
 		)[ $s['kind'] ] ?? '<b>Séance</b>';
 		$bias  = array(
 			'h' => 'haussier',

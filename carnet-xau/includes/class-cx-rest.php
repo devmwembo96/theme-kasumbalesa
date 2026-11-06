@@ -362,7 +362,7 @@ class CX_Rest {
 			'file',
 			0,
 			array(
-				'post_title'  => 'Capture Carnet XAU',
+				'post_title'  => 'Capture Carnet NAS100',
 				// Statut privé : hors des listes publiques (REST, pages de fichier, plans du site).
 				'post_status' => 'private',
 			),
@@ -541,7 +541,7 @@ class CX_Rest {
 
 	/** @return WP_REST_Response|WP_Error */
 	public static function tg_test() {
-		$r = CX_Telegram::send( "🔔 Message de test du <b>Carnet XAU</b>.
+		$r = CX_Telegram::send( "🔔 Message de test du <b>Carnet NAS100</b>.
 
 " . CX_Telegram::day_summary() );
 		if ( is_wp_error( $r ) ) {

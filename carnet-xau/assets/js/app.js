@@ -1,4 +1,4 @@
-/* Carnet XAU — interface reprise du prototype carnet-xau.html.
+/* Carnet NAS100 — interface reprise du prototype carnet-xau.html.
  * La couche de stockage passe par l'API REST du plugin (nonce wp_rest) ; seuls les champs
  * du ticket du jour restent dans le navigateur, comme confort de saisie. */
 (function(){
@@ -17,7 +17,7 @@ const dateStr=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const todayStr=()=>dateStr(new Date());
 const nowTime=()=>{const d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes())};
 function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("on"),2600)}
-// Espace des milliers insécable (« 4 044,70 » jamais coupé en fin de ligne sur téléphone).
+// Espace des milliers insécable (« 21 044,70 » jamais coupé en fin de ligne sur téléphone).
 const nb=s=>typeof s==="string"?s.replace(/(\d)[  ](?=\d{3}(?!\d))/g,"$1 "):s;
 function el(tag,attrs,...kids){const e=document.createElement(tag);for(const k in (attrs||{})){if(k==="class")e.className=attrs[k];else if(k==="text")e.textContent=nb(attrs[k]);else e.setAttribute(k,attrs[k])}kids.forEach(c=>c!=null&&e.append(nb(c)));return e}
 const errMsg=e=>(e&&e.message)||"erreur";
@@ -199,7 +199,7 @@ function currentCapital(){const sn=ACTIVE&&SNAPS[ACTIVE.id];if(sn)return sn.equi
 const lotCost=(stop,p)=>stop*p.contract+(num(p.commission)||0);
 // Jours tradés de l'étape : un jour compte dès qu'il porte un trade, aujourd'hui compris.
 function tradedDays(){const from=ACTIVE.phaseStart||"0000-00-00";return new Set(accTrades(ACTIVE.id).filter(x=>x.date>=from).map(x=>x.date))}
-// Risque du palier (fonds propres), comme le Calculateur XAU : départ ÷ N jusqu'à 500 $, puis 4, 2 et 1 %.
+// Risque du palier (fonds propres), comme le Calculateur NAS100 : départ ÷ N jusqu'à 500 $, puis 4, 2 et 1 %.
 function ownRisk(cap,p){
   if(cap<500)return{risk:Math.min(cap,p.start)/Math.max(1,p.budget),tier:1};
   if(cap<1000)return{risk:cap*0.04,tier:2};
@@ -280,11 +280,11 @@ function calc(){
   $("#ticket-out").replaceChildren(...cells);
   DAY_RISK=risk;
   renderToday();
-  // Lot rapide : le seul calcul à saisir (le Calculateur XAU le fait dans MT5).
+  // Lot rapide : le seul calcul à saisir (le Calculateur NAS100 le fait dans MT5).
   const stop=num(QUICK_STOP), q=$("#quick-out");CALC={lot:NaN,stop:NaN};
   if(Number.isFinite(stop)&&stop>0&&risk>0){
     const lot=Math.floor(risk/lotCost(stop,p)*100+1e-9)/100;CALC={lot,stop};
-    q.replaceChildren(el("b",{text:fmt(lot,2)+" lot"}),document.createTextNode(" · risque réel "+money2(lot*lotCost(stop,p))+((num(p.commission)||0)>0?" commission comprise":"")+" · 2R à "+fmt(stop*2,2)+" $ de mouvement"));
+    q.replaceChildren(el("b",{text:fmt(lot,2)+" lot"}),document.createTextNode(" · risque réel "+money2(lot*lotCost(stop,p))+((num(p.commission)||0)>0?" commission comprise":"")+" · 2R à "+fmt(stop*2,1)+" pts de mouvement"));
     if(lot<0.01)alerts.push(["stop","Stop trop large pour ce risque : le lot tombe sous 0,01."]);
   }else q.textContent="Risque "+money2(risk)+" par trade : saisissez la distance du stop pour le lot.";
   const box=$("#alerts");box.replaceChildren(...alerts.map(([c,t])=>el("div",{class:"alert "+c,text:t})));box.hidden=!alerts.length;
@@ -313,8 +313,8 @@ $("#btn-log").addEventListener("click",()=>{
 
 /* ---------- plan de la semaine (rédigé par Claude, en lecture seule) ---------- */
 const TREND_L={h:"Haussière",b:"Baissière",r:"Range"}, BIAS_L={h:"Haussier",b:"Baissier",n:"Neutre / range"};
-const EFFECT_L={up:"Soutient l’or",down:"Pèse sur l’or",neutral:"Neutre"}, PD_L={premium:"Premium",discount:"Discount",equilibre:"Équilibre"};
-const FUND_L={dxy:"Dollar (DXY)",rates:"Taux réels US",fed:"Attentes Fed",geo:"Géopolitique"};
+const EFFECT_L={up:"Soutient l’indice",down:"Pèse sur l’indice",neutral:"Neutre"}, PD_L={premium:"Premium",discount:"Discount",equilibre:"Équilibre"};
+const FUND_L={dxy:"Big Tech (résultats, Nvidia…)",rates:"Taux US 10 ans",fed:"Attentes Fed",geo:"Appétit pour le risque (VIX)"};
 const px=v=>v==null||v===""?"—":fmt(num(v),2);
 const todayFr=()=>new Date().toLocaleDateString("fr-FR",{weekday:"long"}).toLowerCase();
 function probBar(p){
@@ -466,10 +466,10 @@ function execCard(x,i){
   const ol=el("ol",{class:"xc-steps"});
   if(x.wait)ol.append(step("Attendre",x.wait));
   if(x.trigger)ol.append(step("Déclencheur",x.trigger));
-  ol.append(step("Ordre",(sell?"Vente ":"Achat ")+(en.range?"dans ":"")+en.txt+(Number.isFinite(sl)?" · stop "+px(sl)+(Number.isFinite(stop)&&!en.range?" ("+fmt(stop,2)+" $)":""):"")+(Number.isFinite(tp)?" · objectif "+px(tp)+(Number.isFinite(rr)?" ("+ap+fmt(rr,1)+"R)":""):""),"order"));
+  ol.append(step("Ordre",(sell?"Vente ":"Achat ")+(en.range?"dans ":"")+en.txt+(Number.isFinite(sl)?" · stop "+px(sl)+(Number.isFinite(stop)&&!en.range?" ("+fmt(stop,1)+" pts)":""):"")+(Number.isFinite(tp)?" · objectif "+px(tp)+(Number.isFinite(rr)?" ("+ap+fmt(rr,1)+"R)":""):""),"order"));
   const p=ACTIVE?ACTIVE.params:null;
   // Entrée en fourchette (scénario de la semaine) : l'ordre exact se décide au déclenchement.
-  if(p&&en.range)ol.append(step("Lot","Au déclenchement : stop derrière la mèche, "+(DAY_RISK>0?money2(DAY_RISK)+" de risque ; le Calculateur XAU donne le lot.":"mais une limite du jour est atteinte : pas de trade."),"lot"));
+  if(p&&en.range)ol.append(step("Lot","Au déclenchement : stop derrière la mèche, "+(DAY_RISK>0?money2(DAY_RISK)+" de risque ; le Calculateur NAS100 donne le lot.":"mais une limite du jour est atteinte : pas de trade."),"lot"));
   else if(p&&stop>0){
     let t;
     if(!(DAY_RISK>0))t="Pas de trade : une limite du jour est atteinte.";
@@ -481,7 +481,7 @@ function execCard(x,i){
 }
 const posCard=q=>({side:q.side,setup:q.setup,label:q.label,wait:q.wait,trigger:q.trigger,entry:num(q.entry),sl:q.sl,tp:q.tp,cancel:q.cancel});
 const scnCard=s=>({side:s.side,setup:s.setup,prob:s.prob,label:s.then,wait:s.if?"Si "+s.if:"",trigger:s.trigger,entry:s.entry,sl:s.sl,tp:s.tp,cancel:s.invalidation});
-const SES_K={asia:"Session Asie",london:"Plan de Londres",premarket:"Pré-marché US (Asie et Londres)",us:"Plan de New York"},SES_S={asia:"Asie",london:"Londres",premarket:"pré-marché",us:"New York"},SES_O={asia:0,london:1,premarket:2,us:3},SES_B={h:"haussier",b:"baissier",n:"neutre"};
+const SES_K={us:"Plan de New York · NAS100"},SES_S={us:"New York"},SES_O={us:3},SES_B={h:"haussier",b:"baissier",n:"neutre"};
 // Une analyse de séance : résumé, fiches à exécuter, consignes, ce qui annule ; le « pourquoi » est replié.
 function sessionBlock(x){
   const b=el("div",{class:"sess "+x.kind},el("div",{class:"row"},el("b",{text:SES_K[x.kind]||x.kind}),x.bias?el("span",{class:"bias "+x.bias,text:"biais "+SES_B[x.bias]}):null,x.at?el("span",{class:"k",text:"publiée à "+x.at.slice(11,16)}):null));
@@ -508,17 +508,17 @@ function scoreLine(sc){
   const BI={h:"haussier",b:"baissier",n:"neutre"};
   if(sc.ok==null)return el("p",{class:"score na",text:"Non notée : "+(sc.why||"données manquantes")+"."});
   return el("p",{class:"score "+(sc.ok?"ok":"ko")},el("b",{text:sc.ok?"✔ Biais juste":"✘ Biais faux"}),
-    document.createTextNode(" — jusqu’à "+sc.until+" : "+(sc.move>0?"+":"")+fmt(sc.move,2)+" $ ("+BI[sc.real]+", seuil ± "+fmt(sc.thr,2)+" $), de "+px(sc.from)+" à "+px(sc.to)+"."));
+    document.createTextNode(" — jusqu’à "+sc.until+" : "+(sc.move>0?"+":"")+fmt(sc.move,1)+" pts ("+BI[sc.real]+", seuil ± "+fmt(sc.thr,1)+" pts), de "+px(sc.from)+" à "+px(sc.to)+"."));
 }
 // Fiabilité de Claude : part des biais justes par séance, sur 12 semaines.
 async function scoreCard(){
   let d;try{d=await api("claude-score")}catch(e){return null}
-  const K={asia:"Session Asie",london:"Plan de Londres",premarket:"Pré-marché US",us:"Plan de New York"},rows=[];let n=0,ok=0;
-  for(const k of ["asia","london","premarket","us"]){const v=(d.kinds||{})[k];if(!v)continue;n+=v.n;ok+=v.ok;rows.push([K[k],String(v.n),String(v.ok),Math.round(100*v.ok/v.n)+" %"])}
+  const K={us:"Plan de New York"},rows=[];let n=0,ok=0;
+  for(const k of ["us"]){const v=(d.kinds||{})[k];if(!v)continue;n+=v.n;ok+=v.ok;rows.push([K[k],String(v.n),String(v.ok),Math.round(100*v.ok/v.n)+" %"])}
   if(n)rows.push([el("b",{text:"Total"}),String(n),String(ok),el("b",{text:Math.round(100*ok/n)+" %"})]);
   const pc=v=>v==null?"—":v+" %",ca=(d.cards||{}).all||{},zo=(d.zones||{}).all||{},sc=d.scenarios||{};
   const cardRow=(name,x)=>[name,String(x.published||0),String(x.triggered||0),String(x.tp||0),String(x.sl||0),x.triggered?(x.sum_r>0?"+":"")+fmt(x.sum_r,1)+"R":"—"];
-  const cr=[];for(const k of ["london","us"]){const x=((d.cards||{}).kinds||{})[k];if(x)cr.push(cardRow(K[k],x))}
+  const cr=[];for(const k of ["us"]){const x=((d.cards||{}).kinds||{})[k];if(x)cr.push(cardRow(K[k],x))}
   if(sc.published)cr.push(cardRow("Scénarios de la semaine",sc));
   const zr=Object.entries((d.zones||{}).kinds||{}).filter(([,x])=>x.n).map(([k,x])=>[k,String(x.n),String(x.reached),String(x.reacted),String(x.broken),pc(x.react_pc)]);
   const les=(d.lessons||[]);
@@ -531,7 +531,7 @@ async function scoreCard(){
     el("h4",{class:"sub",text:"Leçons apprises (8 cas au moins)"}),
     les.length?el("ul",null,...les.map(x=>el("li",{class:x.verdict==="eviter"?"ko":"ok",text:x.text}))):el("p",{class:"hint",text:"Pas encore assez de cas : une leçon apparaît dès 8 fiches ou 8 zones de la même famille."}),
     el("h4",{class:"sub",text:"Biais des analyses de séance"}),
-    n?table(["Analyse","Notées","Biais justes","Réussite"],rows):el("p",{class:"hint",text:"Pas encore d’analyse notée : chaque plan est noté par le carnet après sa séance (Londres à "+tzAt("America/New_York",8,15)+", New York à "+tzAt("America/New_York",16,0)+", heure de Lubumbashi)."}),
+    n?table(["Analyse","Notées","Biais justes","Réussite"],rows):el("p",{class:"hint",text:"Pas encore d’analyse notée : chaque plan de New York est noté par le carnet après la clôture de 16:00 New York ("+tzAt("America/New_York",16,0)+" à Lubumbashi)."}),
     el("p",{class:"hint",style:"margin-top:8px",text:"Biais : mouvement entre la publication et la fin de la séance visée. Au-delà de ± "+fmt(100*d.neutral,0)+" % de l’ATR journalier il est haussier ou baissier, sinon neutre. Zone : entrée au bord touché en premier, stop 1 $ derrière l’autre bord ; elle « réagit » si le prix fait 2R avant le stop."}));
 }
 function renderPlanView(p){
@@ -565,7 +565,7 @@ function renderPlanView(p){
     const kp=el("div",{class:"kpis",style:"margin:12px 0 0"});
     if(pr.invalidation!=null)kp.append(kv("Invalidation",px(pr.invalidation)));
     if(pr.range_low!=null||pr.range_high!=null)kp.append(kv("Range attendu",px(pr.range_low)+" – "+px(pr.range_high)));
-    if(refs.atr_d!=null)kp.append(kv("ATR journalier",px(refs.atr_d)+" $"));
+    if(refs.atr_d!=null)kp.append(kv("ATR journalier",px(refs.atr_d)+" pts"));
     if(kp.childNodes.length)h.append(kp);
     const day=(c.days||[]).find(d=>d.day===todayFr());
     if(day&&day.focus)h.append(el("p",{class:"today"},el("b",{text:"Aujourd’hui"+(day.bias?" ("+(BIAS_L[day.bias]||"").toLowerCase()+")":"")+" : "}),document.createTextNode(day.focus)));
@@ -651,7 +651,7 @@ function renderToday(){
     out.push(el("h3",{text:"À exécuter : plan de la semaine"}));
     if(day&&day.focus)out.push(el("p",{class:"lead"},el("b",{text:"Aujourd’hui : "}),document.createTextNode(day.focus)));
     if(sc.length)out.push(el("div",{class:"xcards"},...sc.map((x,i)=>execCard(scnCard(x),i))));
-    out.push(el("p",{class:"hint",style:"margin-top:8px",text:"Claude publie le plan de Londres vers "+tzAt("Europe/London",7,0)+" et le plan de New York vers "+tzAt("America/New_York",8,30)+" (heure de Lubumbashi), 1 h avant chaque ouverture : ils remplacent ces scénarios."}));
+    out.push(el("p",{class:"hint",style:"margin-top:8px",text:"Claude publie le plan de New York du NAS100 vers "+tzAt("America/New_York",8,15)+" (heure de Lubumbashi), 1 h 15 avant l’ouverture de 09:30 New York : il remplace ces scénarios."}));
   }
   box.replaceChildren(...out);
 }
@@ -692,7 +692,7 @@ function renderErrors(T){
 /* ---------- calendrier économique (ForexFactory, USD fort et moyen impact) ---------- */
 let CAL=null,CAL_SKEW=0;
 const CAL_TZ="Africa/Lubumbashi";
-// Heure de Lubumbashi (HH:MM) d’une heure locale de Londres ou de New York aujourd’hui, changements d’heure compris.
+// Heure de Lubumbashi (HH:MM) d’une heure locale de New York aujourd’hui, changements d’heure compris.
 const tzAt=(tz,h,m)=>{const now=new Date(),p={};new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now).forEach(x=>p[x.type]=+x.value);
   const off=Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute)-Math.floor(now.getTime()/60000)*60000;
   return new Date(Date.UTC(p.year,p.month-1,p.day,h,m)-off).toLocaleTimeString("fr-FR",{timeZone:CAL_TZ,hour:"2-digit",minute:"2-digit"})};
@@ -814,7 +814,7 @@ function renderTrades(){
     const d=new Date(t.date+"T00:00:00");
     const info=el("div",null,
       el("div",{class:"t1",text:(t.dir==="vente"?"Vente":"Achat")+" · "+(SETUP_L[t.setup]||"")+" · "+(t.level||"")}),
-      el("div",{class:"t2",text:d.toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"})+" "+(t.time||"")+(t.stop!=null?" · stop "+fmt(t.stop,2)+" $":"")+(t.lot!=null?" · "+fmt(t.lot,2)+" lot":"")+(t.pnl!=null?" · "+money2(t.pnl):"")}));
+      el("div",{class:"t2",text:d.toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"})+" "+(t.time||"")+(t.stop!=null?" · stop "+fmt(t.stop,1)+" pts":"")+(t.lot!=null?" · "+fmt(t.lot,2)+" lot":"")+(t.pnl!=null?" · "+money2(t.pnl):"")}));
     const tags=el("div",{style:"margin-top:3px"});
     if(!acc)tags.append(el("span",{class:"tag",text:accName(t.accountId)}));
     if(t.source==="mt5")tags.append(el("span",{class:"tag"+(t.toComplete?" bad":""),text:t.toComplete?"MT5 · à compléter":"MT5"}));
@@ -858,7 +858,12 @@ function bars(id,groups){
     return el("div",{class:"bar-row"},el("div",{text:g.label}),tr,el("div",{class:"n",text:fmt(a.wr*100,0)+" % · "+(a.avg>=0?"+":"−")+fmt(Math.abs(a.avg),2)+"R · "+a.n}));
   }));
 }
-function hourBucket(t){const h=parseInt((t.time||"").slice(0,2),10);if(!Number.isFinite(h))return "?";if(h<9)return "asie";if(h<14)return "londres";if(h<18)return "ny";return "soir"}
+// Tranche de la séance du Nasdaq 100 (heure de New York) d’un trade noté à l’heure de Lubumbashi.
+function hourBucket(t){if(!t.date||!/^\d\d:\d\d/.test(t.time||""))return "?";
+  const ms=Date.parse(t.date+"T"+t.time.slice(0,5)+":00+02:00");if(!Number.isFinite(ms))return "?";
+  const p={};new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date(ms)).forEach(x=>p[x.type]=+x.value);
+  const m=p.hour*60+p.minute;
+  if(m>=570&&m<630)return "ib";if(m>=630&&m<720)return "matin";if(m>=720&&m<900)return "midi";if(m>=900&&m<960)return "fin";if(m>=960&&m<1080)return "apres";return "nuit"}
 $("#sf-account").addEventListener("change",()=>{renderStats();mcNote();loadReport()});
 $("#detail-stats").addEventListener("toggle",e=>{if(e.target.open){loadReliability();loadClaudeSignals()}});
 function renderStats(){
@@ -881,7 +886,7 @@ function renderStats(){
   bars("#by-setup",[{label:"Setup 1",list:T.filter(t=>t.setup==="1")},{label:"Setup 2",list:T.filter(t=>t.setup==="2")},{label:"Setup 3 (iFVG)",list:T.filter(t=>t.setup==="3")},{label:"Hors setup",list:T.filter(t=>t.setup==="hors")}]);
   const lv=[...new Set(T.map(t=>t.level).filter(Boolean))];
   bars("#by-level",lv.map(l=>({label:l,list:T.filter(t=>t.level===l)})).sort((x,y)=>y.list.length-x.list.length));
-  bars("#by-hour",[["asie","Asie (0 h–9 h)"],["londres","Londres (9 h–14 h)"],["ny","New York (14 h–18 h)"],["soir","Soir (18 h–24 h)"]].map(([k,l])=>({label:l,list:T.filter(t=>hourBucket(t)===k)})));
+  bars("#by-hour",[["ib","Ouverture 09:30–10:30 NY (IB)"],["matin","Matin 10:30–12:00 NY"],["midi","Midi 12:00–15:00 NY"],["fin","Dernière heure 15:00–16:00 NY"],["apres","Après la clôture 16:00–18:00 NY"],["nuit","Nuit 18:00–09:30 NY"]].map(([k,l])=>({label:l,list:T.filter(t=>hourBucket(t)===k)})));
   const days=["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
   bars("#by-day",days.map((d,i)=>({label:d.charAt(0).toUpperCase()+d.slice(1),list:T.filter(t=>{if(!t.date)return false;const w=(new Date(t.date+"T00:00:00").getDay()+6)%7;return w===i})})));
   bars("#by-filter",[{label:"Sur niveau clé",list:T.filter(t=>t.onLevel)},{label:"Hors niveau",list:T.filter(t=>!t.onLevel)},{label:"Avec le biais",list:T.filter(t=>t.withBias)},{label:"Contre / sans biais",list:T.filter(t=>!t.withBias)}]);
@@ -1322,7 +1327,7 @@ async function start(){
   setActive();fillAccountSelects();resetTradeForm();resetPayoutForm();
   try{THIS_WEEK_PLAN=await api("plans/"+weekId(planWeek()))}catch(e){THIS_WEEK_PLAN=null}
   renderToday();loadPlan();renderTrades();calc();loadFeuSignals();setInterval(loadFeuSignals,120000);
-  // Les plans de séance arrivent dans la journée (06:45 à Londres, 08:15 à New York) : relecture toutes les 5 minutes.
+  // Le plan de New York arrive dans la journée (08:15 à New York) : relecture toutes les 5 minutes.
   setInterval(async()=>{if(document.hidden)return;try{THIS_WEEK_PLAN=await api("plans/"+weekId(planWeek()));renderToday();if(weekId(PLAN_WEEK)===weekId(planWeek())&&!$("#tab-plan").hidden)renderPlanView(THIS_WEEK_PLAN)}catch(e){}},300000);
   loadCalendar();
   lockReadOnly();

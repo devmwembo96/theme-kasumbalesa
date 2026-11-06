@@ -240,7 +240,7 @@ class CX_Repo {
 			'maxtrades' => array( 1, 100 ),
 			'maxloss'   => array( 1, 100 ),
 			'spreadmax' => array( 1, 100 ),
-			'contract'  => array( 1, 10000 ),
+			'contract'  => array( 0.0001, 100000 ),
 			'start'     => array( 1, 1e8 ),
 			'budget'    => array( 4, 100 ),
 			'floor'     => array( 0, 1e8 ),
@@ -280,7 +280,25 @@ class CX_Repo {
 	}
 
 	/**
-	 * Risque par trade d'un compte en fonds propres, comme le Calculateur XAU : capital de départ / N
+	 * Valeur d'un point d'indice par lot ($) donnée par le courtier (ligne SPEC de l'EA) : enregistrée
+	 * dans le réglage « contract » du compte, qui sert au calcul du lot.
+	 *
+	 * @param int   $id Compte.
+	 * @param float $pv Valeur d'un point par lot.
+	 */
+	public static function set_contract( $id, $pv ) {
+		global $wpdb;
+		$acc = self::account( (int) $id );
+		if ( ! $acc ) {
+			return;
+		}
+		$pa             = (array) $acc['params'];
+		$pa['contract'] = (float) $pv;
+		$wpdb->update( CX_Install::table( 'accounts' ), array( 'parametres' => wp_json_encode( $pa ) ), array( 'id' => (int) $id ) );
+	}
+
+	/**
+	 * Risque par trade d'un compte en fonds propres, comme le Calculateur NAS100 : capital de départ / N
 	 * jusqu'à 500 $ (capital / N s'il passe sous le départ), puis 4 %, 2 % et 1 %.
 	 *
 	 * @param float $cap Capital (solde du début de journée).

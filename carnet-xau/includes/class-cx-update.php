@@ -136,7 +136,7 @@ class CX_Update {
 				$u['state'] = 'installée';
 				$u['done']  = CX_Repo::clock();
 				update_option( self::OPT, $u, false );
-				CX_Telegram::send( '🔄 Carnet XAU mis à jour automatiquement en version ' . esc_html( CX_VERSION ) . '.', true );
+				CX_Telegram::send( '🔄 Carnet NAS100 mis à jour automatiquement en version ' . esc_html( CX_VERSION ) . '.', true );
 			}
 			return;
 		}
@@ -195,7 +195,7 @@ class CX_Update {
 		$u['state'] = 'échec : ' . $why;
 		update_option( self::OPT, $u, false );
 		if ( (int) $u['tries'] >= 3 ) {
-			CX_Telegram::send( '⚠️ Mise à jour automatique du Carnet XAU en ' . esc_html( $u['version'] ) . ' impossible : ' . esc_html( $why ) . '. À installer à la main.', true );
+			CX_Telegram::send( '⚠️ Mise à jour automatique du Carnet NAS100 en ' . esc_html( $u['version'] ) . ' impossible : ' . esc_html( $why ) . '. À installer à la main.', true );
 		}
 	}
 }

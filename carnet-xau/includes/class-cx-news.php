@@ -1,13 +1,13 @@
 <?php
 /**
- * Playbook des annonces : réaction de l'or à chaque annonce USD à fort impact, mesurée sur les
+ * Playbook des annonces : réaction du Nasdaq 100 à chaque annonce USD à fort impact, mesurée sur les
  * bougies du compte de référence (M1, sinon M5, sinon M15) puis gardée pour toujours (300 dernières).
- * Les plans de Londres et de New York lisent GET /news-playbook avant une annonce du jour.
+ * Le plan de New York lit GET /news-playbook avant une annonce du jour.
  *
- * Mesures, en dollars depuis l'ouverture de la bougie de l'annonce :
+ * Mesures, en points d'indice depuis l'ouverture de la bougie de l'annonce :
  * - up15 / down15 : plus haut et plus bas atteints dans les 15 premières minutes ;
  * - c15 / c60     : clôture à +15 et +60 min ;
- * - first         : sens de la première impulsion (celui des deux extrêmes atteint en premier) ;
+ * - first         : sens de la première impulsion (premier extrême à dépasser 0,05 % du prix, au moins 2 pts) ;
  * - reverse       : la clôture à +60 min est de l'autre côté de l'ouverture que la première impulsion.
  *
  * @package CarnetXAU
@@ -99,14 +99,15 @@ class CX_News {
 			$t_lo  = PHP_INT_MAX;
 			$c15   = null;
 			$c60   = (float) end( $bars )[4];
+			$thr   = max( 2.0, $open * 0.0005 );
 			foreach ( $bars as $b ) {
 				if ( $b[0] < $t + 15 * MINUTE_IN_SECONDS ) {
 					$hi = max( $hi, (float) $b[2] );
 					$lo = min( $lo, (float) $b[3] );
-					if ( $b[2] >= $open + 1 ) {
+					if ( $b[2] >= $open + $thr ) {
 						$t_hi = min( $t_hi, $b[0] );
 					}
-					if ( $b[3] <= $open - 1 ) {
+					if ( $b[3] <= $open - $thr ) {
 						$t_lo = min( $t_lo, $b[0] );
 					}
 					$c15 = (float) $b[4];
@@ -114,9 +115,9 @@ class CX_News {
 			}
 			$up    = round( $hi - $open, 2 );
 			$down  = round( $open - $lo, 2 );
-			// Première impulsion : le premier extrême à dépasser 1 $, sinon le plus grand des deux.
+			// Première impulsion : le premier extrême à dépasser le seuil, sinon le plus grand des deux.
 			$first = $t_hi < $t_lo ? 'h' : ( $t_lo < $t_hi ? 'b' : ( $up >= $down ? 'h' : 'b' ) );
-			if ( max( $up, $down ) < 1 ) {
+			if ( max( $up, $down ) < $thr ) {
 				$first = 'n';
 			}
 			$d60 = round( $c60 - $open, 2 );
@@ -180,7 +181,7 @@ class CX_News {
 		unset( $r );
 		return new WP_REST_Response(
 			array(
-				'note'    => 'Dollars depuis l’ouverture de la bougie de l’annonce ; first h/b/n ; reverse = clôture +60 min opposée à la première impulsion ; heure de Lubumbashi.',
+				'note'    => 'Points d’indice NAS100 depuis l’ouverture de la bougie de l’annonce ; impulsion = 0,05 % du prix ; first h/b/n ; reverse = clôture +60 min opposée à la première impulsion ; heure de Lubumbashi.',
 				'summary' => self::summary( $rows ),
 				'events'  => array_slice( $rows, -60 ),
 			),

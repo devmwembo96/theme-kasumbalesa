@@ -9,8 +9,8 @@
  *
  * L'EA les reçoit avec le plan (ligne « S| ») et les applique sans réinstallation.
  *
- * Arrêté depuis la version 2.37.0 (LOCKED) : le backtest de l'or sur 4 ans a montré qu'aucune autre
- * valeur ne fait mieux que les réglages actuels et que le réglage du soir suivait du bruit. Les
+ * Arrêté depuis la version 2.37.0 (LOCKED) : le backtest de l'or (abandonné) avait montré que le réglage du soir
+ * suivait du bruit ; il reste arrêté pour le NAS100 tant que le test de la stratégie n'est pas fait. Les
  * réglages restent fixes ; PUT /claude/ea-params est refusé.
  *
  * @package CarnetXAU
@@ -29,8 +29,8 @@ class CX_Tuning {
 	const PARAMS = array(
 		'touch'    => array( 30, 10, 60, 'Bougies M1 où chercher la touche de zone' ),
 		'swing'    => array( 20, 10, 40, 'Bougies M1 avant l’extrême (pivot et FVG)' ),
-		'fvg'      => array( 0.30, 0.10, 1.50, 'Taille minimale d’un FVG ($)' ),
-		'slbuf'    => array( 0.30, 0.10, 1.00, 'Marge du stop derrière l’extrême ($)' ),
+		'fvg'      => array( 0.30, 0.05, 2.00, 'Taille minimale d’un FVG (× ATR M1)' ),
+		'slbuf'    => array( 0.30, 0.05, 2.00, 'Marge du stop derrière l’extrême (× ATR M1, + spread)' ),
 		'limitmin' => array( 30, 15, 120, 'Validité d’un ordre limite (min)' ),
 		'cooldown' => array( 60, 15, 180, 'Minutes sans nouveau signal sur la même zone' ),
 	);
@@ -118,7 +118,7 @@ class CX_Tuning {
 			return CX_Guard::refuse( 'plan', 'jeton du plan invalide' );
 		}
 		if ( self::LOCKED ) {
-			return new WP_Error( 'cx_locked', 'Réglage automatique arrêté le 28/10/2026 : le backtest de l’or (4 ans) montre qu’aucune autre valeur ne fait mieux et que le réglage du soir suivait du bruit. Les réglages de l’EA restent fixes.', array( 'status' => 423 ) );
+			return new WP_Error( 'cx_locked', 'Réglage automatique arrêté : les réglages de l’EA NAS100 restent fixes tant que le test de la stratégie n’est pas fait.', array( 'status' => 423 ) );
 		}
 		$in     = (array) $req->get_json_params();
 		$key    = (string) ( $in['key'] ?? '' );

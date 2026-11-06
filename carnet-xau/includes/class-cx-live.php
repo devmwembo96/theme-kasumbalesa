@@ -34,12 +34,9 @@ defined( 'ABSPATH' ) || exit;
  */
 class CX_Live {
 
-	/** Plage du stop (écart entrée → stop, en $) envoyée à l'EA : jusqu'à 8 $, le lot baisse et le risque reste le même. */
-	// Plus de plage de stop imposée (05/11/2026) : seulement un plancher technique (le spread de l'or est
-	// d'environ 0,40 $) ; un maximum très haut pour les EA d'avant 2.22, qui convertissaient un stop trop
-	// large en ordre limite.
-	const STOP_MIN = 0.5;
-	const STOP_MAX = 1000.0;
+	/** Stop envoyé à l'EA (points d'indice) : plancher technique, pas de maximum imposé (CX_Market). */
+	const STOP_MIN = CX_Market::STOP_MIN;
+	const STOP_MAX = CX_Market::STOP_MAX;
 
 	/** Unités de temps reçues de l'EA et nombre de bougies gardées (M1 à M15 : analyses de séance et rejeu du soir). */
 	const CANDLE_MAX = array(
@@ -77,7 +74,7 @@ class CX_Live {
 		global $wpdb;
 		$t    = CX_Install::table( 'csignals' );
 		$done = self::shadow_values();
-		$rows = $wpdb->get_results( "SELECT * FROM $t WHERE statut IN ('gagne','perdu','be') AND resultat_r IS NOT NULL ORDER BY id DESC LIMIT 200" ); // phpcs:ignore WordPress.DB.PreparedSQL
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $t WHERE statut IN ('gagne','perdu','be') AND resultat_r IS NOT NULL AND signale_le >= %s ORDER BY id DESC LIMIT 200", CX_Market::epoch() ) ); // phpcs:ignore WordPress.DB.PreparedSQL
 		$tz   = CX_Repo::tz();
 		$lim  = (int) CX_Tuning::values()['limitmin'];
 		$new  = 0;
@@ -108,9 +105,9 @@ class CX_Live {
 	}
 
 	/**
-	 * État du plan faussé par un EA posé sur un autre graphique (BTC…) : invalidation à un prix qui
-	 * n'est pas celui de l'or levée, avec les zones « cassées » au même instant ; zone marquée à un
-	 * prix qui n'est pas celui de l'or remise à son état d'avant.
+	 * État du plan faussé par un EA posé sur un autre graphique : invalidation à un prix qui n'est pas
+	 * celui du Nasdaq 100 levée, avec les zones « cassées » au même instant ; zone marquée à un prix
+	 * qui n'est pas celui du NAS100 remise à son état d'avant.
 	 */
 	public static function repair_foreign() {
 		global $wpdb;
@@ -122,13 +119,13 @@ class CX_Live {
 		$c    = $p['content'];
 		$live = (array) $c['live'];
 		$bad  = array();
-		if ( ! empty( $live['invalidated'] ) && null !== ( $live['invalidated']['price'] ?? null ) && ! self::gold_ok( (float) $live['invalidated']['price'] ) ) {
+		if ( ! empty( $live['invalidated'] ) && null !== ( $live['invalidated']['price'] ?? null ) && ! self::price_ok( (float) $live['invalidated']['price'] ) ) {
 			$bad[] = $live['invalidated']['at'];
 			unset( $live['invalidated'] );
 		}
 		$fix = (bool) $bad;
 		foreach ( (array) ( $live['zones'] ?? array() ) as $k => $z ) {
-			if ( in_array( $z['at'] ?? '', $bad, true ) || ( isset( $z['price'] ) && ! self::gold_ok( (float) $z['price'] ) ) ) {
+			if ( in_array( $z['at'] ?? '', $bad, true ) || ( isset( $z['price'] ) && ! self::price_ok( (float) $z['price'] ) ) ) {
 				unset( $live['zones'][ $k ] );
 				$fix = true;
 			}
@@ -339,13 +336,9 @@ class CX_Live {
 			$state = $live['zones'][ $key ]['state'] ?? ( $z['state'] ? $z['state'] : 'vierge' );
 			$out[] = 'Z|' . $key . '|' . self::t( $z['type'] ) . '|' . self::t( $z['tf'] ) . '|' . self::n( min( $z['low'], $z['high'] ) ) . '|' . self::n( max( $z['low'], $z['high'] ) ) . '|' . ( 'vente' === $z['side'] ? 'vente' : 'achat' ) . '|' . (int) $z['strength'] . '|' . $state . '|' . self::origin_field( $z['origin'] ?? '', $week, $off );
 		}
-		// Zones du dernier plan de séance du jour (Londres, puis New York qui le remplace), surveillées
-		// par l'EA comme les zones du plan.
+		// Zones du plan de New York du jour, surveillées par l'EA comme les zones du plan.
 		$today = CX_Repo::clock( 'Y-m-d' );
-		$feed  = array(
-			'london' => array( 'ld-', 'LDN' ),
-			'us'     => array( 'us-', 'US' ),
-		);
+		$feed  = array( 'us' => array( 'us-', 'US' ) );
 		$plan  = null;
 		foreach ( (array) ( $c['sessions'] ?? array() ) as $se ) {
 			if ( $se['date'] === $today && isset( $feed[ $se['kind'] ] ) && ( ! $plan || 'us' === $se['kind'] ) ) {
@@ -363,19 +356,13 @@ class CX_Live {
 		}
 		$t     = CX_Tuning::values();
 		$out[] = 'S|' . (int) $t['touch'] . '|' . (int) $t['swing'] . '|' . self::n( $t['fvg'] ) . '|' . self::n( $t['slbuf'] ) . '|' . (int) $t['limitmin'] . '|' . (int) $t['cooldown'];
-		// Niveaux : deux niveaux à moins de 1 $ n'en font qu'un (un seul trait sur le graphique).
+		// Niveaux : deux niveaux à moins de 0,01 % du prix (2 pts au moins) n'en font qu'un (un seul trait).
 		$seen = array();
 		// Dernière analyse de séance du jour : ses niveaux (L), son invalidation (X) et ses scénarios
 		// d'exécution (P), tracés par l'EA comme sur le graphique envoyé sur Telegram.
-		$order = array(
-			'asia'      => 0,
-			'london'    => 1,
-			'premarket' => 2,
-			'us'        => 3,
-		);
-		$last  = null;
+		$last = null;
 		foreach ( (array) ( $c['sessions'] ?? array() ) as $se ) {
-			if ( $se['date'] === $today && ( ! $last || $order[ $se['kind'] ] >= $order[ $last['kind'] ] ) ) {
+			if ( $se['date'] === $today && 'us' === $se['kind'] ) {
 				$last = $se;
 			}
 		}
@@ -390,7 +377,7 @@ class CX_Live {
 			$v = (float) $l['price'];
 			$k = null;
 			foreach ( $seen as $i => $x ) {
-				$k = null === $k && abs( $x - $v ) < 1.0 ? $i : $k;
+				$k = null === $k && abs( $x - $v ) < max( 2.0, 0.0001 * $v ) ? $i : $k;
 			}
 			if ( null === $k ) {
 				$keep[] = $l;
@@ -441,7 +428,7 @@ class CX_Live {
 		$tt    = array_filter( CX_Repo::trades( $acc['id'] ), fn( $t ) => $t['date'] === $today );
 		$out[] = 'D|' . count( $tt ) . '|' . count( array_filter( $tt, fn( $t ) => $t['r'] < 0 ) ) . '|' . self::n( array_sum( array_map( fn( $t ) => (float) $t['pnl'], $tt ) ) );
 		// Étape du compte, comme l'onglet Jour : objectif en $ (prop firm seulement), avancement, jours
-		// tradés et limites de la semaine. Le Calculateur XAU arrête les trades normaux à l'objectif.
+		// tradés et limites de la semaine. Le Calculateur NAS100 arrête les trades normaux à l'objectif.
 		$st    = (string) $acc['status'];
 		$own   = 'propre' === ( $pa['kind'] ?? 'propfirm' );
 		$pct   = $own ? 0.0 : (float) ( array( 'phase1' => $pa['t1'], 'phase2' => $pa['t2'], 'finance' => $pa['tf'] )[ $st ] ?? 0 );
@@ -507,8 +494,8 @@ class CX_Live {
 
 		// Prix d'un autre symbole (EA posé sur BTC…) : ni signal, ni invalidation, ni zone cassée.
 		$px = $num( 'signal' === $type ? 'entry' : 'price' );
-		if ( 'signal_update' !== $type && ! self::gold_ok( $px ) ) {
-			return self::not_gold( $px );
+		if ( 'signal_update' !== $type && ! self::price_ok( $px ) ) {
+			return self::not_market( (string) $px );
 		}
 		// Invalidation et zones : seul l'EA du compte de référence fait foi tant qu'il envoie ses bougies.
 		if ( in_array( $type, array( 'invalidation', 'zone' ), true ) ) {
@@ -596,7 +583,7 @@ class CX_Live {
 				CX_Install::table( 'signals' ),
 				array(
 					'recu_le'      => CX_Repo::clock(),
-					'symbole'      => 'XAUUSD',
+					'symbole'      => CX_Market::NAME,
 					'unite'        => 'EA',
 					'type_signal'  => $label,
 					'prix'         => $data['entry'],
@@ -604,7 +591,7 @@ class CX_Live {
 					'payload'      => (string) wp_json_encode( $data, JSON_UNESCAPED_UNICODE ),
 				)
 			);
-			// Calculateur XAU à l'arrêt (pertes, plancher) : le signal reste suivi, mais ne se prend pas.
+			// Calculateur NAS100 à l'arrêt (pertes, plancher) : le signal reste suivi, mais ne se prend pas.
 			$note = CX_Repo::text( $in['note'] ?? '', 200 );
 			// Lot du compte actif (celui que l'utilisateur trade), calculé comme l'onglet Jour.
 			$rk = CX_Telegram::exec_risk();
@@ -617,7 +604,7 @@ class CX_Live {
 			if ( $send ) {
 				CX_Telegram::send(
 					sprintf(
-						"%s <b>%s</b>\n%s\n\nZone : %s\n\n• Entrée : %s\n• Stop : %s\n• Objectif : %s (%sR)\n• Lot : %s (stop %s $)" . ( 'limit' === $kind ? ( '4' === $data['setup'] ? "\n\nOrdre limite au premier tiers du FVG M5 : valable 60 min." : "\n\nOrdre limite : valable 30 min, en attente d’un repli." ) : '' ) . ( null === $retest ? '' : "\n\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ) . ( '' === $note ? '' : "\n\n⛔ " . esc_html( $note ) ) . ( $conf ? "\n\n🧩 <b>Confluence</b>\n" . implode( "\n", array_map( 'esc_html', $conf ) ) : '' ) . "\n\nℹ️ Information à valider par toi : le backtest de l’or (4 ans) n’a pas prouvé d’avantage à ces signaux.",
+						"%s <b>%s</b>\n%s\n\nZone : %s\n\n• Entrée : %s\n• Stop : %s\n• Objectif : %s (%sR)\n• Lot : %s (stop %s pts)" . ( 'limit' === $kind ? ( '4' === $data['setup'] ? "\n\nOrdre limite au premier tiers du FVG M5 : valable 60 min." : "\n\nOrdre limite : valable 30 min, en attente d’un repli." ) : '' ) . ( null === $retest ? '' : "\n\nEntrée de retour possible : ordre limite à " . $usd( $retest ) . ' (bord du FVG), même stop.' ) . ( '' === $note ? '' : "\n\n⛔ " . esc_html( $note ) ) . ( $conf ? "\n\n🧩 <b>Confluence</b>\n" . implode( "\n", array_map( 'esc_html', $conf ) ) : '' ) . "\n\nℹ️ Information à valider par toi : aucun test sur le NAS100 n’a encore validé ces signaux.",
 						'sell' === $side ? '🔴' : '🟢',
 						esc_html( $label ),
 						esc_html( $active ? $active['name'] : $acc['name'] ),
@@ -663,11 +650,8 @@ class CX_Live {
 					'price' => $px,
 				);
 				if ( 'cassee' === $state ) {
-					// « ld-4100.00-4110.00-b » → « 4100.00-4110.00 (achat, plan de Londres) ».
-					$src  = array(
-						'ld' => ', plan de Londres',
-						'us' => ', plan de New York',
-					);
+					// « us-21000.00-21040.00-b » → « 21000.00-21040.00 (achat, plan de New York) ».
+					$src  = array( 'us' => ', plan de New York' );
 					$name = preg_match( '/^(?:([a-z]+)-)?(.+)-([bs])$/', $key, $mm ) ? $mm[2] . ' (' . ( 's' === $mm[3] ? 'vente' : 'achat' ) . ( $src[ $mm[1] ] ?? '' ) . ')' : $key;
 					$msg  = sprintf( '🧱 Zone %s cassée à %s : plus de signal sur cette zone.', esc_html( $name ), $at->format( 'H:i' ) );
 				}
@@ -944,7 +928,8 @@ class CX_Live {
 	public static function list_signals() {
 		global $wpdb;
 		$t      = CX_Install::table( 'csignals' );
-		$rows   = $wpdb->get_results( "SELECT * FROM $t ORDER BY signale_le DESC, id DESC LIMIT 500" ); // phpcs:ignore WordPress.DB.PreparedSQL
+		// Ère NAS100 seulement : les signaux de l'or restent en base, hors de toute liste et statistique.
+		$rows   = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $t WHERE signale_le >= %s ORDER BY signale_le DESC, id DESC LIMIT 500", CX_Market::epoch() ) ); // phpcs:ignore WordPress.DB.PreparedSQL
 		$trades = CX_Repo::trades();
 		$shadow = self::shadow_values();
 		$out    = array();
@@ -999,37 +984,69 @@ class CX_Live {
 		if ( is_wp_error( $acc ) ) {
 			return $acc;
 		}
-		$out = array();
+		$out  = array();
+		$spec = null;
 		foreach ( preg_split( '/\R/', mb_substr( (string) $req->get_body(), 0, 400000 ) ) as $line ) {
 			$f = explode( '|', trim( $line ) );
-			if ( 6 !== count( $f ) || ! isset( self::CANDLE_MAX[ $f[0] ] ) ) {
+			// SPEC|symbole|digits|point|tick_size|tick_value|contract_size|volume_min|volume_step (EA NAS100).
+			if ( 'SPEC' === $f[0] && count( $f ) >= 9 ) {
+				$spec = array(
+					'symbol'     => CX_Repo::text( $f[1], 30 ),
+					'digits'     => (int) $f[2],
+					'point'      => (float) $f[3],
+					'tick_size'  => (float) $f[4],
+					'tick_value' => (float) $f[5],
+					'contract'   => (float) $f[6],
+					'vol_min'    => (float) $f[7],
+					'vol_step'   => (float) $f[8],
+				);
 				continue;
 			}
-			$v = array_map( fn( $x ) => CX_Repo::num( $x, 0, 1e6 ), array_slice( $f, 2 ) );
+			// « ut|heure|o|h|l|c » ou « ut|heure|o|h|l|c|volume de ticks » (EA NAS100 : sert au VWAP).
+			if ( ( 6 !== count( $f ) && 7 !== count( $f ) ) || ! isset( self::CANDLE_MAX[ $f[0] ] ) ) {
+				continue;
+			}
+			$v = array_map( fn( $x ) => CX_Repo::num( $x, 0, 1e6 ), array_slice( $f, 2, 4 ) );
 			$t = CX_Repo::num( $f[1], 946684800, 4102444800 );
 			if ( null === $t || in_array( null, $v, true ) ) {
 				continue;
 			}
-			$out[ $f[0] ][] = array( (int) $t, $v[0], $v[1], $v[2], $v[3] );
+			$row = array( (int) $t, $v[0], $v[1], $v[2], $v[3] );
+			if ( 7 === count( $f ) ) {
+				$row[] = (int) max( 0, (float) $f[6] );
+			}
+			$out[ $f[0] ][] = $row;
 		}
 		foreach ( $out as $tf => $rows ) {
 			usort( $rows, fn( $a, $b ) => $a[0] <=> $b[0] );
 			$out[ $tf ] = array_slice( $rows, -self::CANDLE_MAX[ $tf ] );
 		}
-		// Graphique d'un autre symbole (BTC, argent…) : rien n'est gardé. Référence : les bougies déjà
-		// reçues de ce compte, sinon le cours du compte de référence.
+		// Seul le Nasdaq 100 est accepté : l'EA Carnet NAS100 envoie son symbole (ligne SPEC) ; un ancien EA
+		// (sans ligne SPEC) ou un graphique d'un autre symbole est refusé, rien n'est gardé.
+		if ( ! $spec || ! CX_Market::is_symbol( $spec['symbol'] ) ) {
+			return self::not_market( $spec ? $spec['symbol'] : 'inconnu (EA Carnet NAS100 requis)' );
+		}
+		// Prix plausible : à moins de 15 % des bougies déjà reçues de ce compte (même symbole), sinon du
+		// compte de référence.
 		$own  = self::candle_data( (int) $acc['id'] );
 		$mine = null;
-		foreach ( array( 'M1', 'M5', 'M15', 'H1' ) as $k ) {
-			if ( null === $mine && ! empty( $own['tf'][ $k ] ) ) {
-				$mine = (float) end( $own['tf'][ $k ] )[4];
+		if ( CX_Market::is_symbol( $own['spec']['symbol'] ?? '' ) ) {
+			foreach ( array( 'M1', 'M5', 'M15', 'H1' ) as $k ) {
+				if ( null === $mine && ! empty( $own['tf'][ $k ] ) ) {
+					$mine = (float) end( $own['tf'][ $k ] )[4];
+				}
 			}
 		}
 		foreach ( $out as $rows ) {
 			$close = (float) end( $rows )[4];
-			if ( ! self::gold_ok( $close, $mine ?? self::gold_ref() ) ) {
-				return self::not_gold( $close );
+			if ( ! self::price_ok( $close, $mine ?? self::price_ref() ) ) {
+				return self::not_market( $spec['symbol'] . ' à ' . $close );
 			}
+		}
+		// Valeur d'un point par lot du courtier : reportée dans le réglage « contract » du compte.
+		$pv = $spec['tick_size'] > 0 ? round( $spec['tick_value'] / $spec['tick_size'], 6 ) : 0;
+		if ( $pv > 0 && abs( (float) ( $acc['params']['contract'] ?? 0 ) - $pv ) > 1e-6 ) {
+			CX_Repo::set_contract( (int) $acc['id'], $pv );
 		}
 		// « at » = heure des données : clôture de la dernière bougie M1 si elle est plus ancienne que la
 		// réception (terminal déconnecté du courtier : l'EA renvoie de vieilles bougies). « received » = réception.
@@ -1046,6 +1063,7 @@ class CX_Live {
 				'account'    => $acc['name'],
 				'account_id' => (int) $acc['id'],
 				'firm'       => $acc['firm'],
+				'spec'       => $spec,
 				'tf'         => $out,
 			),
 			false
@@ -1094,15 +1112,18 @@ class CX_Live {
 	}
 
 	/**
-	 * Cours de l'or qui fait foi : dernière clôture des bougies du compte de référence, sinon prix du plan.
+	 * Cours du Nasdaq 100 qui fait foi : dernière clôture des bougies NAS100 du compte de référence, sinon
+	 * prix du plan de la semaine (ère NAS100).
 	 *
 	 * @return float|null
 	 */
-	public static function gold_ref() {
+	public static function price_ref() {
 		$d = self::candle_data();
-		foreach ( array( 'M1', 'M5', 'M15', 'H1' ) as $tf ) {
-			if ( ! empty( $d['tf'][ $tf ] ) ) {
-				return (float) end( $d['tf'][ $tf ] )[4];
+		if ( CX_Market::is_symbol( $d['spec']['symbol'] ?? '' ) ) {
+			foreach ( array( 'M1', 'M5', 'M15', 'H1' ) as $tf ) {
+				if ( ! empty( $d['tf'][ $tf ] ) ) {
+					return (float) end( $d['tf'][ $tf ] )[4];
+				}
 			}
 		}
 		$p = CX_Repo::plan( self::week() );
@@ -1111,24 +1132,24 @@ class CX_Live {
 	}
 
 	/**
-	 * Prix plausible pour l'or : à moins de 15 % du cours de référence (500 à 20 000 $ s'il n'y en a pas).
-	 * Un EA posé par erreur sur un autre graphique (BTC, argent…) envoie des prix sans rapport : refusés.
+	 * Prix plausible pour le Nasdaq 100 : à moins de 15 % du cours de référence (5 000 à 100 000 points
+	 * s'il n'y en a pas). Un EA posé par erreur sur un autre graphique envoie des prix sans rapport : refusés.
 	 *
 	 * @param float|null $price Prix reçu.
-	 * @param float|null $ref   Cours de référence (null : gold_ref()).
+	 * @param float|null $ref   Cours de référence (null : price_ref()).
 	 * @return bool
 	 */
-	public static function gold_ok( $price, $ref = null ) {
+	public static function price_ok( $price, $ref = null ) {
 		if ( null === $price || $price <= 0 ) {
 			return false;
 		}
-		$ref = $ref ?? self::gold_ref();
-		return $ref ? abs( $price / $ref - 1 ) <= 0.15 : ( $price >= 500 && $price <= 20000 );
+		$ref = $ref ?? self::price_ref();
+		return $ref ? abs( $price / $ref - 1 ) <= 0.15 : ( $price >= 5000 && $price <= 100000 );
 	}
 
-	/** @return WP_Error Refus d'un prix qui n'est pas celui de l'or. */
-	private static function not_gold( $price ) {
-		return new WP_Error( 'cx_symbol', 'Prix ' . $price . ' : ce n’est pas l’or (XAUUSD). L’EA Carnet XAU ne fonctionne que sur le graphique de l’or.', array( 'status' => 422 ) );
+	/** @return WP_Error Refus d'un symbole ou d'un prix qui n'est pas celui du Nasdaq 100. */
+	private static function not_market( $what ) {
+		return new WP_Error( 'cx_symbol', 'Symbole ou prix ' . $what . ' : le carnet ne suit que le Nasdaq 100 (NAS100). Mets l’EA Carnet NAS100 sur un graphique NAS100.', array( 'status' => 422 ) );
 	}
 
 	/**

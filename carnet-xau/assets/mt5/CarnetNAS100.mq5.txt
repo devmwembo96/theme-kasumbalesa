@@ -1,15 +1,21 @@
 //+------------------------------------------------------------------+
-//| CarnetXAU.mq5 — version 2.22.0                                   |
+//| CarnetNAS100.mq5 — version 3.00                                  |
 //|                                                                  |
-//| 1. Envoie au Carnet XAU les trades fermés, le solde, l'équité,   |
+//| NASDAQ 100 (CFD NAS100 chez FundedNext ; selon le courtier :     |
+//| NAS100, US100, USTEC, NDX ou NQ). Prix en points d'indice.       |
+//|                                                                  |
+//| 1. Envoie au Carnet NAS100 les trades fermés, le solde, l'équité, |
 //|    la perte du jour et les bougies du courtier (D1 à M1), toutes |
-//|    les 15 minutes (analyses de séance et rejeu du soir).         |
+//|    les 15 minutes, précédées de la fiche du symbole (ligne SPEC : |
+//|    décimales, point, tick, valeur du tick, contrat, lots) ;      |
+//|    chaque bougie porte son volume de ticks (VWAP de New York).   |
 //| 2. Lit le plan de Claude et le trace sur le graphique : zones,   |
 //|    niveaux, invalidation, range attendu. Redessine dès que le    |
 //|    plan change (relecture de 17 h New York, zone cassée…).       |
 //| 3. Surveille l'invalidation et les zones en temps réel (M15).    |
 //| 4. Signal BUY NOW / SELL NOW quand les conditions du plan sont   |
-//|    réunies, position longue ou courte dessinée, lot calculé.     |
+//|    réunies, position longue ou courte dessinée, lot calculé avec |
+//|    la valeur d'un point par lot (tick_value / tick_size).        |
 //|    Alertes : fenêtre MT5, notification mobile, Telegram.         |
 //|                                                                  |
 //| SIGNAL SEULEMENT : l'EA n'ouvre, ne modifie et ne ferme aucune   |
@@ -26,7 +32,7 @@
 //| Aucun signal n'est émis pour la période où MT5 était fermé.      |
 //|                                                                  |
 //| Installation :                                                   |
-//| 1. Renommer ce fichier en CarnetXAU.mq5, le placer dans          |
+//| 1. Renommer ce fichier en CarnetNAS100.mq5, le placer dans       |
 //|    Fichier › Ouvrir le dossier des données › MQL5 › Experts,     |
 //|    l'ouvrir dans MetaEditor et compiler (F7).                    |
 //| 2. MT5 : Outils › Options › Expert Advisors : cocher             |
@@ -34,63 +40,64 @@
 //|    https://revnefty.store                                        |
 //| 3. Notifications mobiles : Outils › Options › Notifications,     |
 //|    activer et saisir le MetaQuotes ID de l'application MT5.      |
-//| 4. Glisser l'EA sur un graphique XAUUSD (M1 conseillé) et coller |
-//|    la clé MT5 du compte (onglet Comptes du carnet).              |
+//| 4. Glisser l'EA sur un graphique NAS100 (M1 conseillé) et coller |
+//|    la clé MT5 du compte (onglet Comptes du carnet). Tout autre   |
+//|    graphique est refusé.                                         |
 //|                                                                  |
-//| Pont avec le Calculateur XAU (même compte, autre graphique) :    |
+//| Pont avec le Calculateur NAS100 (même compte, autre graphique) : |
 //| - chaque signal lui est transmis : touche C pour le charger,     |
 //|   Espace pour l'envoyer (l'ordre porte la référence du signal) ; |
 //| - il donne le risque du palier (lot des signaux) et son état :   |
-//|   à l'arrêt (pertes, plancher), le signal dit de ne pas prendre ;|
+//|   à l'arrêt (pertes, plancher), le signal dit de ne pas prendre ; |
 //| - il reçoit du carnet le risque, les limites du jour, l'étape et |
-//|   l'objectif du compte (variables cx_*) : il s'y règle seul.     |
+//|   l'objectif du compte (variables CarnetNAS_B…cx_*).             |
 //|                                                                  |
-//| Affichage façon TradingView : police Trebuchet MS, couleurs      |
-//| semi-transparentes sur le fond du graphique, et mise à l'échelle |
-//| de l'écran (Windows à 125 % ou 150 %) : le texte ne déborde plus.|
-//| Plan et signaux dessinés en CCanvas (2.15), comme l'indicateur    |
-//| LGD+CSD+Fib : zones vert achat / rouge vente, texte à la taille   |
-//| des blocs BB, étiquettes pleines ; tableau du Calculateur XAU.    |
-//| 2.16 : départ des niveaux et zones sur leur bougie d'origine     |
-//| (champ « origin » du plan, heure du serveur), sinon sur la mèche |
-//| H1 qui marque le prix (côté selon le type H / L), sinon au bord. |
-//| 2.17 : signal suivi sans gestion, objectif ou stop seulement.    |
-//| 2.18 : signaux de l'EA du VPS redessinés au retour du PC.        |
-//| 2.19 : refuse tout autre graphique que l'or (BTC, argent…).      |
-//| 2.20 : stratégie autonome « Sweep M15 → CHoCH M5 → FVG M5 »      |
-//|        (InpStrategy), sans les zones du carnet.                  |
-//| 2.21 : signaux seulement pendant la séance de New York.          |
-//| 2.22 : touche tolérée à 0,50 $ du bord ; plus de plage de stop.  |
+//| Affichage façon TradingView : police Trebuchet MS, plan et       |
+//| signaux dessinés en CCanvas, mise à l'échelle de l'écran.        |
 //|                                                                  |
-//| Règles du signal (calculées à partir du plan de Claude) :        |
-//| - le prix touche une zone de Claude non cassée ;                 |
-//| - extrême de la touche dans la zone (mèche tolérée) ;            |
+//| Historique : 3.00 : Carnet NAS100.                               |
+//|                                                                  |
+//| Unités : distances en points d'indice (1 point = 1,00 de prix) ; |
+//| tolérances, FVG et marges en multiples de l'ATR(14) de l'unité   |
+//| (calculé dans l'EA : ATR M1 ≈ 10 à 25 points, M15 ≈ 30 à 70).    |
+//|                                                                  |
+//| Règles du signal des zones du plan (setups 1 à 3) :              |
+//| - seulement de 09:30 à 16:00 heure de New York (séance cash) ;   |
+//| - le prix touche une zone de Claude non cassée (touche tolérée   |
+//|   à 0,3 ATR M1 du bord) ; extrême dans la zone (mèche tolérée) ; |
 //| - setup 3 (iFVG) : une bougie M1 clôture au-delà du FVG          |
-//|   contraire laissé par la jambe qui a amené le prix dans la zone |
-//|   (FVG baissier pour un achat, haussier pour une vente) : le FVG |
-//|   est inversé et devient le support (résistance) ;               |
+//|   contraire (≥ 0,3 ATR M1) laissé par la jambe qui a amené le    |
+//|   prix dans la zone : le FVG inversé devient le support ;        |
 //| - sinon cassure de structure M1 : clôture au-delà du dernier     |
 //|   sommet pivot (achat) ou creux pivot (vente) avant l'extrême ;  |
 //|   setup 1 si l'extrême a balayé un niveau de liquidité de Claude |
 //|   (ou le bord de la zone), sinon setup 2, seulement dans le sens |
 //|   du biais dominant ;                                            |
-//| - stop derrière l'extrême + marge, entre 1,50 et 8,00 $ ; s'il  |
-//|   est plus large : BUY LIMIT / SELL LIMIT au prix où le stop     |
-//|   revient à 8,00 $ (repli attendu, valable 30 minutes) ;         |
+//| - stop derrière l'extrême + 0,3 ATR M1 + spread, au moins        |
+//|   0,5 ATR M1 et le plancher du carnet ; au-delà du maximum du    |
+//|   carnet : BUY LIMIT / SELL LIMIT où le stop revient au maximum ; |
 //| - au moins 2R de place jusqu'à la prochaine zone ou niveau       |
 //|   opposé (objectif = ce niveau, sinon 3R) ;                      |
 //| - entrée « retour FVG » suivie en parallèle (trade virtuel, sans |
-//|   alerte) : ordre limite au bord de l'iFVG (setup 3) ou du FVG   |
-//|   laissé par la cassure (setups 1 et 2), même stop, 30 min ;     |
-//|   le carnet compare les deux entrées ;                           |
-//| - filtres : pas d'annonce dans 15 min (ni dans les 30 min        |
-//|   passées), spread ≤ spread max % du stop, limites du jour       |
-//|   (trades, pertes, 80 % de la perte journalière), invalidation   |
-//|   non touchée dans ce sens.                                      |
+//|   alerte), même stop, 30 min ; le carnet compare les entrées ;   |
+//| - filtres : pas d'annonce USD dans 15 min (ni dans les 30 min    |
+//|   passées : CPI, NFP, FOMC, PCE…), spread ≤ spread max % du      |
+//|   stop, limites du jour (trades, pertes, 80 % de la perte        |
+//|   journalière), invalidation non touchée dans ce sens.           |
+//|                                                                  |
+//| Stratégie autonome (setup 4), 09:30–12:00 New York :             |
+//| - sweep M15 du plus haut / bas des N bougies, du haut / bas de   |
+//|   la nuit (18:00–09:30 New York), du PDH / PDL de la séance      |
+//|   précédente ou d'égaux : mèche de 0,05 à 1 ATR M15 au-delà,     |
+//|   clôture en deçà ;                                              |
+//| - CHoCH M5 puis FVG M5 (≥ 0,1 ATR M5) : limite au premier tiers  |
+//|   du FVG, stop au-delà de la mèche + 0,1 ATR M15 + spread,       |
+//|   objectif 3R, lot à 0,5 % du solde ;                            |
+//| - pas d'annonce forte USD à ±15 min (calendrier MT5).            |
 //+------------------------------------------------------------------+
-#property copyright "Carnet XAU"
-#property version   "2.22"
-#property description "Plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet XAU."
+#property copyright "Carnet NAS100"
+#property version   "3.00"
+#property description "NASDAQ 100 : plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet NAS100."
 
 #include <Canvas\Canvas.mqh>
 
@@ -102,22 +109,23 @@ enum ENUM_CX_STRAT
    STRAT_BOTH   = 2  // Les deux (par défaut)
   };
 
-input string InpUrl         = "https://revnefty.store/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet
+input string InpUrl         = "https://revnefty.store/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet (nom technique de l'API)
 input string InpKey         = "";    // Clé MT5 du compte (onglet Comptes)
-input string InpSymbol      = "XAU"; // Trades envoyés : symboles qui contiennent… (vide = tous)
+input string InpSymbol      = "NAS100|US100|USTEC|NDX|NQ"; // Trades envoyés : symboles qui contiennent… (motifs séparés par |, vide = tous)
 input int    InpDaysBack    = 3;     // Jours d'historique renvoyés à chaque synchronisation
 input int    InpSnapshotSec = 60;    // Intervalle de synchronisation, en secondes (15 minimum)
 input bool   InpDrawPlan    = true;  // Tracer le plan de Claude
 input bool   InpTVStyle     = true;  // Graphique au style TradingView clair (fond blanc, sans grille)
 input bool   InpSignals     = true;  // Calculer les signaux BUY NOW / SELL NOW
-input double InpSLBuffer    = 0.30;  // Marge du stop derrière l'extrême ($, en plus du spread)
+input double InpSLBuffer    = 0.30;  // Marge du stop derrière l'extrême (× ATR M1, en plus du spread)
 input int    InpTouchBars   = 30;    // Bougies M1 où chercher la touche de zone
 input int    InpSwingBars   = 20;    // Bougies M1 avant l'extrême où chercher le sommet / creux pivot et le FVG
-input double InpFvgMin      = 0.30;  // Taille minimale d'un FVG ($)
-input double InpTouchTol    = 0.50;  // Touche de zone tolérée à X $ du bord (le prix s'arrête juste avant)
+input double InpFvgMin      = 0.30;  // Taille minimale d'un FVG (× ATR M1)
+input double InpTouchTol    = 0.30;  // Touche de zone tolérée à X × ATR M1 du bord (le prix s'arrête juste avant)
+input double InpStopMinAtr  = 0.50;  // Stop minimum (× ATR M1 ; le plancher du carnet s'applique aussi)
 input bool   InpRetest      = true;  // Suivre aussi l'entrée « retour FVG » (trade virtuel, sans alerte)
 input int    InpCooldownMin = 60;    // Minutes sans nouveau signal sur la même zone
-input bool   InpUseLimit    = true;  // Stop trop large : proposer un ordre limite (stop ramené au maximum)
+input bool   InpUseLimit    = true;  // Stop au-delà du maximum du carnet : proposer un ordre limite (stop ramené au maximum)
 input int    InpLimitMin    = 30;    // Validité d'un signal limite, en minutes
 input bool   InpAlertPopup  = true;  // Alerte : fenêtre et son MT5
 input bool   InpAlertPush   = true;  // Alerte : notification mobile MT5
@@ -125,14 +133,17 @@ input bool   InpAlertCarnet = true;  // Alerte : carnet et Telegram
 input ENUM_CX_STRAT InpStrategy = STRAT_BOTH;   // Stratégie des signaux (les deux par défaut)
 input double InpSfRiskPct   = 0.5;   // Autonome : risque par trade (% du solde) pour le lot affiché
 input int    InpSfLookback  = 20;    // Autonome : bougies M15 du plus haut / plus bas balayé
-input double InpSfBuffer    = 0.50;  // Autonome : marge du stop au-delà de la mèche du sweep ($, + spread)
+input double InpSfBuffer    = 0.10;  // Autonome : marge du stop au-delà de la mèche du sweep (× ATR M15, + spread)
 input double InpSfRR        = 3.0;   // Autonome : objectif en R (distance du stop × R)
 input int    InpSfChochBars = 24;    // Autonome : bougies M5 après le sweep pour le CHoCH (sinon abandon)
-input double InpSfFvgMin    = 0.30;  // Autonome : taille minimale du FVG M5 ($)
+input double InpSfFvgMin    = 0.10;  // Autonome : taille minimale du FVG M5 (× ATR M5)
 input int    InpSfLimitMin  = 60;    // Autonome : validité de l'ordre limite (minutes)
-input double InpSfStopMin   = 1.0;   // Autonome : stop minimum ($ de prix)
-input double InpSfStopMax   = 0;     // Autonome : stop maximum ($ de prix, 0 = aucun)
-input bool   InpSfNews      = true;  // Autonome : pas de signal à ±15 min d'une annonce forte USD/EUR (calendrier MT5)
+input double InpSfStopMin   = 0.50;  // Autonome : stop minimum (× ATR M1)
+input double InpSfStopMax   = 0;     // Autonome : stop maximum (× ATR M15, 0 = aucun)
+input bool   InpSfNews      = true;  // Autonome : pas de signal à ±15 min d'une annonce forte USD (calendrier MT5)
+
+//--- Noms du NASDAQ 100 selon le courtier (graphique accepté par l'EA).
+#define NAS_NAMES "NAS100|US100|USTEC|NDX|NQ"
 
 //--- Plan reçu du carnet
 struct CxZone
@@ -162,17 +173,19 @@ string   g_hash = "", g_week = "";
 int      g_bull = 0, g_bear = 0, g_range = 0;
 double   g_inval = 0, g_rlo = 0, g_rhi = 0, g_ref = 0;
 bool     g_invalidated = false;
-double   g_risk = 50, g_riskRed = 35, g_redAt = 300, g_contract = 100, g_spreadMax = 15;
-double   g_stopMin = 0.5, g_stopMax = 1000.0, g_dailyLim = 300, g_size = 6000, g_floor = 5400;
+//--- Ligne « R| » : spreadmax en % du stop ; stop min et max en points d'indice (le carnet envoie un
+//    plancher et un maximum très haut : pas de plage imposée). Le lot vient de tick_value / tick_size.
+double   g_risk = 50, g_riskRed = 35, g_redAt = 300, g_spreadMax = 15;
+double   g_stopMin = 2.0, g_stopMax = 100000.0, g_dailyLim = 300, g_size = 6000, g_floor = 5400;
 int      g_maxTrades = 4, g_maxLoss = 3;
-//--- Étape du compte (ligne « G| » du plan), transmise au Calculateur XAU avec le risque et les limites.
+//--- Étape du compte (ligne « G| » du plan), transmise au Calculateur NAS100 avec le risque et les limites.
 string   g_phase = "";
 double   g_goal = 0, g_gain = 0, g_weekStopR = 4;
 int      g_daysDone = 0, g_minDays = 0, g_weekLoss = 4;
 bool     g_ownKind = false, g_rOk = false;
 datetime g_planAt = 0;          // dernière lecture réussie du plan (heure locale)
 //--- Réglages des signaux : valeurs des paramètres d'entrée, remplacées par celles que Claude
-//    ajuste dans le carnet après le rejeu du soir (ligne « S| » du plan).
+//    ajuste dans le carnet après le rejeu du soir (ligne « S| » du plan). fvg et slbuf : multiples de l'ATR M1.
 int      g_touch = 30, g_swing = 20, g_limitMin = 30, g_cooldown = 60;
 double   g_fvg = 0.30, g_slbuf = 0.30;
 bool     g_planOk = false;
@@ -197,7 +210,7 @@ struct CxTrack
    datetime opened;
   };
 CxTrack  g_tracks[];
-#define TRACK_FILE "CarnetXAU_signaux.csv"
+#define TRACK_FILE "CarnetNAS_signaux.csv"
 
 //--- Dessins des signaux (outil position de TradingView), gardés 7 jours dans un fichier : ils restent
 //    affichés après un changement d'unité de temps ou un redémarrage, comme les objets des versions 2.14.
@@ -215,7 +228,7 @@ struct CxDraw
    bool     grey;      // limite annulée
   };
 CxDraw   g_draws[];
-#define DRAW_FILE "CarnetXAU_dessins.csv"
+#define DRAW_FILE "CarnetNAS_dessins.csv"
 #define TRACK_MAX_HOURS 24
 
 //--- État
@@ -250,15 +263,13 @@ int OnInit()
   {
    if(StringLen(InpKey) < 16)
      {
-      Alert("Carnet XAU : collez la clé MT5 du compte dans les paramètres de l'EA.");
+      Alert("Carnet NAS100 : collez la clé MT5 du compte dans les paramètres de l'EA.");
       return(INIT_PARAMETERS_INCORRECT);
      }
-   // Seulement sur l'or : posé sur un autre graphique (BTC, argent…), l'EA enverrait de faux prix au carnet.
-   string sym = _Symbol;
-   StringToUpper(sym);
-   if(StringFind(sym, "XAUUSD") < 0 && StringFind(sym, "GOLD") != 0)
+   // Seulement sur le NASDAQ 100 : posé sur un autre graphique, l'EA enverrait de faux prix au carnet.
+   if(!SymbolMatches(_Symbol, NAS_NAMES))
      {
-      Alert("Carnet XAU : cet EA ne fonctionne que sur le graphique de l'or (XAUUSD). Graphique " + _Symbol + " : EA arrêté.");
+      Alert("Carnet NAS100 : cet EA ne fonctionne que sur le graphique du NASDAQ 100 (nom contenant NAS100, US100, USTEC, NDX ou NQ). Graphique " + _Symbol + " : EA arrêté.");
       return(INIT_FAILED);
      }
    EventSetTimer((int)MathMax(15, InpSnapshotSec));
@@ -268,7 +279,7 @@ int OnInit()
    LoadTracks();
    LoadDraws();
    ObjectsDeleteAll(0, PFX_SIG);   // objets des signaux des versions 2.14 et avant : redessinés en canvas
-   string gv = "CarnetXAU_" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "_" + _Symbol;
+   string gv = "CarnetNAS_" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "_" + _Symbol;
    GV_M1  = gv + "_M1";
    GV_M15 = gv + "_M15";
    if(GlobalVariableCheck(GV_M1))
@@ -346,7 +357,7 @@ void OnTick()
    if(m1 == g_lastM1)
       return;
    g_lastM1 = m1;               // nouvelle bougie M1 : la précédente vient de clôturer
-   PublishCarnet();             // signe de vie pour le Calculateur XAU
+   PublishCarnet();             // signe de vie pour le Calculateur NAS100
    static datetime lastBar = 0;
    datetime bar = iTime(_Symbol, PERIOD_CURRENT, 0);
    if(bar != lastBar)
@@ -361,7 +372,7 @@ void OnTick()
    if(InpSignals && InpStrategy != STRAT_CARNET)
       CheckSweepFvg();            // stratégie autonome : rien ne vient du carnet
    if(InpSignals && InpStrategy != STRAT_SWEEP && g_planOk && !PendingLimit(false) && InNySession(TimeGMT()))
-      CheckSignals();             // zones du plan : seulement pendant la séance de New York
+      CheckSignals();             // zones du plan : seulement de 09:30 à 16:00 New York
   }
 
 //+------------------------------------------------------------------+
@@ -494,7 +505,7 @@ void ProcessBar(double hi, double lo, double cl, datetime t, bool late)
             DrawUpdate(g_tracks[i].id, g_tracks[i].label + " annulé (prix non atteint en " + IntegerToString(StringFind(g_tracks[i].label, "SFVG") >= 0 ? InpSfLimitMin : g_limitMin) + " min)", true);
             bool variant = StringFind(g_tracks[i].label, "RETOUR") >= 0;   // variante suivie sans alerte
             if(!late && !variant)
-               Notify("Carnet XAU : " + g_tracks[i].label + " " + Fr(e, 2) + " annulé, prix non atteint en " + IntegerToString(StringFind(g_tracks[i].label, "SFVG") >= 0 ? InpSfLimitMin : g_limitMin) + " min.");
+               Notify("Carnet NAS100 : " + g_tracks[i].label + " " + Fr(e, 2) + " annulé, prix non atteint en " + IntegerToString(StringFind(g_tracks[i].label, "SFVG") >= 0 ? InpSfLimitMin : g_limitMin) + " min.");
             TrackEvent(i, "annule", "", t);
             g_status = g_tracks[i].label + " annulé (délai écoulé).";
             ChartRedraw();
@@ -505,7 +516,7 @@ void ProcessBar(double hi, double lo, double cl, datetime t, bool late)
             g_tracks[i].opened = t - 60;
             changed = true;
             if(!late && StringFind(g_tracks[i].label, "RETOUR") < 0)
-               Notify("Carnet XAU : " + g_tracks[i].label + " atteint à " + Fr(e, 2) + " — conditions réunies, à vous de décider.");
+               Notify("Carnet NAS100 : " + g_tracks[i].label + " atteint à " + Fr(e, 2) + " — conditions réunies, à vous de décider.");
             TrackEvent(i, "ouvert", "", t);
            }
          continue;
@@ -562,6 +573,86 @@ string JsonText(string s)
    return "\"" + s + "\"";
   }
 
+//--- Nombre sans zéros inutiles (fiche du symbole : 0.01, 0.1, 1).
+string NumG(double v)
+  {
+   string s = DoubleToString(v, 8);
+   if(StringFind(s, ".") >= 0)
+     {
+      int n = StringLen(s);
+      while(n > 0 && StringGetCharacter(s, n - 1) == '0')
+         n--;
+      if(n > 0 && StringGetCharacter(s, n - 1) == '.')
+         n--;
+      s = StringSubstr(s, 0, n);
+     }
+   return s;
+  }
+
+//--- Le symbole contient-il un des motifs « A|B|C » (sans tenir compte de la casse) ? Vide : tous.
+bool SymbolMatches(string symbol, string patterns)
+  {
+   if(StringLen(patterns) == 0)
+      return true;
+   string s = symbol;
+   StringToUpper(s);
+   string p[];
+   int n = StringSplit(patterns, '|', p);
+   for(int i = 0; i < n; i++)
+     {
+      string m = p[i];
+      StringTrimLeft(m);
+      StringTrimRight(m);
+      StringToUpper(m);
+      if(m != "" && StringFind(s, m) >= 0)
+         return true;
+     }
+   return false;
+  }
+
+//--- Valeur d'un point d'indice pour 1 lot, dans la devise du compte : tick_value / tick_size.
+double PointValue()
+  {
+   double tv = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE), ts = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   return (tv > 0 && ts > 0) ? tv / ts : 0;
+  }
+
+int LotDigits()
+  {
+   double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   if(step <= 0)
+      return 2;
+   return (int)MathMax(0.0, MathCeil(-MathLog10(step) - 1e-9));
+  }
+
+string FrLot(double v)  { return Fr(v, LotDigits()); }
+string NumLot(double v) { return Num(v, (int)MathMax(2, LotDigits())); }
+
+//--- Lot pour risquer « risk » (devise du compte) sur un stop de « stop » points, arrondi vers le bas au pas.
+double LotFor(double risk, double stop)
+  {
+   double vpp  = PointValue();
+   double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP), vmax = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+   if(vpp <= 0 || stop <= 0 || risk <= 0)
+      return 0;
+   if(step <= 0)
+      step = 0.01;
+   double lot = MathFloor(risk / (stop * vpp) / step + 1e-9) * step;
+   if(vmax > 0 && lot > vmax)
+      lot = MathFloor(vmax / step + 1e-9) * step;
+   return NormalizeDouble(lot, LotDigits());
+  }
+
+//--- ATR(14) des bougies closes de l'unité tf (moyenne simple des vrais écarts), en points d'indice.
+double Atr(ENUM_TIMEFRAMES tf)
+  {
+   MqlRates r[];
+   ArraySetAsSeries(r, true);
+   if(CopyRates(_Symbol, tf, 1, 15, r) < 15)
+      return 0;
+   return SfAtr(r, 0);
+  }
+
 bool Contains(const long &list[], long v)
   {
    for(int i = 0; i < ArraySize(list); i++)
@@ -592,12 +683,12 @@ int Http(string method, string url, string body, string contentType, string &res
       int err = GetLastError();
       g_status = (err == 4014) ? "Ajoutez l'adresse du site dans Outils › Options › Expert Advisors › WebRequest."
                                : "Erreur WebRequest " + IntegerToString(err);
-      Print("Carnet XAU : ", g_status);
+      Print("Carnet NAS100 : ", g_status);
       return -1;
      }
    response = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
    if(code != 200)
-      Print("Carnet XAU : réponse ", code, " ", response);
+      Print("Carnet NAS100 : réponse ", code, " ", response);
    return code;
   }
 
@@ -640,7 +731,7 @@ string PositionJson(long position, long offset)
               {
                sl = HistoryOrderGetDouble(order, ORDER_SL);
                tp = HistoryOrderGetDouble(order, ORDER_TP);
-               // Ordre du Calculateur XAU chargé depuis un signal : « CalcXAU … #référence »
+               // Ordre du Calculateur NAS100 chargé depuis un signal : « CalcNAS … #référence »
                string cm = HistoryOrderGetString(order, ORDER_COMMENT);
                int    at = StringFind(cm, "#");
                if(at >= 0)
@@ -660,7 +751,7 @@ string PositionJson(long position, long offset)
      }
    if(side < 0 || inVol <= 0 || outVol <= 0)
       return "";
-   if(StringLen(InpSymbol) > 0 && StringFind(symbol, InpSymbol) < 0)
+   if(!SymbolMatches(symbol, InpSymbol))
       return "";
    return "{\"ticket\":\"" + IntegerToString(position) + "\""
           + ",\"symbol\":" + JsonText(symbol)
@@ -779,21 +870,27 @@ void Sync()
      }
   }
 
-//--- Bougies du courtier (D1, H4, H1), heures en UTC, pour l'analyse de Claude. La dernière est
+//--- Bougies du courtier (D1 à M1), heures en UTC, pour l'analyse de Claude :
+//    « ut|heure unix|ouverture|haut|bas|clôture|tick_volume » (volume de ticks : VWAP de la séance de New York). La dernière est
 //    incluse : bougie en cours en semaine, bougie complète du vendredi le week-end.
 void AddCandles(string &body, ENUM_TIMEFRAMES tf, string name, int count, long offset)
   {
    MqlRates r[];
    int n = CopyRates(_Symbol, tf, 0, count, r);
    for(int i = 0; i < n; i++)
-      body += name + "|" + IntegerToString((long)r[i].time - offset) + "|" + Num(r[i].open, 2) + "|" + Num(r[i].high, 2)
-              + "|" + Num(r[i].low, 2) + "|" + Num(r[i].close, 2) + "\n";
+      body += name + "|" + IntegerToString((long)r[i].time - offset) + "|" + Num(r[i].open, _Digits) + "|" + Num(r[i].high, _Digits)
+              + "|" + Num(r[i].low, _Digits) + "|" + Num(r[i].close, _Digits) + "|" + IntegerToString(r[i].tick_volume) + "\n";
   }
 
 void SendCandles()
   {
    long offset = ServerOffset();
-   string body = "";
+   //--- Fiche du symbole en tête : SPEC|symbole|digits|point|tick_size|tick_value|contract_size|volume_min|volume_step
+   string body = "SPEC|" + _Symbol + "|" + IntegerToString(_Digits) + "|" + NumG(SymbolInfoDouble(_Symbol, SYMBOL_POINT))
+                 + "|" + NumG(SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE)) + "|" + NumG(SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE))
+                 + "|" + NumG(SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE)) + "|" + NumG(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN))
+                 + "|" + NumG(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP)) + "\n";
+   int head = StringLen(body);
    AddCandles(body, PERIOD_D1, "D1", 120, offset);
    AddCandles(body, PERIOD_H4, "H4", 300, offset);
    AddCandles(body, PERIOD_H1, "H1", 500, offset);
@@ -801,7 +898,7 @@ void SendCandles()
    AddCandles(body, PERIOD_M5, "M5", 600, offset);
    AddCandles(body, PERIOD_M1, "M1", 1500, offset);
    string resp;
-   if(body != "" && Http("POST", InpUrl + "/candles", body, "text/plain", resp) == 200)
+   if(StringLen(body) > head && Http("POST", InpUrl + "/candles", body, "text/plain", resp) == 200)
       g_lastCandles = TimeCurrent();
   }
 
@@ -917,12 +1014,12 @@ void FetchPlan()
          g_risk      = StringToDouble(f[1]);
          g_riskRed   = StringToDouble(f[2]);
          g_redAt     = StringToDouble(f[3]);
-         g_contract  = StringToDouble(f[4]);
+         // f[4] (contrat) n'est plus utilisé : valeur du point = tick_value / tick_size du courtier.
          g_maxTrades = (int)StringToInteger(f[5]);
          g_maxLoss   = (int)StringToInteger(f[6]);
-         g_spreadMax = StringToDouble(f[7]);
-         g_stopMin   = StringToDouble(f[8]);
-         g_stopMax   = StringToDouble(f[9]);
+         g_spreadMax = StringToDouble(f[7]);       // % de la distance du stop
+         g_stopMin   = StringToDouble(f[8]);       // points d'indice (plancher)
+         g_stopMax   = StringToDouble(f[9]);       // points d'indice (très haut : pas de plage imposée)
          g_dailyLim  = StringToDouble(f[10]);
          g_size      = StringToDouble(f[11]);
          g_floor     = StringToDouble(f[12]);
@@ -947,7 +1044,7 @@ void FetchPlan()
         }
       else if(f[0] == "S" && c >= 7)
         {
-         // Réglages ajustés par Claude (bornés par le carnet).
+         // Réglages ajustés par Claude (bornés par le carnet) ; fvg et slbuf en multiples de l'ATR M1.
          g_touch    = (int)StringToInteger(f[1]);
          g_swing    = (int)StringToInteger(f[2]);
          g_fvg      = StringToDouble(f[3]);
@@ -966,12 +1063,15 @@ void FetchPlan()
   }
 
 //--- Signaux de l'EA de référence (VPS) des dernières 24 h : dessinés ici comme si cet EA avait tourné
-//    (PC éteint puis rallumé). Un signal déjà trouvé par cet EA (même sens, 5 min, 1 $) n'est pas doublé ;
+//    (PC éteint puis rallumé). Un signal déjà trouvé par cet EA (même sens, 5 min, 0,25 ATR M1) n'est pas doublé ;
 //    le résultat ou l'annulation mettent le texte à jour.
 //    Ligne K : ref|heure du serveur|buy ou sell|now ou limit|entrée|stop|objectif|statut|résultat R|setup
 void RemoteSignals(string &kl[])
   {
    bool changed = false;
+   double same = 0.25 * Atr(PERIOD_M1);           // même entrée à 0,25 ATR M1 près
+   if(same <= 0)
+      same = 5.0;
    for(int i = 0; i < ArraySize(kl); i++)
      {
       string f[];
@@ -1003,7 +1103,7 @@ void RemoteSignals(string &kl[])
             found = j;
             break;
            }
-         if(g_draws[j].p2r != 0 && g_draws[j].buy == buy && MathAbs((double)(g_draws[j].t - t)) <= 300 && MathAbs(g_draws[j].entry - e) <= 1.0)
+         if(g_draws[j].p2r != 0 && g_draws[j].buy == buy && MathAbs((double)(g_draws[j].t - t)) <= 300 && MathAbs(g_draws[j].entry - e) <= same)
            {
             found = -2;   // même signal trouvé par cet EA
             break;
@@ -1203,12 +1303,11 @@ void PriceTag(string name, double price, color clr)
 //    1. « origin » du plan (jj/mm hh:mm, heure du serveur), affinée dans l'unité affichée : la bougie
 //       de cette période dont la mèche marque le prix ;
 //    2. sinon la dernière bougie H1 (6 semaines) dont le plus haut (niveau H, haut, high) ou le plus
-//       bas (niveau L, bas, low) marque le prix à 0,30 $ près, affinée de même ;
+//       bas (niveau L, bas, low) marque le prix à 0,05 ATR H1 près (1 point au moins), affinée de même ;
 //    3. sinon le bord gauche du graphique : jamais une bougie prise au hasard.
 string   g_orgKey[];
 datetime g_orgT[];
 string   g_orgHash = "";
-#define  ORG_TOL 0.30
 
 //--- 1 : plus hauts, -1 : plus bas, 0 : les deux (zone, type inconnu).
 int TypeSide(string type)
@@ -1327,12 +1426,13 @@ datetime Origin(string key, double lo, double hi, int side, string origin, int s
    if(t == 0)
      {
       int n = (int)MathMin(1000, Bars(_Symbol, PERIOD_H1) - 1);
+      double tol = MathMax(1.0, 0.05 * Atr(PERIOD_H1));
       for(int i = 1; i < n && t == 0; i++)
         {
          double h = iHigh(_Symbol, PERIOD_H1, i), l = iLow(_Symbol, PERIOD_H1, i);
-         bool hit = side > 0 ? MathAbs(h - hi) <= ORG_TOL
-                  : side < 0 ? MathAbs(l - lo) <= ORG_TOL
-                             : (MathAbs(h - hi) <= ORG_TOL || MathAbs(l - lo) <= ORG_TOL);
+         bool hit = side > 0 ? MathAbs(h - hi) <= tol
+                  : side < 0 ? MathAbs(l - lo) <= tol
+                             : (MathAbs(h - hi) <= tol || MathAbs(l - lo) <= tol);
          if(hit)
             t = Refine(iTime(_Symbol, PERIOD_H1, i), 3600, lo, hi, side);
         }
@@ -1534,7 +1634,7 @@ void DrawPlan()
       CvAdd(CV_TEXT, xm, 0, p.tp, 0, Ar(clrWhite, 1.0), Ar(C'8,153,129', 1.0), STYLE_SOLID, up ? ANCHOR_LOWER : ANCHOR_UPPER,
             "Objectif " + Fr(p.tp, 2) + " · " + Fr(rr, 1) + "R");
       CvAdd(CV_TEXT, xm, 0, p.sl, 0, Ar(clrWhite, 1.0), Ar(C'242,54,69', 1.0), STYLE_SOLID, up ? ANCHOR_UPPER : ANCHOR_LOWER,
-            "Stop " + Fr(p.sl, 2) + " · " + Fr(stop, 2) + " $");
+            "Stop " + Fr(p.sl, 2) + " · " + Fr(stop, 1) + " pts");
       CvAdd(CV_TEXT, xm, 0, p.entry, 0, Ar(clrWhite, 1.0), Ar(C'120,123,134', 1.0), STYLE_SOLID, up ? ANCHOR_UPPER : ANCHOR_LOWER,
             (p.buy ? "Achat " : "Vente ") + Fr(p.entry, 2) + (p.label != "" ? " · " + p.label : ""));
       if(k == 0)
@@ -1832,7 +1932,7 @@ void CvRender()
 
 //+------------------------------------------------------------------+
 //| Tableau en haut à gauche, même dessin que le ticket du           |
-//| Calculateur XAU : fond 131722, cadres 363A45, Trebuchet MS.      |
+//| Calculateur NAS100 : fond 131722, cadres 363A45, Trebuchet MS.      |
 //+------------------------------------------------------------------+
 #define UI_BG      C'19,23,34'
 #define UI_BORDER  C'54,58,69'
@@ -1955,7 +2055,7 @@ void DrawPanel()
 
    //--- En-tête
    int y = y0 + (int)(9 * s);
-   UiText(P + "TITLE", xL, y, "Carnet XAU", clrWhite, fs + 2, FONT_TVB, ANCHOR_LEFT_UPPER);
+   UiText(P + "TITLE", xL, y, "Carnet NAS100", clrWhite, fs + 2, FONT_TVB, ANCHOR_LEFT_UPPER);
    UiText(P + "SUB", xR, y + (int)(3 * s), g_week == "" ? "plan de Claude" : "semaine du " + g_week, UI_MUTED, fs - 1, FONT_TV, ANCHOR_RIGHT_UPPER);
    y += (int)(27 * s);
 
@@ -2077,7 +2177,7 @@ bool MonitorBar(double hi, double lo, double c, datetime t, bool late)
      {
       g_invalidated = true;
       changed = true;
-      Notify("Carnet XAU : invalidation " + Fr(g_inval, 2) + " touchée (clôture M15 " + Fr(c, 2) + ")" + note + ".");
+      Notify("Carnet NAS100 : invalidation " + Fr(g_inval, 2) + " touchée (clôture M15 " + Fr(c, 2) + ")" + note + ".");
       SendEvent("{\"type\":\"invalidation\",\"price\":" + Num(c, 2) + ",\"time\":" + IntegerToString(when) + "}");
      }
    for(int i = 0; i < ArraySize(g_zones); i++)
@@ -2101,11 +2201,11 @@ bool MonitorBar(double hi, double lo, double c, datetime t, bool late)
   }
 
 //+------------------------------------------------------------------+
-//| Pont avec le Calculateur XAU : variables globales du terminal    |
+//| Pont avec le Calculateur NAS100 : variables globales du terminal    |
 //+------------------------------------------------------------------+
 string Bridge(string key)
   {
-   return "CXB_" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "_" + key;
+   return "CarnetNAS_B" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "_" + key;   // même préfixe que le Calculateur NAS100
   }
 
 // Calculateur présent sur le même compte (signe de vie de moins de 30 s)
@@ -2137,7 +2237,7 @@ string CalcBlockText(int code)
    return "";
   }
 
-// Risque, limites du jour, étape et objectif du compte lus dans le carnet, pour le Calculateur XAU.
+// Risque, limites du jour, étape et objectif du compte lus dans le carnet, pour le Calculateur NAS100.
 // Rien n'est publié avant la première lecture du plan : le Calculateur ne prend jamais des valeurs par défaut.
 void PublishCarnet()
   {
@@ -2152,7 +2252,6 @@ void PublishCarnet()
    GlobalVariableSet(Bridge("cx_risk"), g_risk);
    GlobalVariableSet(Bridge("cx_riskred"), g_riskRed);
    GlobalVariableSet(Bridge("cx_redat"), g_redAt);
-   GlobalVariableSet(Bridge("cx_contract"), g_contract);
    GlobalVariableSet(Bridge("cx_maxtrades"), g_maxTrades);
    GlobalVariableSet(Bridge("cx_maxloss"), g_maxLoss);
    GlobalVariableSet(Bridge("cx_spreadmax"), g_spreadMax);
@@ -2269,6 +2368,14 @@ void CheckSignals()
       return;                                     // r[0] = dernière bougie M1 clôturée
    if(TimeCurrent() - g_lastSignal < 600)
       return;                                     // 10 minutes entre deux signaux
+   // Réglages en multiples de l'ATR M1 (points d'indice) : touche, FVG, marge et stop minimum.
+   double atr1 = Atr(PERIOD_M1);
+   if(atr1 <= 0)
+      return;
+   double tol     = InpTouchTol * atr1;
+   double fvgMin  = g_fvg * atr1;
+   double slBuf   = g_slbuf * atr1;
+   double stopMin = MathMax(g_stopMin, InpStopMinAtr * atr1);
 
    int d = Dominant();
    for(int i = 0; i < ArraySize(g_zones); i++)
@@ -2287,8 +2394,8 @@ void CheckSignals()
       int e = -1;
       for(int k = 1; k <= g_touch; k++)
         {
-         // Touche à InpTouchTol $ près : un prix qui s'arrête juste avant le bord compte (2.22).
-         bool touched = (r[k].low <= z.hi + InpTouchTol && r[k].high >= z.lo - InpTouchTol);
+         // Touche tolérée à 0,3 ATR M1 du bord : un prix qui s'arrête juste avant le bord compte.
+         bool touched = (r[k].low <= z.hi + tol && r[k].high >= z.lo - tol);
          if(!touched)
             continue;
          if(e < 0 || (buy ? r[k].low < r[e].low : r[k].high > r[e].high))
@@ -2311,7 +2418,7 @@ void CheckSignals()
         {
          double top = buy ? r[k + 2].low : r[k].low;    // achat : FVG baissier entre le bas de A et le haut de C
          double bot = buy ? r[k].high : r[k + 2].high;  // vente : FVG haussier entre le haut de A et le bas de C
-         if(top - bot < g_fvg)
+         if(top - bot < fvgMin)
             continue;
          bool used = false;
          for(int j = 1; j < k; j++)
@@ -2353,7 +2460,7 @@ void CheckSignals()
             continue;                             // setup 2 : seulement avec le biais
          // Retour : bord du FVG le plus récent laissé par la cassure (bougies 0…e).
          for(int k = 0; k + 2 <= e; k++)
-            if(buy ? (r[k].low - r[k + 2].high >= g_fvg) : (r[k + 2].low - r[k].high >= g_fvg))
+            if(buy ? (r[k].low - r[k + 2].high >= fvgMin) : (r[k + 2].low - r[k].high >= fvgMin))
               {
                retest = buy ? r[k].low : r[k].high;
                break;
@@ -2364,7 +2471,7 @@ void CheckSignals()
       double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
       double spread = ask - bid;
       double entry = buy ? ask : bid;
-      double sl    = buy ? extreme - g_slbuf - spread : extreme + g_slbuf + spread;
+      double sl    = buy ? extreme - slBuf - spread : extreme + slBuf + spread;
       double stop  = MathAbs(entry - sl);
       string kind  = "NOW";
       if(stop > g_stopMax && InpUseLimit)
@@ -2375,10 +2482,12 @@ void CheckSignals()
          kind  = "LIMIT";
         }
       string why   = "";
-      if(stop < g_stopMin || stop > g_stopMax)
-         why = "stop " + Fr(stop, 2) + " $ hors de " + Fr(g_stopMin, 2) + "-" + Fr(g_stopMax, 2) + " $";
+      if(stop < stopMin)
+         why = "stop " + Fr(stop, 1) + " pts sous le minimum de " + Fr(stopMin, 1) + " pts";
+      else if(stop > g_stopMax)
+         why = "stop " + Fr(stop, 1) + " pts au-delà du maximum de " + Fr(g_stopMax, 1) + " pts";
       else if(spread > stop * g_spreadMax / 100.0)
-         why = "spread " + Fr(spread, 2) + " $ trop large";
+         why = "spread " + Fr(spread, 1) + " pts, plus de " + Fr(g_spreadMax, 0) + " % du stop";
       else if(NewsBlocked(why))
          why = why + " (15 min avant / 30 min après)";
 
@@ -2405,8 +2514,9 @@ void CheckSignals()
          continue;
         }
 
-      // Lot : risque du palier donné par le Calculateur XAU s'il tourne sur ce compte ; sinon risque
-      // du carnet (réduit si le compte est à −seuil), plafonné à la marge − 5 $.
+      // Lot : risque du palier donné par le Calculateur NAS100 s'il tourne sur ce compte ; sinon risque
+      // du carnet (réduit si le compte est à −seuil), plafonné à la marge − 5 $. Valeur d'un point
+      // par lot = tick_value / tick_size du courtier.
       double balance = AccountInfoDouble(ACCOUNT_BALANCE);
       double risk = (balance - g_size <= -g_redAt) ? g_riskRed : g_risk;
       if(CalcAlive() && GlobalVariableCheck(Bridge("calc_risk")) && GlobalVariableGet(Bridge("calc_risk")) > 0)
@@ -2417,21 +2527,22 @@ void CheckSignals()
          if(risk > margin - 5)
             risk = MathMax(0, margin - 5);
         }
-      double lot = MathFloor(risk / (stop * g_contract) * 100.0 + 1e-9) / 100.0;
-      if(lot < 0.01)
+      double lot  = LotFor(risk, stop);
+      double vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+      if(lot <= 0 || lot < vmin)
         {
-         g_status = "Signal ignoré : lot inférieur à 0,01.";
+         g_status = "Signal ignoré : lot inférieur au minimum du courtier (" + FrLot(vmin) + ").";
          DrawPanel();
          continue;
         }
       // Variante « retour FVG » : même stop et même objectif, entrée plus proche de l'extrême.
       double vStop = retest > 0 ? MathAbs(retest - sl) : 0;
       bool   vOk   = InpRetest && retest > 0 && kind == "NOW" && (buy ? retest < entry : retest > entry)
-                     && vStop >= g_stopMin && vStop <= g_stopMax && MathAbs(tp - retest) / vStop >= 2.0;
+                     && vStop >= stopMin && vStop <= g_stopMax && MathAbs(tp - retest) / vStop >= 2.0;
       ShowSignal(buy, kind, setup, z, entry, sl, tp, rr, lot, stop, r[0].time, vOk ? retest : 0);
       if(vOk)
          ShowRetest(buy, setup, z, retest, sl, tp, MathAbs(tp - retest) / vStop,
-                    MathFloor(risk / (vStop * g_contract) * 100.0 + 1e-9) / 100.0, vStop, r[0].time);
+                    LotFor(risk, vStop), vStop, r[0].time);
       g_lastSignal = TimeCurrent();
       return;
      }
@@ -2442,31 +2553,21 @@ void CheckSignals()
 //| Rien ne vient du carnet (ni zones, ni biais, ni réglages) : l'EA   |
 //| lit les bougies en temps réel, envoie l'alerte et trace la         |
 //| position comme pour les autres signaux. Il ne passe aucun ordre.   |
-//| Fenêtre : 09:30–12:00 New York (15:30–18:00 Paris), changements    |
-//| d'heure compris. La séance de Londres est retirée (2.21).          |
+//| Fenêtre : 09:30–12:00 New York (ouverture cash du NASDAQ 100),     |
+//| heure d'été américaine comprise. Distances en multiples d'ATR.     |
 //+------------------------------------------------------------------+
 struct CxSweep
   {
    bool     active;
-   double   level;     // niveau balayé (plus haut ou bas des N bougies, PDH/PDL, égaux)
+   double   level;     // niveau balayé (plus haut ou bas des N bougies, nuit, PDH/PDL, égaux)
    double   ext;       // extrême de la mèche du sweep
    datetime t0;        // ouverture de la bougie M15 du sweep (heure serveur)
    datetime last;      // dernière bougie M5 examinée
    string   src;
+   double   atr;       // ATR M15 au moment du sweep (marge du stop, stop maximum)
   };
 CxSweep  g_sf[2];          // 0 : haut balayé (vente), 1 : bas balayé (achat)
 datetime g_sfM15 = 0;
-
-//--- Dernier dimanche du mois (00:00 UTC).
-datetime LastSunday(int year, int mon)
-  {
-   MqlDateTime d;
-   d.year = (mon == 12) ? year + 1 : year; d.mon = (mon == 12) ? 1 : mon + 1; d.day = 1;
-   d.hour = 0; d.min = 0; d.sec = 0;
-   datetime t = StructToTime(d) - 86400;
-   TimeToStruct(t, d);
-   return t - d.day_of_week * 86400;
-  }
 
 //--- N-ième dimanche du mois (00:00 UTC).
 datetime NthSunday(int year, int mon, int n)
@@ -2476,13 +2577,6 @@ datetime NthSunday(int year, int mon, int n)
    datetime t = StructToTime(d);
    TimeToStruct(t, d);
    return t + ((7 - d.day_of_week) % 7) * 86400 + (n - 1) * 7 * 86400;
-  }
-
-bool EuDst(datetime utc)
-  {
-   MqlDateTime d;
-   TimeToStruct(utc, d);
-   return utc >= LastSunday(d.year, 3) + 3600 && utc < LastSunday(d.year, 10) + 3600;
   }
 
 bool UsDst(datetime utc)
@@ -2499,40 +2593,45 @@ int MinuteOfDay(datetime t)
    return d.hour * 60 + d.min;
   }
 
-//--- Instant (UTC) dans la fenêtre de la stratégie autonome : 09:30–12:00 New York (Londres retirée).
+//--- Heure de New York d'un instant UTC (heure d'été américaine comprise).
+datetime NyFromUtc(datetime utc) { return utc - 5 * 3600 + (UsDst(utc) ? 3600 : 0); }
+
+//--- Heure de New York d'une heure du serveur.
+datetime NyTime(datetime server) { return NyFromUtc(server - (datetime)ServerOffset()); }
+
+//--- Début du jour (00:00) d'une heure.
+datetime DayOf(datetime t) { return (datetime)(((long)t / 86400) * 86400); }
+
+//--- Instant (UTC) dans la fenêtre de la stratégie autonome : 09:30–12:00 New York.
 bool InSfSession(datetime utc)
   {
-   int ny = MinuteOfDay(utc - 5 * 3600 + (UsDst(utc) ? 3600 : 0));
+   int ny = MinuteOfDay(NyFromUtc(utc));
    return ny >= 9 * 60 + 30 && ny < 12 * 60;
   }
 
-//--- Séance de New York (08:15–16:00 New York) : seule séance où l'EA signale.
+//--- Séance cash de New York (09:30–16:00 New York) : signaux des zones du plan.
 bool InNySession(datetime utc)
   {
-   int ny = MinuteOfDay(utc - 5 * 3600 + (UsDst(utc) ? 3600 : 0));
-   return ny >= 8 * 60 + 15 && ny < 16 * 60;
+   int ny = MinuteOfDay(NyFromUtc(utc));
+   return ny >= 9 * 60 + 30 && ny < 16 * 60;
   }
 
-//--- Annonce forte USD ou EUR à ±15 min (calendrier économique de MT5, heure serveur).
+//--- Annonce forte USD à ±15 min (CPI, NFP, FOMC, PCE… : calendrier économique de MT5, heure serveur).
 bool SfNewsNear(string &why)
   {
    if(!InpSfNews)
       return false;
    datetime now = TimeTradeServer();
-   string cur[2] = {"USD", "EUR"};
-   for(int c = 0; c < 2; c++)
+   MqlCalendarValue v[];
+   if(CalendarValueHistory(v, now - 15 * 60, now + 15 * 60, NULL, "USD") <= 0)
+      return false;
+   for(int i = 0; i < ArraySize(v); i++)
      {
-      MqlCalendarValue v[];
-      if(CalendarValueHistory(v, now - 15 * 60, now + 15 * 60, NULL, cur[c]) <= 0)
-         continue;
-      for(int i = 0; i < ArraySize(v); i++)
+      MqlCalendarEvent e;
+      if(CalendarEventById(v[i].event_id, e) && e.importance == CALENDAR_IMPORTANCE_HIGH)
         {
-         MqlCalendarEvent e;
-         if(CalendarEventById(v[i].event_id, e) && e.importance == CALENDAR_IMPORTANCE_HIGH)
-           {
-            why = cur[c] + " " + e.name;
-            return true;
-           }
+         why = "USD " + e.name;
+         return true;
         }
      }
    return false;
@@ -2552,21 +2651,49 @@ double SfAtr(MqlRates &r[], int from)
   }
 
 //--- Sweep sur la bougie M15 qui vient de clôturer (r[1]) : mèche au-delà d'un niveau, clôture en deçà.
+//    Niveaux : plus haut / bas des N bougies, haut / bas de la nuit (18:00–09:30 New York), PDH / PDL de la
+//    séance précédente (09:30–16:00 New York), égaux. Pénétration de 0,05 à 1 ATR M15.
 void SfDetectSweep()
   {
    MqlRates r[];
    ArraySetAsSeries(r, true);
-   int need = InpSfLookback + 20;
-   if(CopyRates(_Symbol, PERIOD_M15, 0, need, r) < need)
+   int need = (int)MathMax(InpSfLookback + 20, 400);   // environ 4 jours de M15 : nuit et séance précédente
+   int got  = CopyRates(_Symbol, PERIOD_M15, 0, need, r);
+   if(got < InpSfLookback + 20)
       return;
+   need = got;
    double atr = SfAtr(r, 2);
    if(atr <= 0)
       return;
    datetime close_utc = r[1].time + 900 - (datetime)ServerOffset();
    if(!InSfSession(close_utc))
       return;
-   double pdh = iHigh(_Symbol, PERIOD_D1, 1), pdl = iLow(_Symbol, PERIOD_D1, 1);
-   datetime day0 = iTime(_Symbol, PERIOD_D1, 0);
+   //--- Repères à l'heure de New York : 09:30 du jour, début de la nuit (18:00 la veille).
+   datetime nyDay = DayOf(NyTime(r[1].time));
+   datetime open  = nyDay + 9 * 3600 + 30 * 60;
+   datetime night = nyDay - 6 * 3600;
+   double   onh = 0, onl = 0, pdh = 0, pdl = 0;
+   datetime prev = 0;                              // jour de la séance précédente
+   for(int j = 2; j < need; j++)
+     {
+      datetime t = NyTime(r[j].time);
+      datetime d = DayOf(t);
+      if(prev > 0 && d < prev)
+         break;
+      if(t >= night && t < open)
+        {
+         onh = (onh == 0) ? r[j].high : MathMax(onh, r[j].high);
+         onl = (onl == 0) ? r[j].low  : MathMin(onl, r[j].low);
+        }
+      int m = (int)((t - d) / 60);
+      if(d < nyDay && m >= 9 * 60 + 30 && m < 16 * 60)
+        {
+         if(prev == 0)
+            prev = d;
+         pdh = (pdh == 0) ? r[j].high : MathMax(pdh, r[j].high);
+         pdl = (pdl == 0) ? r[j].low  : MathMin(pdl, r[j].low);
+        }
+     }
    for(int side = 0; side < 2; side++)
      {
       bool   hi   = (side == 0);
@@ -2576,17 +2703,26 @@ void SfDetectSweep()
       double ext = hi ? r[2].high : r[2].low;
       for(int j = 2; j <= InpSfLookback + 1; j++)
          ext = hi ? MathMax(ext, r[j].high) : MathMin(ext, r[j].low);
-      double lv[3];
-      string nm[3];
+      double lv[4];
+      string nm[4];
       lv[0] = ext; nm[0] = (hi ? "plus haut " : "plus bas ") + IntegerToString(InpSfLookback) + " M15";
-      // Veille : PDH / PDL pas encore pris aujourd'hui avant la bougie du sweep.
+      // Séance précédente : PDH / PDL pas encore pris depuis le début de la nuit, avant la bougie du sweep.
       lv[1] = hi ? pdh : pdl; nm[1] = hi ? "PDH" : "PDL";
-      for(int j = 2; j < need && r[j].time >= day0; j++)
-         if(hi ? r[j].high > lv[1] : r[j].low < lv[1])
+      // Nuit : haut / bas de 18:00 à 09:30, pas encore pris depuis l'ouverture de 09:30.
+      lv[2] = hi ? onh : onl; nm[2] = hi ? "haut de la nuit" : "bas de la nuit";
+      for(int j = 2; j < need; j++)
+        {
+         datetime t = NyTime(r[j].time);
+         if(t < night)
+            break;
+         if(lv[1] > 0 && (hi ? r[j].high > lv[1] : r[j].low < lv[1]))
             lv[1] = 0;
+         if(t >= open && lv[2] > 0 && (hi ? r[j].high > lv[2] : r[j].low < lv[2]))
+            lv[2] = 0;
+        }
       // Égaux : deux pivots (2 bougies de chaque côté) à 0,1 ATR près, 5 bougies d'écart au moins.
-      lv[2] = 0; nm[2] = hi ? "EQH" : "EQL";
-      for(int a = 4; a <= InpSfLookback && lv[2] == 0; a++)
+      lv[3] = 0; nm[3] = hi ? "EQH" : "EQL";
+      for(int a = 4; a <= InpSfLookback && lv[3] == 0; a++)
         {
          double pa = hi ? r[a].high : r[a].low;
          bool piva = hi ? (pa > MathMax(r[a + 1].high, r[a + 2].high) && pa >= MathMax(r[a - 1].high, r[a - 2].high))
@@ -2606,12 +2742,12 @@ void SfDetectSweep()
                   if(hi ? r[j].high > L : r[j].low < L)
                      taken = true;
                if(!taken)
-                  lv[2] = L;
+                  lv[3] = L;
                break;
               }
            }
         }
-      for(int k = 0; k < 3; k++)
+      for(int k = 0; k < 4; k++)
         {
          double L = lv[k];
          if(L <= 0)
@@ -2632,6 +2768,7 @@ void SfDetectSweep()
          g_sf[side].t0     = r[1].time;
          g_sf[side].last   = r[1].time;
          g_sf[side].src    = src;
+         g_sf[side].atr    = atr;
          g_status = "Sweep " + src + " " + Fr(best, 2) + " à " + TimeToString(r[1].time + 900, TIME_MINUTES) + " : CHoCH M5 attendu.";
         }
      }
@@ -2648,6 +2785,10 @@ void SfCheckChoch(int side)
    if(n < 10)
       return;
    n--;                                    // la dernière bougie M5 n'est pas close
+   double atr5 = Atr(PERIOD_M5), atr1 = Atr(PERIOD_M1);
+   if(atr5 <= 0 || atr1 <= 0)
+      return;
+   double fvgMin = InpSfFvgMin * atr5;     // FVG M5 d'au moins 0,1 ATR M5
    int x = -1;                             // bougie M5 de l'extrême du sweep
    for(int i = 0; i < n; i++)
       if(r[i].time >= g_sf[side].t0 && r[i].time < g_sf[side].t0 + 900
@@ -2691,9 +2832,9 @@ void SfCheckChoch(int side)
       double ftop = 0, fbot = 0;
       for(int i = c; i >= x + 2 && ftop == 0; i--)
         {
-         if(sell && r[i - 2].low > r[i].high && r[i - 2].low - r[i].high >= InpSfFvgMin)
+         if(sell && r[i - 2].low > r[i].high && r[i - 2].low - r[i].high >= fvgMin)
            { ftop = r[i - 2].low; fbot = r[i].high; }
-         if(!sell && r[i].low > r[i - 2].high && r[i].low - r[i - 2].high >= InpSfFvgMin)
+         if(!sell && r[i].low > r[i - 2].high && r[i].low - r[i - 2].high >= fvgMin)
            { ftop = r[i].low; fbot = r[i - 2].high; }
         }
       if(ftop == 0)
@@ -2702,26 +2843,26 @@ void SfCheckChoch(int side)
       datetime utc = TimeGMT();
       if(!InSfSession(utc) || SfNewsNear(why))
         {
-         g_status = "Setup sweep/FVG ignoré : " + (why != "" ? "annonce " + why : "hors des fenêtres") + ".";
+         g_status = "Setup sweep/FVG ignoré : " + (why != "" ? "annonce " + why : "hors de la fenêtre 09:30–12:00 New York") + ".";
          return;
         }
       double spread = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
       // Premier tiers du FVG, côté où le prix revient.
       double entry = sell ? fbot + (ftop - fbot) / 3.0 : ftop - (ftop - fbot) / 3.0;
-      double sl    = sell ? g_sf[side].ext + InpSfBuffer + spread : g_sf[side].ext - InpSfBuffer - spread;
-      double stop  = MathAbs(entry - sl);
-      double bid   = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      if(stop < InpSfStopMin || (InpSfStopMax > 0 && stop > InpSfStopMax) || (sell ? bid >= entry : bid <= entry))
+      // Stop au-delà de la mèche + 0,1 ATR M15 + spread ; minimum 0,5 ATR M1, maximum en ATR M15 (0 = aucun).
+      double buf     = InpSfBuffer * g_sf[side].atr;
+      double sl      = sell ? g_sf[side].ext + buf + spread : g_sf[side].ext - buf - spread;
+      double stop    = MathAbs(entry - sl);
+      double bid     = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double stopMin = InpSfStopMin * atr1, stopMax = InpSfStopMax * g_sf[side].atr;
+      if(stop < stopMin || (stopMax > 0 && stop > stopMax) || (sell ? bid >= entry : bid <= entry))
         {
-         g_status = "Setup sweep/FVG ignoré : stop " + Fr(stop, 2) + " $ ou prix déjà dans le FVG.";
+         g_status = "Setup sweep/FVG ignoré : stop " + Fr(stop, 1) + " pts hors limites ou prix déjà dans le FVG.";
          return;
         }
-      double tp       = sell ? entry - InpSfRR * stop : entry + InpSfRR * stop;
-      double contract = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE);
-      double step     = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-      double risk     = AccountInfoDouble(ACCOUNT_BALANCE) * InpSfRiskPct / 100.0;
-      double lot      = (contract > 0 && step > 0) ? MathFloor(risk / (stop * contract) / step) * step : 0;
-      lot = MathMax(lot, SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN));
+      double tp   = sell ? entry - InpSfRR * stop : entry + InpSfRR * stop;
+      double risk = AccountInfoDouble(ACCOUNT_BALANCE) * InpSfRiskPct / 100.0;
+      double lot  = MathMax(LotFor(risk, stop), SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN));   // tick_value / tick_size
       CxZone z;
       z.type = "Sweep " + g_sf[side].src + " + FVG";
       z.tf   = "M5";
@@ -2782,13 +2923,13 @@ void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, do
    // Position dessinée : objectif en vert, stop en rouge (comme l'outil position longue / courte).
    double p2r = buy ? entry + 2 * stop : entry - 2 * stop;
    DrawAdd(id, t, t2, buy, entry, sl, tp, p2r,
-           label + " " + Fr(lot, 2) + " lot · SL " + Fr(sl, 2) + " · TP " + Fr(tp, 2) + " (" + Fr(rr, 1) + "R) S" + setup);
+           label + " " + FrLot(lot) + " lot · SL " + Fr(sl, 2) + " · TP " + Fr(tp, 2) + " (" + Fr(rr, 1) + "R) S" + setup);
 
    int    block = CalcBlock();
    string note  = block > 0 ? "Calculateur à l'arrêt (" + CalcBlockText(block) + ") : ne pas prendre."
                             : (CalcAlive() ? "Calculateur : touche C pour charger le signal, Espace pour l'envoyer." : "");
-   string msg = "Carnet XAU : " + label + " " + _Symbol + " — " + z.type + " " + z.tf + ", entrée " + Fr(entry, 2) + ", stop " + Fr(sl, 2)
-                + ", objectif " + Fr(tp, 2) + " (" + Fr(rr, 1) + "R), lot " + Fr(lot, 2)
+   string msg = "Carnet NAS100 : " + label + " " + _Symbol + " — " + z.type + " " + z.tf + ", entrée " + Fr(entry, 2) + ", stop " + Fr(sl, 2)
+                + ", objectif " + Fr(tp, 2) + " (" + Fr(rr, 1) + "R), stop " + Fr(stop, 1) + " pts, lot " + FrLot(lot)
                 + (kind == "LIMIT" ? ", valable " + IntegerToString(g_limitMin) + " min" : "") + ". Signal seulement : à vous de décider."
                 + (note != "" ? " " + note : "");
    Notify(msg);
@@ -2796,7 +2937,7 @@ void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, do
    g_status = label + " " + TimeToString(TimeCurrent(), TIME_MINUTES) + " sur " + z.type + " " + z.tf + ".";
    SendEvent("{\"type\":\"signal\",\"ref\":" + JsonText(ref) + ",\"kind\":\"" + (kind == "LIMIT" ? "limit" : "now") + "\",\"side\":\"" + (buy ? "buy" : "sell") + "\",\"setup\":\"" + setup + "\",\"zone\":"
              + JsonText(z.type + " " + z.tf + " " + Num(z.lo, 2) + "-" + Num(z.hi, 2)) + ",\"entry\":" + Num(entry, 2) + ",\"sl\":" + Num(sl, 2)
-             + ",\"tp\":" + Num(tp, 2) + ",\"lot\":" + Num(lot, 2) + ",\"rr\":" + Num(rr, 2) + ",\"stop\":" + Num(stop, 2)
+             + ",\"tp\":" + Num(tp, 2) + ",\"lot\":" + NumLot(lot) + ",\"rr\":" + Num(rr, 2) + ",\"stop\":" + Num(stop, 2)
              + (retest > 0 ? ",\"retest\":" + Num(retest, 2) : "")
              + (block > 0 ? ",\"note\":" + JsonText(note) : "")
              + ",\"time\":" + IntegerToString((long)TimeGMT()) + "}");
@@ -2828,7 +2969,7 @@ void ShowRetest(bool buy, string setup, CxZone &z, double entry, double sl, doub
    DrawAdd(id, t, t + 30 * 60, buy, entry, sl, tp, 0, "Retour FVG " + Fr(entry, 2));
    SendEvent("{\"type\":\"signal\",\"variant\":true,\"ref\":" + JsonText(ref) + ",\"kind\":\"retest\",\"side\":\"" + (buy ? "buy" : "sell") + "\",\"setup\":\"" + setup + "\",\"zone\":"
              + JsonText(z.type + " " + z.tf + " " + Num(z.lo, 2) + "-" + Num(z.hi, 2)) + ",\"entry\":" + Num(entry, 2) + ",\"sl\":" + Num(sl, 2)
-             + ",\"tp\":" + Num(tp, 2) + ",\"lot\":" + Num(lot, 2) + ",\"rr\":" + Num(rr, 2) + ",\"stop\":" + Num(stop, 2)
+             + ",\"tp\":" + Num(tp, 2) + ",\"lot\":" + NumLot(lot) + ",\"rr\":" + Num(rr, 2) + ",\"stop\":" + Num(stop, 2)
              + ",\"time\":" + IntegerToString((long)TimeGMT()) + "}");
   }
 //+------------------------------------------------------------------+

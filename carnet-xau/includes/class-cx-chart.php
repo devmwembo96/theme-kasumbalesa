@@ -2,7 +2,7 @@
 /**
  * Graphique d'une analyse de Claude, au style TradingView clair, et sa capture d'écran.
  *
- * - ?cx_chart=1&date=AAAA-MM-JJ&kind=london|us|week : page du graphique, en paysage comme un
+ * - ?cx_chart=1&date=AAAA-MM-JJ&kind=us|week : page du graphique, en paysage comme un
  *   écran de PC (1600 × 900, capture à 2560 × 1440) : bougies du courtier,
  *   zones, niveaux, outil position de chaque scénario, trajet simulé). La tâche Claude la capture
  *   avec un navigateur sans écran (window.CX_READY = true quand le dessin est fini).
@@ -16,7 +16,7 @@ defined( 'ABSPATH' ) || exit;
 
 class CX_Chart {
 
-	const KINDS = array( 'asia', 'london', 'premarket', 'us', 'week' );
+	const KINDS = array( 'us', 'week' );
 
 	public static function init() {
 		add_action( 'init', array( __CLASS__, 'serve' ), 2 );
@@ -148,8 +148,8 @@ class CX_Chart {
 		$lv     = array_merge( (array) ( $s['levels'] ?? array() ), (array) ( $c['levels'] ?? array() ) );
 		foreach ( $lv as $l ) {
 			$v = (float) ( $l['price'] ?? 0 );
-			// Deux niveaux à moins de 1 $ : un seul trait (le premier, celui de l'analyse).
-			if ( ! $v || ! $near( $v, $v ) || array_filter( array_keys( $seen ), fn( $x ) => abs( (float) $x - $v ) < 1.0 ) ) {
+			// Deux niveaux à moins de 0,01 % du prix (2 pts au moins) : un seul trait (le premier, celui de l'analyse).
+			if ( ! $v || ! $near( $v, $v ) || array_filter( array_keys( $seen ), fn( $x ) => abs( (float) $x - $v ) < max( 2.0, 0.0001 * $v ) ) ) {
 				continue;
 			}
 			$seen[ (string) $v ] = 1;
@@ -218,11 +218,8 @@ class CX_Chart {
 		}
 
 		$titles = array(
-			'asia'      => 'Session Asie',
-			'london'    => 'Plan de Londres',
-			'premarket' => 'Pré-marché US',
-			'us'        => 'Plan de New York',
-			'week'      => 'Plan de la semaine',
+			'us'   => 'Plan de New York',
+			'week' => 'Plan de la semaine',
 		);
 		$when   = wp_date( 'l j F', strtotime( $date . ' 12:00' ), CX_Repo::tz() );
 		$bias   = $s ? ( $s['bias'] ?? '' ) : '';
@@ -274,7 +271,7 @@ class CX_Chart {
 		$lwc = (string) file_get_contents( CX_DIR . 'assets/vendor/lightweight-charts-4.2.3.js' ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 		$js  = (string) file_get_contents( CX_DIR . 'assets/js/chart-shot.js' ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 		// phpcs:disable WordPress.Security.EscapeOutput -- page autonome : bibliothèque et données JSON.
-		echo '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=1600"><title>Carnet XAU</title><style>'
+		echo '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=1600"><title>Carnet NAS100</title><style>'
 			. 'html,body{margin:0;background:#fff;color:#131722;font-family:-apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,sans-serif}'
 			. '#shot{width:1600px;height:900px;position:relative;background:#fff;overflow:hidden}'
 			. '#chart{position:absolute;left:0;top:0;right:0;bottom:0}'
@@ -287,7 +284,7 @@ class CX_Chart {
 			. '</style></head><body><div id="shot"><div id="chart"></div>'
 			. '<div id="legend"><div id="sym"></div><div id="ohlc"></div></div>'
 			. '<div id="head"><div id="title"></div><div id="sub"></div></div>'
-			. '<div id="foot">Carnet XAU · scénario de Claude, simulation · heures de Lubumbashi</div><div id="msg"></div></div>'
+			. '<div id="foot">Carnet NAS100 · scénario de Claude, simulation · heures de Lubumbashi</div><div id="msg"></div></div>'
 			. '<script>' . $lwc . '</script><script>window.CX_DATA=' . wp_json_encode( $d ) . ';</script><script>' . $js . '</script></body></html>';
 		// phpcs:enable
 		exit;
@@ -313,7 +310,7 @@ class CX_Chart {
 		$files = $req->get_file_params();
 		$f     = $files['file'] ?? null;
 		if ( ! $date || ! in_array( $kind, self::KINDS, true ) ) {
-			return CX_Repo::invalid( '« date » (AAAA-MM-JJ) et « kind » (london, us ou week) obligatoires.' );
+			return CX_Repo::invalid( '« date » (AAAA-MM-JJ) et « kind » (us ou week) obligatoires.' );
 		}
 		if ( ! $f || ! empty( $f['error'] ) || ! is_uploaded_file( $f['tmp_name'] ) || $f['size'] > 4 * MB_IN_BYTES ) {
 			return CX_Repo::invalid( 'Image absente ou trop lourde (4 Mo au plus), champ « file ».' );

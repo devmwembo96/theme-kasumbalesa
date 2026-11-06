@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
 <div class="cx-app" id="cx-app">
 <header class="cx-bar">
 	<div class="cx-bar-in">
-		<div class="brand"><span class="ingot" aria-hidden="true"></span>Carnet XAU</div>
+		<div class="brand"><span class="mark" aria-hidden="true"></span>Carnet NAS100</div>
 		<label class="acct"><span class="sr">Compte actif</span><select id="acct-switch" aria-label="Compte actif"></select></label>
 		<div class="status" id="status"><i></i><span>Connexion…</span></div>
 		<nav class="cx-nav" role="tablist">
@@ -39,7 +39,7 @@ defined( 'ABSPATH' ) || exit;
 		<div class="mt5-line" id="mt5-line" hidden></div>
 		<div class="ticket-out" id="ticket-out"></div>
 		<div class="ticket-in quick">
-			<label class="f">Lot rapide : stop (distance en $)<input id="in-stop" type="number" step="0.01" min="0" inputmode="decimal" placeholder="ex. 4,20"></label>
+			<label class="f">Lot rapide : stop (distance en points d’indice)<input id="in-stop" type="number" step="0.1" min="0" inputmode="decimal" placeholder="ex. 35"></label>
 			<div class="quick-out" id="quick-out"></div>
 		</div>
 		<div class="alerts" id="alerts"></div>
@@ -65,7 +65,7 @@ defined( 'ABSPATH' ) || exit;
 			<label class="f">Pertes max par semaine<input id="s-weekloss" type="number" step="1"></label>
 			<label class="f">Perte max de la semaine (R)<input id="s-weekstopr" type="number" step="0.5"></label>
 			<label class="f">Trades max par jour<input id="s-maxtrades-o" type="number" step="1"></label>
-			<label class="f">Contrat or (onces par lot)<input id="s-contract-o" type="number" step="1"></label>
+			<label class="f">Valeur d’un point par lot ($, lue chez le courtier par l’EA)<input id="s-contract-o" type="number" step="any"></label>
 			<label class="f">Commission aller-retour ($ par lot)<input id="s-commission-o" type="number" step="0.5"></label>
 		</div>
 		<div class="grid g3" id="set-prop" style="margin-top:12px">
@@ -85,7 +85,7 @@ defined( 'ABSPATH' ) || exit;
 			<label class="f">Trades max par jour<input id="s-maxtrades" type="number" step="1"></label>
 			<label class="f">Pertes max par jour<input id="s-maxloss" type="number" step="1"></label>
 			<label class="f">Commission aller-retour ($ par lot)<input id="s-commission" type="number" step="0.5"></label>
-			<label class="f">Contrat or (onces par lot)<input id="s-contract" type="number" step="1"></label>
+			<label class="f">Valeur d’un point par lot ($, lue chez le courtier par l’EA)<input id="s-contract" type="number" step="any"></label>
 			<label class="f">Spread max (% du stop)<input id="s-spreadmax" type="number" step="1"></label>
 		</div>
 		<p class="hint" id="s-prop-hint"></p>
@@ -156,7 +156,7 @@ defined( 'ABSPATH' ) || exit;
 			<label class="f">Niveau ou déclencheur<select id="tf-level">
 				<option value="EQL">EQL</option><option value="EQH">EQH</option><option value="2 Bottom Liq">2 Bottom Liq</option><option value="2 Top Liq">2 Top Liq</option>
 				<option value="PDH">PDH</option><option value="PDL">PDL</option><option value="Session fermée">Extrême de session fermée</option><option value="BoS">BoS / MSB</option><option value="Autre">Autre</option></select></label>
-			<label class="f">Stop ($)<input id="tf-stop" type="number" step="0.01" inputmode="decimal"></label>
+			<label class="f">Stop (pts)<input id="tf-stop" type="number" step="0.1" inputmode="decimal"></label>
 			<label class="f">Lot<input id="tf-lot" type="number" step="0.01" inputmode="decimal"></label>
 			<label class="f">Risque ($)<input id="tf-risk" type="number" step="0.01" inputmode="decimal"></label>
 			<label class="f">Résultat (R)<input id="tf-r" type="number" step="0.1" inputmode="decimal" placeholder="−1, 0, 2, 3,5…"></label>
@@ -294,11 +294,11 @@ defined( 'ABSPATH' ) || exit;
 			<h4>MetaTrader 5</h4>
 			<p class="hint">L’EA envoie chaque trade fermé et, toutes les minutes, le solde, l’équité et la perte du jour. Une clé par compte : bouton « Clé MT5 » sur la carte du compte.</p>
 			<ol class="steps">
-				<li>Téléchargez l’EA : <a id="ea-link" download="CarnetXAU.mq5">CarnetXAU.mq5</a>, puis placez-le dans MQL5/Experts et compilez-le dans MetaEditor.</li>
+				<li>Téléchargez l’EA : <a id="ea-link" download="CarnetNAS100.mq5">CarnetNAS100.mq5</a>, puis placez-le dans MQL5/Experts et compilez-le dans MetaEditor.</li>
 				<li>Dans MT5 : Outils › Options › Expert Advisors, cochez « Autoriser WebRequest » et ajoutez l’adresse <code id="mt5-host"></code>.</li>
-				<li>Glissez l’EA sur un graphique XAUUSD, collez l’adresse <code id="mt5-url"></code> et la clé du compte.</li>
+				<li>Glissez l’EA sur un graphique NAS100 (US100, USTEC selon le courtier), M1, collez l’adresse <code id="mt5-url"></code> et la clé du compte.</li>
 			</ol>
-			<p class="hint">Prise de position : <a id="calc-link" download="CalculateurXAU.mq5">CalculateurXAU.mq5</a> (version 4.04). Outil position et ticket d’ordre comme sur TradingView, même police : Sell ou Buy, stop et objectif réglés à la souris, Marché, Limite ou Stop. Sans restrictions : les règles du carnet s’affichent en avertissement, aucune ne bloque l’ouverture. Sons des ordres (copier order_filled.wav dans le dossier Sounds de MT5). Risque, limites du jour, étape et objectif du compte viennent du carnet par l’EA Carnet XAU (version 2.22), sur le même compte. À glisser sur un second graphique XAUUSD.</p>
+			<p class="hint">Prise de position : <a id="calc-link" download="CalculateurNAS100.mq5">CalculateurNAS100.mq5</a> (version 5.00). Outil position et ticket d’ordre comme sur TradingView, même police : Sell ou Buy, stop et objectif réglés à la souris, Marché, Limite ou Stop. Sans restrictions : les règles du carnet s’affichent en avertissement, aucune ne bloque l’ouverture. Sons des ordres (copier order_filled.wav dans le dossier Sounds de MT5). Risque, limites du jour, étape et objectif du compte viennent du carnet par l’EA Carnet NAS100 (version 3.00), sur le même compte. À glisser sur un second graphique NAS100.</p>
 			<div class="secret" id="mt5-key-box" hidden></div>
 			<label class="f" style="margin-top:10px">Bougies utilisées par Claude pour l’analyse<select id="candles-ref"></select></label>
 			<p class="hint" id="candles-hint"></p>
@@ -346,5 +346,5 @@ defined( 'ABSPATH' ) || exit;
 </section>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<noscript><p class="panel">Le Carnet XAU a besoin de JavaScript.</p></noscript>
+<noscript><p class="panel">Le Carnet NAS100 a besoin de JavaScript.</p></noscript>
 </div>

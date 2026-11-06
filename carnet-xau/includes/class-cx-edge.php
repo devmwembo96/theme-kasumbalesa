@@ -4,8 +4,8 @@
  * soldés, groupés par setup, séance et heure de Lubumbashi, sur tout l'historique et sur 30 jours.
  * Les plans de séance et le rejeu du soir lisent GET /edge pour mettre en tête ce qui gagne.
  *
- * Séances (heures locales, changements d'heure compris) : Asie avant 07:00 à Londres ; Londres de
- * 07:00 à Londres jusqu'à 08:15 à New York ; New York de 08:15 à 16:00 à New York ; hors séance après.
+ * Séances du Nasdaq 100 (heure de New York, changements d'heure compris) : ny = séance de New York
+ * 09:30–16:00 ; apres = 16:00–18:00 ; nuit = séance de nuit 18:00–09:30. Ère NAS100 seulement.
  *
  * @package CarnetXAU
  */
@@ -34,19 +34,14 @@ class CX_Edge {
 	 * Séance d'un instant.
 	 *
 	 * @param int $ts Unix.
-	 * @return string asia|london|ny|off
+	 * @return string ny|apres|nuit
 	 */
 	public static function session( $ts ) {
-		$at  = new DateTimeImmutable( '@' . $ts );
-		$ldn = (int) $at->setTimezone( new DateTimeZone( 'Europe/London' ) )->format( 'Gi' );
-		$ny  = (int) $at->setTimezone( new DateTimeZone( 'America/New_York' ) )->format( 'Gi' );
-		if ( $ny >= 815 && $ny < 1600 ) {
+		$ny = (int) ( new DateTimeImmutable( '@' . $ts ) )->setTimezone( new DateTimeZone( 'America/New_York' ) )->format( 'Gi' );
+		if ( $ny >= 930 && $ny < 1600 ) {
 			return 'ny';
 		}
-		if ( $ldn >= 700 && $ny < 815 ) {
-			return 'london';
-		}
-		return $ldn < 700 ? 'asia' : 'off';
+		return ( $ny >= 1600 && $ny < 1800 ) ? 'apres' : 'nuit';
 	}
 
 	/**
@@ -103,7 +98,8 @@ class CX_Edge {
 		$tz      = CX_Repo::tz();
 		$journal = array();
 		foreach ( CX_Repo::trades() as $t ) {
-			if ( ! $t['time'] ) {
+			// Ère NAS100 seulement : les trades de l'or restent au journal, hors statistiques.
+			if ( ! $t['time'] || ! CX_Market::in_era( $t['date'] . ' ' . $t['time'] ) ) {
 				continue;
 			}
 			$journal[] = array(
@@ -117,7 +113,7 @@ class CX_Edge {
 		}
 		$table  = CX_Install::table( 'csignals' );
 		$claude = array();
-		foreach ( $wpdb->get_results( "SELECT signale_le, setup, sens, resultat_r FROM $table WHERE resultat_r IS NOT NULL ORDER BY signale_le" ) as $s ) { // phpcs:ignore WordPress.DB.PreparedSQL
+		foreach ( $wpdb->get_results( $wpdb->prepare( "SELECT signale_le, setup, sens, resultat_r FROM $table WHERE resultat_r IS NOT NULL AND signale_le >= %s ORDER BY signale_le", CX_Market::epoch() ) ) as $s ) { // phpcs:ignore WordPress.DB.PreparedSQL
 			$claude[] = array(
 				'ts'    => ( new DateTimeImmutable( $s->signale_le, $tz ) )->getTimestamp(),
 				'setup' => (string) $s->setup,
@@ -140,7 +136,7 @@ class CX_Edge {
 	public static function rest() {
 		$rows  = self::rows();
 		$since = time() - 30 * DAY_IN_SECONDS;
-		$out   = array( 'note' => 'R par groupe : n trades, win % gagnants, avg R moyen, sum R total ; heures de Lubumbashi ; séances asia, london (07:00 Londres → 08:15 New York), ny (08:15 → 16:00 New York), off.' );
+		$out   = array( 'note' => 'R par groupe : n trades, win % gagnants, avg R moyen, sum R total ; heures de Lubumbashi ; séances ny (09:30 → 16:00 New York), apres (16:00 → 18:00), nuit (18:00 → 09:30) ; Nasdaq 100 (NAS100), ère NAS100 seulement.' );
 		foreach ( $rows as $src => $list ) {
 			$recent       = array_values( array_filter( $list, fn( $x ) => $x['ts'] >= $since ) );
 			$out[ $src ] = array(

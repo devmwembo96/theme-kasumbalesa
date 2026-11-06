@@ -1,6 +1,6 @@
 # Plan de semaine rédigé par Claude — format de publication
 
-Le plan de la semaine du Carnet XAU est rédigé **exclusivement** par une tâche planifiée Claude. L'onglet Plan l'affiche en lecture seule.
+Le plan de la semaine du Carnet NAS100 (Nasdaq 100, séance de New York) est rédigé **exclusivement** par une tâche planifiée Claude. L'onglet Plan l'affiche en lecture seule.
 
 ## Publication
 
@@ -26,7 +26,7 @@ GET https://revnefty.store/wp-json/carnet-xau/v1/candles
 - `calendar?week=` : annonces USD à fort et moyen impact de la semaine (ForexFactory, relu
   toutes les 6 h) : `t` (Unix), `date` et `time` (heure de Lubumbashi), `impact`, `title`,
   `fr` (nom français), `forecast`, `previous`. Reprendre ces annonces dans `calendar` (heures
-  de Lubumbashi) avec leur incidence probable sur l'or dans `fund_notes`. Le carnet, Telegram
+  de Lubumbashi) avec leur incidence probable sur le Nasdaq 100 dans `fund_notes`. Le carnet, Telegram
   et l'EA lisent déjà ce calendrier : `calendar` sert à ajouter ce qui n'y figure pas
   (discours, annonce surprise) et à commenter. Une annonce de `calendar` sans équivalent à
   10 minutes près dans le calendrier automatique bloque les signaux de l'EA et déclenche
@@ -88,33 +88,33 @@ Prix en dollars, avec deux décimales au plus. Heures en heure de Lubumbashi (UT
 {
   "prediction": {
     "bull": 55, "bear": 30, "range": 15,
-    "summary": "Biais haussier tant que 4 120 tient : …",
-    "main": "Balayage de l’EQL 4 135 lundi-mardi puis poussée vers 4 230.",
-    "alt": "Cassure sous 4 120 (ChoCh H4) : retour vers la demande 4 060–4 075.",
-    "invalidation": 4118.0,
-    "range_low": 4110.0, "range_high": 4245.0
+    "summary": "Biais haussier tant que 21 010 tient : …",
+    "main": "Balayage de l’EQL 21 090 lundi-mardi puis poussée vers 21 575.",
+    "alt": "Cassure sous 21 010 (ChoCh H4) : retour vers la demande 20 705–20 780.",
+    "invalidation": 21000.0,
+    "range_low": 20960.0, "range_high": 21650.0
   },
   "refs": {
-    "price": 4181.1, "week_open": 4178.0,
-    "prev_week_high": 4212.4, "prev_week_low": 4126.8,
-    "prev_month_high": 4260.0, "prev_month_low": 3985.5,
+    "price": 21325.0, "week_open": 21310.0,
+    "prev_week_high": 21485.0, "prev_week_low": 21045.0,
+    "prev_month_high": 21725.0, "prev_month_low": 20325.0,
     "atr_d": 38.5, "atr_w": 112.0
   },
   "structure": [
-    { "tf": "W",  "trend": "h", "last": "BoS haussier 4 160 (semaine du 5/10)", "pd": "premium",   "note": "" },
-    { "tf": "D",  "trend": "h", "last": "BoS 4 205 (15/10)",                     "pd": "equilibre", "note": "" },
-    { "tf": "H4", "trend": "r", "last": "ChoCh baissier 4 190 (16/10)",          "pd": "discount",  "note": "" },
-    { "tf": "H1", "trend": "b", "last": "BoS baissier 4 172",                    "pd": "discount",  "note": "" }
+    { "tf": "W",  "trend": "h", "last": "BoS haussier 21 215 (semaine du 5/10)", "pd": "premium",   "note": "" },
+    { "tf": "D",  "trend": "h", "last": "BoS 21 445 (15/10)",                     "pd": "equilibre", "note": "" },
+    { "tf": "H4", "trend": "r", "last": "ChoCh baissier 21 370 (16/10)",          "pd": "discount",  "note": "" },
+    { "tf": "H1", "trend": "b", "last": "BoS baissier 21 275",                    "pd": "discount",  "note": "" }
   ],
   "zones": [
-    { "type": "OB", "tf": "H4", "low": 4140.0, "high": 4148.5, "side": "achat", "strength": 3, "state": "vierge", "note": "Sous l’EQL 4 135 balayé = setup 1",
-      "origin": "Dernière bougie baissière H4 du jeudi 16/10, 08:00", "draw": "Rectangle du bas de la mèche (4 140) au haut du corps (4 148,5), à partir de cette bougie, prolongé à droite." },
-    { "type": "FVG", "tf": "H1", "low": 4224.0, "high": 4231.0, "side": "vente", "strength": 2, "state": "vierge", "note": "",
+    { "type": "OB", "tf": "H4", "low": 21115.0, "high": 21155.0, "side": "achat", "strength": 3, "state": "vierge", "note": "Sous l’EQL 21 090 balayé = setup 1",
+      "origin": "Dernière bougie baissière H4 du jeudi 16/10, 08:00", "draw": "Rectangle du bas de la mèche (21 115) au haut du corps (21 155), à partir de cette bougie, prolongé à droite." },
+    { "type": "FVG", "tf": "H1", "low": 21540.0, "high": 21580.0, "side": "vente", "strength": 2, "state": "vierge", "note": "",
       "origin": "Déséquilibre H1 du mercredi 15/10, 14:00–16:00", "draw": "Rectangle entre le bas de la bougie de 14:00 et le haut de celle de 16:00." }
   ],
   "levels": [
-    { "price": 4212.4, "type": "Plus haut semaine passée", "note": "Liquidité au-dessus", "origin": "Plus haut du jeudi 16/10", "draw": "Ligne horizontale sur le plus haut de la semaine passée." },
-    { "price": 4135.0, "type": "EQL", "note": "Double bas H1", "origin": "Bas H1 du 15/10 10:00 et du 16/10 13:00", "draw": "Ligne horizontale reliant les deux bas." }
+    { "price": 21485.0, "type": "Plus haut semaine passée", "note": "Liquidité au-dessus", "origin": "Plus haut du jeudi 16/10", "draw": "Ligne horizontale sur le plus haut de la semaine passée." },
+    { "price": 21090.0, "type": "EQL", "note": "Double bas H1", "origin": "Bas H1 du 15/10 10:00 et du 16/10 13:00", "draw": "Ligne horizontale reliant les deux bas." }
   ],
   "fundamentals": [
     { "key": "dxy",   "label": "Dollar (DXY)",  "effect": "up",      "value": "101,8 (−0,6 %)", "note": "" },
@@ -122,25 +122,25 @@ Prix en dollars, avec deux décimales au plus. Heures en heure de Lubumbashi (UT
     { "key": "fed",   "label": "Attentes Fed",  "effect": "up",      "value": "",                "note": "" },
     { "key": "geo",   "label": "Géopolitique",  "effect": "up",      "value": "",                "note": "" }
   ],
-  "fund_notes": "Ce qui pousse l’or cette semaine…",
+  "fund_notes": "Ce qui pousse le Nasdaq 100 cette semaine (annonces, résultats des Big Tech, taux 10 ans, VIX)…",
   "calendar": [
     { "day": "mercredi", "time": "14:30", "event": "CPI US", "impact": "high", "forecast": "0,3 %", "previous": "0,4 %" }
   ],
   "days": [
-    { "day": "lundi", "bias": "h", "session": "Londres", "focus": "Attendre le balayage de l’EQL 4 135, pas de vente." }
+    { "day": "lundi", "bias": "h", "session": "New York", "focus": "Attendre le balayage du bas de la nuit 21 035, pas de vente." }
   ],
   "scenarios": [
-    { "if": "le prix balaie l’EQL 4 135 et revient dans l’OB H4 4 140–4 148", "then": "setup 1 en achat dans l’OB H4",
+    { "if": "le prix balaie l’EQL 21 090 et revient dans l’OB H4 21 115–21 155", "then": "setup 1 en achat dans l’OB H4",
       "trigger": "Clôture M1 au-dessus du dernier sommet pivot après la mèche",
-      "setup": "1", "side": "achat", "entry": "4 140–4 148", "sl": 4132.0, "tp": 4205.0, "prob": 45,
-      "invalidation": "Clôture H4 sous 4 118" }
+      "setup": "1", "side": "achat", "entry": "21 115–21 155", "sl": 21075.0, "tp": 21445.0, "prob": 45,
+      "invalidation": "Clôture H4 sous 21 000" }
   ],
   "rules": [ "Pas de trade mercredi de 14:15 à 15:00 (CPI).", "Vendredi : demi-risque après 16 h." ],
   "review": {
     "verdict": "partielle", "score": 6,
     "bias_ok": true, "range_held": false, "invalidation_hit": false,
-    "zones": [ { "label": "OB H4 4 140–4 148,5", "reached": true, "reacted": true }, { "label": "FVG H1 4 224–4 231", "reached": false, "reacted": null } ],
-    "scenarios": [ { "label": "Balayage EQL puis achat", "triggered": true, "result": "+3,1R jusqu’à 4 205" } ],
+    "zones": [ { "label": "OB H4 21 115–21 155", "reached": true, "reacted": true }, { "label": "FVG H1 21 540–21 580", "reached": false, "reacted": null } ],
+    "scenarios": [ { "label": "Balayage EQL puis achat", "triggered": true, "result": "+3,1R jusqu’à 21 445" } ],
     "worked": [ "Biais haussier et OB H4" ], "failed": [ "Range sous-estimé après le CPI" ],
     "lesson": "Élargir le range attendu les semaines de CPI.",
     "text": "Commentaire libre."
@@ -148,12 +148,12 @@ Prix en dollars, avec deux décimales au plus. Heures en heure de Lubumbashi (UT
   "update": {
     "date": "2026-10-21", "status": "maintenu",
     "reason": "Aucun déclencheur : clôture au-dessus de l’invalidation, OB H4 intact.",
-    "summary": "Balayage de l’EQL 4 135 à Londres puis rebond dans l’OB H4.",
+    "summary": "Balayage du bas de la nuit 21 035 à l’ouverture puis rebond dans l’OB H4.",
     "changes": [],
     "trades": "2 trades, tous deux sur l’OB H4 et dans le sens du biais : règles respectées.",
-    "tomorrow": "Mercredi : CPI à 14:30, pas de trade de 14:15 à 15:00 ; viser le plus haut 4 212 si l’OB tient."
+    "tomorrow": "Mercredi : CPI à 14:30, pas de trade de 14:15 à 15:00 ; viser le plus haut 21 480 si l’OB tient."
   },
-  "sources": "Bougies or (contrat à terme GC=F, écart avec le courtier ≈ +x $), DXY, US10Y, calendrier ForexFactory, actualité."
+  "sources": "Bougies NAS100 du courtier (compte de référence), US10Y, VIX, résultats d’entreprises, calendrier ForexFactory, actualité."
 }
 ```
 
@@ -168,7 +168,7 @@ Prix en dollars, avec deux décimales au plus. Heures en heure de Lubumbashi (UT
 | `side` | `achat`, `vente` |
 | `strength` | 1 à 3 |
 | `state` | `vierge`, `testee` |
-| `effect` | `up` (soutient l’or), `down` (pèse sur l’or), `neutral` |
+| `effect` | `up` (soutient l’indice), `down` (pèse sur l’indice), `neutral` |
 | `impact` | `high`, `medium`, `low` |
 | `days[].bias` | `h`, `b`, `n` |
 | `setup` | `1` (liquidité), `2` (continuation), `3` (iFVG) |
@@ -214,27 +214,24 @@ serveur) : tous les prix d’un plan viennent d’un seul courtier, jamais d’u
 
 ## Analyses de séance (`session`)
 
-Publiées dans le plan de la semaine, envoyées sur Telegram dès réception. `kind` : `london` (plan
-de Londres, 06:45 à Londres, 1 h avant l’ouverture), `us` (plan de New York, 08:15 à New York, 1 h
-avant l’ouverture). Une analyse par séance et par jour. L’EA surveille les zones du dernier plan
-du jour comme les zones du plan : celles du plan de Londres (mention LDN), puis celles du plan de
-New York, qui les remplacent. `asia` et `premarket` (arrêtés le 23 octobre 2026) restent lisibles
-dans l’historique.
+Publiées dans le plan de la semaine, envoyées sur Telegram dès réception. `kind` : `us` seulement
+(plan de New York du Nasdaq 100, 08:15 à New York, 1 h 15 avant l’ouverture de 09:30). Une analyse
+par jour. L’EA surveille les zones du plan de New York du jour comme les zones du plan.
 
 ```json
 "session": { "date": "2026-10-20", "kind": "us", "bias": "b",
   "summary": "Deux phrases chiffrées : ce que le marché a fait, ce qu’on attend.",
-  "facts": ["Plus bas de l’Asie 4 136,59 à 04:40, sous l’EQL 4 146,9"],
-  "liquidity": ["EQL 4 146,9 pris", "PDL 4 136,6 intact"],
-  "execution": ["Pas de vente sous 4 140 : place insuffisante jusqu’au PDL"],
-  "zones": [ { "type": "FVG M15", "low": 4158, "high": 4162, "side": "vente", "note": "…", "origin": "20/10 13:15" } ],
-  "levels": [ { "price": 4136.6, "type": "PDL", "origin": "19/10 21:40" } ],
+  "facts": ["Ouverture 09:30 à 21 120,50, gap de −0,4 % sous la VAL de la veille 21 180,25"],
+  "liquidity": ["Bas de la nuit 21 035,75 pris", "Bas de la veille 20 990,00 intact"],
+  "execution": ["Pas de vente sous 21 010 : place insuffisante jusqu’au bas de la veille"],
+  "zones": [ { "type": "FVG M15", "low": 21150, "high": 21170, "side": "vente", "note": "…", "origin": "20/10 17:15" } ],
+  "levels": [ { "price": 20990.0, "type": "Bas de la veille (RTH)", "origin": "19/10 21:40" } ],
   "positions": [ { "side": "vente", "setup": "1", "label": "retour FVG M15 de 13:15",
-    "wait": "Le prix revient dans 4 158–4 162 après avoir pris le haut de Londres 4 156,80",
+    "wait": "Le prix revient dans 21 150–21 170 après avoir pris le haut de l’IB 21 148,50",
     "trigger": "Clôture M1 sous le dernier creux pivot après la mèche",
-    "entry": 4160.0, "sl": 4166.3, "tp": 4137.0,
-    "cancel": "Clôture M15 au-dessus de 4 166,30" } ],
-  "invalid": "Clôture M15 au-dessus de 4 166",
+    "entry": 21155.0, "sl": 21185.0, "tp": 21095.0,
+    "cancel": "Clôture M15 au-dessus de 21 185,00" } ],
+  "invalid": "Clôture M15 au-dessus de 21 185",
   "idea": "Facultatif : une idée de trade, de setup ou de gestion née de l’analyse." }
 ```
 
@@ -249,7 +246,7 @@ gestion va dans `idea`, chiffrée sur les bougies.
 
 ```json
 "backtest": { "summary": "…", "ea_check": "…",
-  "missed": [ { "time": "16:42", "side": "vente", "setup": "3", "entry": 4171.2, "sl": 4180.3, "tp": 4141, "r": 3.3, "why": "…" } ],
+  "missed": [ { "time": "16:42", "side": "vente", "setup": "3", "entry": 21272.5, "sl": 21305.0, "tp": 21165.0, "r": 3.3, "why": "…" } ],
   "wrong": [], "tuning": "…" }
 ```
 
@@ -269,17 +266,17 @@ remplace la précédente. `GET /coach` : les 60 dernières notes (relire l’obj
 
 Chaque annonce USD à fort impact est mesurée par le carnet sur les bougies du compte de référence
 (M1, sinon M5, sinon M15), 65 minutes après sa sortie : amplitude haute et basse des 15 premières
-minutes, clôture à +15 et +60 min (en dollars depuis l’ouverture de la bougie de l’annonce), sens de
+minutes, clôture à +15 et +60 min (en points d’indice depuis l’ouverture de la bougie de l’annonce), sens de
 la première impulsion d’au moins 1 $ et retournement à +60 min. Les 300 dernières sont gardées.
 `GET /news-playbook` donne le résumé par annonce (`n`, `range15`, `abs60`, `reverse_pc`) ;
-`?title=CPI m/m` filtre une annonce. Les plans de Londres et de New York s’en servent pour chiffrer
+`?title=CPI m/m` filtre une annonce. Le plan de New York s’en sert pour chiffrer
 la réaction attendue d’une annonce du jour (jamais pour assouplir la fenêtre sans trade).
 
 ## Statisticien (`/edge`)
 
 `GET /edge` : résultats en R (`n`, `win` %, `avg`, `sum`) des trades du journal (`journal`) et des
-signaux Claude soldés (`claude`), par `setup`, `session` (asia, london : 07:00 Londres → 08:15 New
-York, ny : 08:15 → 16:00 New York, off), `hour` (heure de Lubumbashi) et `side`, sur tout
+signaux Claude soldés (`claude`), par `setup`, `session` (ny : 09:30 → 16:00 New York, apres :
+16:00 → 18:00, nuit : 18:00 → 09:30), ère NAS100 seulement, `hour` (heure de Lubumbashi) et `side`, sur tout
 l’historique (`total`) et sur 30 jours (`30d`) ; `journal.rules` compare les trades complétés où
 les règles sont respectées ou non. Les plans de séance mettent en premier la fiche du setup et de la
 séance qui gagnent (au moins 5 trades pour conclure) ; le coach s’en sert pour ses bilans.

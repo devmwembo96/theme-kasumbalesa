@@ -3,9 +3,8 @@
  * Fiabilité de Claude et remplissage automatique des trades MT5.
  *
  * - Chaque analyse de séance est notée par le carnet sur les bougies du courtier, sans avis de
- *   Claude : mouvement entre la publication et la fin de la séance visée (plan de Londres : jusqu'à
- *   08:15 à New York, quand le plan de New York prend le relais ; plan de New York : jusqu'à 16:00
- *   à New York ; anciennes analyses Asie : 08:30, pré-marché : 16:00). Au-delà de ± 0,2 × ATR
+ *   Claude : mouvement entre la publication et la fin de la séance du Nasdaq 100 (plan de New York :
+ *   jusqu'à 16:00 à New York). Au-delà de ± 0,2 × ATR
  *   journalier le mouvement est haussier ou baissier, sinon neutre ; le biais est juste s'il
  *   correspond. GET /claude-score en fait le bilan.
  * - Chaque fiche d'exécution d'un plan de séance, et chaque scénario du plan de la semaine, est
@@ -73,10 +72,7 @@ class CX_Score {
 	 * @return int|null
 	 */
 	private static function end_ts( $s ) {
-		$h = array(
-			'asia'   => '08:30',
-			'london' => '08:15',
-		)[ $s['kind'] ] ?? '16:00';
+		$h = CX_Market::RTH_CLOSE;
 		try {
 			return ( new DateTimeImmutable( $s['date'] . ' ' . $h, new DateTimeZone( 'America/New_York' ) ) )->getTimestamp();
 		} catch ( Exception $e ) {
@@ -121,7 +117,7 @@ class CX_Score {
 		$pub     = (string) ( $p['publishedAt'] ?? '' );
 		$changed = self::score_cards( $c ) | self::score_scenarios( $c, $week, $pub ) | self::score_week_zones( $c, $week, $pub );
 		$atr     = (float) ( $c['refs']['atr_d'] ?? 0 );
-		$thr     = round( self::NEUTRAL * ( $atr > 0 ? $atr : 40 ), 2 );
+		$thr     = round( self::NEUTRAL * ( $atr > 0 ? $atr : 300 ), 2 );
 		foreach ( (array) ( $c['sessions'] ?? array() ) as $i => $s ) {
 			if ( isset( $s['score'] ) || empty( $s['bias'] ) || empty( $s['at'] ) ) {
 				continue;
@@ -200,7 +196,7 @@ class CX_Score {
 	}
 
 	/**
-	 * Condition « Clôture M15 au-dessus de 4 165,80 » lue dans un texte : [durée de l'unité, au-dessus ?, prix].
+	 * Condition « Clôture M15 au-dessus de 21 165,80 » lue dans un texte : [durée de l'unité, au-dessus ?, prix].
 	 *
 	 * @param string $text Texte de la fiche (cancel) ou du scénario (invalidation).
 	 * @return array|null
@@ -221,8 +217,8 @@ class CX_Score {
 	}
 
 	/**
-	 * Prix d'entrée d'un scénario : bord de la zone touché en premier (« 4 140–4 148 » : 4 148 pour un
-	 * achat, 4 140 pour une vente), ou le prix seul.
+	 * Prix d'entrée d'un scénario : bord de la zone touché en premier (« 21 140–21 180 » : 21 180 pour
+	 * un achat, 21 140 pour une vente), ou le prix seul.
 	 *
 	 * @param mixed $v    Texte ou nombre.
 	 * @param bool  $buy  Achat.
@@ -514,7 +510,7 @@ class CX_Score {
 	 * @param array[] $zones  Zones {type, tf, low, high, side}.
 	 * @param int     $from   Publication.
 	 * @param int     $until  Fin de validité.
-	 * @param string  $source week, london ou us.
+	 * @param string  $source week ou us.
 	 * @return array[]|null
 	 */
 	private static function score_zone_list( $zones, $from, $until, $source ) {
@@ -550,8 +546,8 @@ class CX_Score {
 	}
 
 	/**
-	 * Une zone comme l'EA la trade : entrée au bord touché en premier, stop 1 $ derrière l'autre bord
-	 * (1,50 $ au moins). « Réagi » = le prix va à 2R avant le stop ; « cassée » = stop d'abord.
+	 * Une zone comme l'EA la trade : entrée au bord touché en premier, stop derrière l'autre bord de
+	 * 0,02 % du prix (2 pts au moins), écart entrée → stop de 0,03 % du prix au moins (NAS100). « Réagi » = le prix va à 2R avant le stop ; « cassée » = stop d'abord.
 	 *
 	 * @param array $z     Zone {low, high, side}.
 	 * @param int   $from  Publication.
@@ -571,7 +567,9 @@ class CX_Score {
 		list( $tf, $sec, $bars ) = $src;
 		$buy   = 'vente' !== ( $z['side'] ?? '' );
 		$e     = $buy ? $hi0 : $lo0;
-		$stop  = $buy ? min( $lo0 - 1.0, $e - 1.5 ) : max( $hi0 + 1.0, $e + 1.5 );
+		$buf   = max( 2.0, 0.0002 * $e );
+		$minr  = max( 3.0, 0.0003 * $e );
+		$stop  = $buy ? min( $lo0 - $buf, $e - $minr ) : max( $hi0 + $buf, $e + $minr );
 		$risk  = abs( $e - $stop );
 		$tz    = CX_Repo::tz();
 		$touch = null;
@@ -780,7 +778,6 @@ class CX_Score {
 			}
 		};
 		$names = array(
-			'london' => 'Londres',
 			'us'     => 'New York',
 			'week'   => 'semaine',
 		);
@@ -967,9 +964,9 @@ class CX_Score {
 	 *
 	 * @param string            $side  achat ou vente.
 	 * @param float|null        $entry Prix d'entrée.
-	 * @param float|null        $stop  Écart entrée → stop ($).
+	 * @param float|null        $stop  Écart entrée → stop (points d'indice).
 	 * @param DateTimeImmutable $open  Ouverture (heure du carnet).
-	 * @param string            $ref   Référence du signal chargé dans le Calculateur XAU (commentaire de l'ordre).
+	 * @param string            $ref   Référence du signal chargé dans le Calculateur NAS100 (commentaire de l'ordre).
 	 * @return array Champs du trade à remplir et note.
 	 */
 	public static function fill( $side, $entry, $stop, DateTimeImmutable $open, $ref = '' ) {
@@ -978,7 +975,7 @@ class CX_Score {
 		$note = array();
 		$ts   = $open->getTimestamp();
 
-		// Signal chargé dans le Calculateur XAU : référence exacte.
+		// Signal chargé dans le Calculateur NAS100 : référence exacte.
 		$best = null;
 		if ( '' !== $ref ) {
 			$t    = CX_Install::table( 'csignals' );
@@ -1026,7 +1023,7 @@ class CX_Score {
 				$zones = array_merge( $zones, (array) ( $s['zones'] ?? array() ) );
 			}
 			foreach ( $zones as $z ) {
-				if ( ( $z['side'] ?? '' ) === $side && $entry >= (float) $z['low'] - 1 && $entry <= (float) $z['high'] + 1 ) {
+				if ( ( $z['side'] ?? '' ) === $side && $entry >= (float) $z['low'] - max( 2.0, 0.0001 * $entry ) && $entry <= (float) $z['high'] + max( 2.0, 0.0001 * $entry ) ) {
 					$out['sur_niveau_cle'] = 1;
 					$note[]                = sprintf( 'zone %s %s–%s', trim( ( $z['type'] ?? 'Zone' ) . ' ' . ( $z['tf'] ?? '' ) ), $z['low'], $z['high'] );
 					break;
@@ -1050,7 +1047,7 @@ class CX_Score {
 		$from = '';
 		if ( $ses ) {
 			$bias = (string) end( $ses )['bias'];
-			$from = array( 'asia' => 'session Asie', 'london' => 'plan de Londres', 'premarket' => 'pré-marché', 'us' => 'plan de New York' )[ end( $ses )['kind'] ] ?? 'séance';
+			$from = ( 'us' === end( $ses )['kind'] ? 'plan de New York' : 'séance' );
 		}
 		if ( '' === $bias ) {
 			$days = array( 1 => 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi' );

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Vérifie la syntaxe des EA MQL5 avec g++ (MetaEditor ne tourne pas dans le conteneur de Claude).
 # Les numéros de ligne des erreurs sont ceux du fichier MQL5 + 1.
-# Usage : sh tests/mqlcheck/check.sh assets/mt5/CalculateurXAU.mq5.txt
+# Usage : sh tests/mqlcheck/check.sh assets/mt5/CalculateurNAS100.mq5.txt
 set -e
 d=$(cd "$(dirname "$0")" && pwd)
 t=$(mktemp -d)

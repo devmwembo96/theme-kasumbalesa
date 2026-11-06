@@ -1,4 +1,4 @@
-/* Carnet XAU — styles du prototype, limités à .cx-app pour ne jamais toucher au thème. */
+/* Carnet NAS100 — styles du prototype, limités à .cx-app pour ne jamais toucher au thème. */
 .cx-app{
   --bg:#E9EDF1; --surface:#FFFFFF; --sunk:#F3F5F8; --ink:#17202B; --muted:#5A6676; --line:#D3D9E1;
   --gold:#A87A1E; --gold-soft:#F4E7C8; --gold-ink:#5C410A;
@@ -18,7 +18,7 @@
 .cx-app .cx-bar{position:relative;z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
 .cx-app .cx-bar-in{max-width:980px;margin:0 auto;padding:10px 16px 0;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
 .cx-app .brand{font-family:var(--num);font-weight:700;font-size:24px;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
-.cx-app .brand .ingot{width:22px;height:14px;background:linear-gradient(160deg,var(--gold),var(--gold-ink));clip-path:polygon(18% 0,82% 0,100% 100%,0 100%);border-radius:2px}
+.cx-app .brand .mark{width:22px;height:14px;background:linear-gradient(160deg,var(--gold),var(--gold-ink));clip-path:polygon(0 100%,0 70%,30% 40%,52% 62%,100% 0,100% 100%);border-radius:2px}
 .cx-app .acct select{width:auto;max-width:220px;padding:5px 8px;font-size:13.5px;font-weight:600}
 .cx-app .status{margin-left:auto;font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
 .cx-app .status i{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block}

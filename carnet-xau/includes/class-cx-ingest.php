@@ -159,7 +159,7 @@ class CX_Ingest {
 
 		$notes = sprintf(
 			'Importé de MT5 : %s, entrée %s, sortie %s%s%s.',
-			CX_Repo::text( $t['symbol'] ?? 'XAUUSD', 30 ),
+			CX_Repo::text( $t['symbol'] ?? CX_Market::NAME, 30 ),
 			null === $entry ? '?' : $entry,
 			CX_Repo::num( $t['close_price'] ?? null, 0, 1e6 ) ?? '?',
 			$sl ? ', SL ' . $sl : ', sans SL',

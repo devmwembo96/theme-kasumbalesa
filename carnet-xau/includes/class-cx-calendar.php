@@ -116,7 +116,7 @@ class CX_Calendar {
 			self::FEED,
 			array(
 				'timeout'    => 15,
-				'user-agent' => 'CarnetXAU/' . CX_VERSION . '; ' . home_url( '/' ),
+				'user-agent' => 'CarnetNAS100/' . CX_VERSION . '; ' . home_url( '/' ),
 			)
 		);
 		$code = is_wp_error( $res ) ? 0 : (int) wp_remote_retrieve_response_code( $res );

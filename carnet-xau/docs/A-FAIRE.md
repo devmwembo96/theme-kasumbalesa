@@ -1,4 +1,4 @@
-# Carnet XAU · revnefty.store — à faire
+# Carnet NAS100 · revnefty.store — à faire
 
 Liste tenue à jour à chaque séance de travail. Le travail se fait désormais uniquement sur
 revnefty.store (thème RevNefty, carnet en lecture seule pour les visiteurs). ville-de-kasumbalesa.cd
@@ -6,15 +6,13 @@ n’est plus utilisé : plus de copie des plans, Telegram et EA débranchés.
 
 ## En cours
 
-- [ ] Compiler dans MetaEditor l’EA Carnet 2.22 et le Calculateur XAU 4.04 (Comptes › Connexions),
-      les remettre sur leurs graphiques XAUUSD du même compte et signaler toute erreur de
-      compilation (vérifiés ici avec un banc de syntaxe : MetaEditor ne démarre pas dans le
-      conteneur de Claude). Calculateur : « Risque et limites du carnet » activé.
+- [ ] Passage au Nasdaq 100 (version 3.0.0) : compiler dans MetaEditor l’EA Carnet NAS100 3.00 et le
+      Calculateur NAS100 5.00 (Comptes › Connexions), les poser sur deux graphiques NAS100 M1 du même
+      compte (VPS et PC), retirer les anciens EA de l’or et signaler toute erreur de compilation
+      (vérifiés ici avec un banc de syntaxe : MetaEditor ne démarre pas dans le conteneur de Claude).
+- [ ] Plan de test NAS100 (momentum de la zone de bruit, dernière demi-heure, IB et VWAP, sweep de la
+      nuit) : transmis à l’agent de code du labo, découverte, confirmation puis test scellé, coûts réels.
 
-- [ ] Compte en fonds propres (250 $) : choisir le courtier (Deriv, XM Global ou Exness), installer
-      les deux EA sur deux graphiques XAUUSD du même compte : EA Carnet 2.9.0 (signaux) et
-      Calculateur XAU 3.01 (exécution manuelle, touche C pour charger un signal). Compiler les deux
-      dans MetaEditor et signaler toute erreur.
 - [ ] Plus tard : copieur vers les comptes prop firm (lot recalculé avec le risque de la firme),
       après vérification des règles de copie de chaque firme.
 

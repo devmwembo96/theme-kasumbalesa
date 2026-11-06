@@ -1,4 +1,4 @@
-/* Carnet XAU : graphique d'une analyse de Claude, au style TradingView clair, pour la capture d'écran
+/* Carnet NAS100 : graphique d'une analyse de Claude, au style TradingView clair, pour la capture d'écran
    envoyée sur Telegram. Bougies du courtier, zones et niveaux de l'analyse, outil « position longue /
    courte » de chaque scénario d'exécution et trajet simulé du prix. Données : window.CX_DATA. */
 (function () {
@@ -19,7 +19,7 @@
 
   // En-tête comme la légende de TradingView : symbole, unité, OHLC de la dernière bougie.
   const last = bars[bars.length - 1];
-  document.getElementById("sym").textContent = "Or / Dollar Américain · " + D.tfLabel + " · " + (D.broker || "Courtier");
+  document.getElementById("sym").textContent = "Nasdaq 100 (NAS100) · " + D.tfLabel + " · " + (D.broker || "Courtier");
   const ohlc = document.getElementById("ohlc"), chg = last.close - bars[bars.length - 2].close;
   ohlc.innerHTML = ["O", "H", "B", "C"].map((k, i) => k + ' <b style="color:' + (last.close >= last.open ? C.up : C.down) + '">' + fr([last.open, last.high, last.low, last.close][i], 2) + "</b>").join(" ")
     + ' <b style="color:' + (chg >= 0 ? C.up : C.down) + '">' + (chg >= 0 ? "+" : "−") + fr(Math.abs(chg), 2) + "</b>";

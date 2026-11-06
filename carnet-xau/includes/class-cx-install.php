@@ -36,7 +36,8 @@ class CX_Install {
 		'maxtrades' => 4,
 		'maxloss'   => 3,
 		'spreadmax' => 15,
-		'contract'  => 100,
+		// Valeur d'un point d'indice par lot ($) : remplacée par celle du courtier dès que l'EA envoie ses bougies.
+		'contract'  => 1,
 		// Type de compte : propfirm (challenge, objectif et jours minimum) ou propre (fonds propres).
 		'kind'      => 'propfirm',
 		// Fonds propres : capital de départ = budget de pertes, plancher, retrait mensuel, limites en R.
@@ -96,9 +97,56 @@ class CX_Install {
 					)
 				);
 			}
+			self::to_nas100();
 			CX_Telegram::schedule();
 			update_option( 'cx_db_version', CX_DB_VERSION, false );
 		}
+	}
+
+	/**
+	 * Passage au Nasdaq 100 (06/11/2026), une seule fois : tout ce qui vient de l'or est mis à l'écart sans
+	 * rien effacer. Plans de Claude archivés (account_id CX_Market::ARCHIVE : invisibles pour le carnet et les tâches),
+	 * bougies, playbook des annonces, objectif 3R, coach et note du système rangés sous « _xau », signaux
+	 * de l'or encore en cours clos, valeur du point par lot remise à 1 $ en attendant celle du courtier.
+	 * Les comptes et le journal des trades de l'utilisateur sont gardés tels quels ; les analyses ne lisent
+	 * plus que l'ère NAS100 (CX_Market::EPOCH).
+	 */
+	public static function to_nas100() {
+		global $wpdb;
+		if ( get_option( 'cx_nas100_since' ) ) {
+			return;
+		}
+		$plans = self::table( 'plans' );
+		$wpdb->query( $wpdb->prepare( "UPDATE $plans SET account_id = %d WHERE account_id = 0", CX_Market::ARCHIVE ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+		foreach ( array( 'cx_news_playbook', 'cx_shadow3r', 'cx_coach', 'cx_valuation' ) as $o ) {
+			$v = get_option( $o, null );
+			if ( null !== $v ) {
+				update_option( $o . '_xau', $v, false );
+				delete_option( $o );
+			}
+		}
+		foreach ( $wpdb->get_col( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE 'cx\\_candles\\_%' AND option_name NOT LIKE '%\\_xau'" ) as $o ) { // phpcs:ignore WordPress.DB.PreparedSQL
+			if ( 'cx_candles_ref' === $o ) {
+				continue;
+			}
+			update_option( $o . '_xau', get_option( $o ), false );
+			delete_option( $o );
+		}
+		$sig = self::table( 'csignals' );
+		$wpdb->query( "UPDATE $sig SET statut = 'inconnu', cloture_carnet = 'or' WHERE statut IN ('ouvert','attente')" ); // phpcs:ignore WordPress.DB.PreparedSQL
+		foreach ( CX_Repo::accounts() as $a ) {
+			CX_Repo::set_contract( (int) $a['id'], 1.0 );
+		}
+		$page = (int) get_option( 'cx_page_id' );
+		if ( $page ) {
+			wp_update_post(
+				array(
+					'ID'         => $page,
+					'post_title' => CX_Market::BRAND,
+				)
+			);
+		}
+		update_option( 'cx_nas100_since', CX_Market::EPOCH, false );
 	}
 
 	/**
@@ -263,7 +311,7 @@ CREATE TABLE $csig (
 		if ( ! get_role( 'cx_trader' ) ) {
 			add_role(
 				'cx_trader',
-				'Trader Carnet XAU',
+				'Trader Carnet NAS100',
 				array(
 					'read'               => true,
 					'upload_files'       => true,
@@ -285,7 +333,7 @@ CREATE TABLE $csig (
 			array(
 				'post_type'      => 'page',
 				'post_status'    => 'publish',
-				'post_title'     => 'Carnet XAU',
+				'post_title'     => 'Carnet NAS100',
 				'post_name'      => 'carnet-xau',
 				'post_content'   => '<!-- wp:shortcode -->[carnet_xau]<!-- /wp:shortcode -->',
 				'comment_status' => 'closed',

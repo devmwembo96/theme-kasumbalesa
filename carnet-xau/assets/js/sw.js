@@ -1,4 +1,4 @@
-/* Carnet XAU — service worker : l'interface est mise en cache, les données restent en ligne.
+/* Carnet NAS100 — service worker : l'interface est mise en cache, les données restent en ligne.
  * Servi par le plugin via /?cx_pwa=sw, qui remplace les deux valeurs ci-dessous. */
 const VERSION = __CX_VERSION__;
 const PRECACHE = __CX_PRECACHE__;
