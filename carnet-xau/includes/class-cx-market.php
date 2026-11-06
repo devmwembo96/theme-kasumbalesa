@@ -22,8 +22,8 @@ class CX_Market {
 	/** Plans de l'or archivés : account_id réservé (colonne non signée), jamais lu par le carnet. */
 	const ARCHIVE = 999999999;
 
-	/** Début de l'ère NAS100 (heure de Lubumbashi). */
-	const EPOCH = '2026-11-06 00:00:00';
+	/** Début de l'ère NAS100 (heure de Lubumbashi) : clôture du vendredi 06/11/2026, dernier jour de l'or. */
+	const EPOCH = '2026-11-07 00:00:00';
 
 	/** Séance de New York (heure de New York) : la seule séance tradée. */
 	const RTH_OPEN  = '09:30';

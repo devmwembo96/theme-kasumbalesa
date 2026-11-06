@@ -1,7 +1,7 @@
 === Carnet NAS100 ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 3.0.0
+Stable tag: 3.0.1
 
 Carnet de trading Nasdaq 100 (NAS100), séance de New York, pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
