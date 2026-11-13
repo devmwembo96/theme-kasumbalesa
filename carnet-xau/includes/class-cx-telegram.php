@@ -221,9 +221,9 @@ class CX_Telegram {
 			$sell = 'vente' === ( $p['side'] ?? '' );
 			$l[]  = '';
 			$l[]  = sprintf( '%s <b>%d. %s</b>%s', $sell ? '🔴' : '🟢', $i + 1, $sell ? 'VENTE' : 'ACHAT', empty( $p['label'] ) ? '' : ' — ' . esc_html( $p['label'] ) );
-			$l[]  = '• Entrée : ' . self::usd( (float) $p['entry'] );
-			$l[]  = '• Stop : ' . self::usd( (float) $p['sl'] );
-			$l[]  = '• Objectif : ' . self::usd( (float) $p['tp'] );
+			$l[]  = '• Entrée : ' . self::px( (float) $p['entry'] );
+			$l[]  = '• Stop : ' . self::px( (float) $p['sl'] );
+			$l[]  = '• Objectif : ' . self::px( (float) $p['tp'] );
 		}
 		if ( ! empty( $s['invalid'] ) ) {
 			$l[] = '';
@@ -295,9 +295,9 @@ class CX_Telegram {
 		}
 		$out[] = '';
 		$out[] = '📌 <b>Ordre</b>';
-		$out[] = '• Entrée : ' . self::usd( (float) $p['entry'] );
-		$out[] = '• Stop : ' . self::usd( (float) $p['sl'] ) . ' (' . number_format( $stop, 2, ',', ' ' ) . ' $)';
-		$out[] = '• Objectif : ' . self::usd( (float) $p['tp'] ) . ' (' . number_format( $rr, 1, ',', '' ) . 'R)';
+		$out[] = '• Entrée : ' . self::px( (float) $p['entry'] );
+		$out[] = '• Stop : ' . self::px( (float) $p['sl'] ) . ' (' . CX_Market::pts( $stop ) . ')';
+		$out[] = '• Objectif : ' . self::px( (float) $p['tp'] ) . ' (' . number_format( $rr, 1, ',', '' ) . 'R)';
 		$out[] = $lot >= 0.01 ? '• Lot : ' . number_format( $lot, 2, ',', '' ) . ' (risque ' . self::usd( $rk['risk'] ) . ')' : '• Lot : stop trop large pour le risque du compte';
 		if ( ! empty( $p['cancel'] ) ) {
 			$out[] = '';
@@ -591,6 +591,16 @@ class CX_Telegram {
 	public static function monday( $d = null ) {
 		$d = $d ?? new DateTimeImmutable( 'now', CX_Repo::tz() );
 		return $d->modify( '-' . ( (int) $d->format( 'N' ) - 1 ) . ' days' )->format( 'Y-m-d' );
+	}
+
+	/**
+	 * Prix de l'indice (points, deux décimales) : jamais suivi de « $ ».
+	 *
+	 * @param float $v Prix.
+	 * @return string
+	 */
+	public static function px( $v ) {
+		return number_format( (float) $v, 2, ',', ' ' );
 	}
 
 	/**

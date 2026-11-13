@@ -133,7 +133,7 @@
             const buy = p.tp > p.entry, xm = (X(n - 1 + p.at) + X(n - 1 + p.at + p.len)) / 2, gap = 11 * vr;
             const yo = buy ? yt - gap : yt + gap, ysl = buy ? Y(p.sl) + gap : Y(p.sl) - gap;
             keep({ y: yo, ...tag(ctx, xm, yo, "Objectif " + fr(p.tp, 2) + " · " + fr(p.rr, 1) + "R", C.up, "#fff", vr) });
-            keep({ y: ysl, ...tag(ctx, xm, ysl, "Stop " + fr(p.sl, 2) + " · " + fr(p.stop, 2) + " $", C.down, "#fff", vr) });
+            keep({ y: ysl, ...tag(ctx, xm, ysl, "Stop " + fr(p.sl, 2) + " · " + fr(p.stop, 1) + " pts", C.down, "#fff", vr) });
             keep({ y: ye, ...tag(ctx, xm, ye, (buy ? "Achat " : "Vente ") + fr(p.entry, 2) + (p.lot ? " · " + fr(p.lot, 2) + " lot" : ""), "#ffffff", C.text, vr) });
           });
           // Noms en petites capitales au milieu du trait (le trait s'interrompt sous le texte), comme

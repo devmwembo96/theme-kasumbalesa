@@ -1,7 +1,7 @@
 === Carnet NAS100 ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 3.0.1
+Stable tag: 3.0.2
 
 Carnet de trading Nasdaq 100 (NAS100), séance de New York, pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -57,6 +57,12 @@ selon le courtier), séance de New York seulement (09:30 → 16:00 New York).
   renommées *_xau (bougies, coach, playbook des annonces, valorisation, suivi 3R), signaux de l'or
   en cours clos (« inconnu »). Trades et comptes gardés ; statistiques et listes filtrées sur l'ère NAS100.
 * EA Carnet NAS100 3.00 et Calculateur NAS100 5.00 (assets/mt5/).
+* Version 3.0.2 (13/11/2026), second passage sur les restes chiffrés de l'or : lot de l'outil position
+  du graphique calculé avec la valeur du point du courtier (il utilisait le contrat de l'or, 100 :
+  0,01 lot affiché au lieu de 0,09) ; distances de stop en points (graphique, fiches Telegram, rapport,
+  refus d'une fiche trop loin du prix) ; prix de l'indice sans « $ » dans les fiches Telegram ; trades
+  MT5 d'un autre symbole ignorés à l'import ; réglages de l'EA ajustés sur l'or (ordre limite 60 min)
+  archivés sous cx_ea_params_xau : retour aux valeurs par défaut (30 min).
 Les sections qui suivent décrivent l'histoire du carnet (ère de l'or) ; ce qui y touche à l'or ne
 s'applique plus.
 

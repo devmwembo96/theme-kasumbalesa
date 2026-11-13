@@ -98,6 +98,7 @@ class CX_Install {
 				);
 			}
 			self::to_nas100();
+			self::to_nas100_b();
 			CX_Telegram::schedule();
 			update_option( 'cx_db_version', CX_DB_VERSION, false );
 		}
@@ -147,6 +148,23 @@ class CX_Install {
 			);
 		}
 		update_option( 'cx_nas100_since', CX_Market::EPOCH, false );
+	}
+
+	/**
+	 * Complément du passage au Nasdaq 100 (3.0.2), une seule fois : les réglages de l'EA ajustés sur les
+	 * rejeux de l'or (validité d'un ordre limite portée de 30 à 60 min le 21/10/2026) sont rangés sous
+	 * « _xau » ; l'EA repart des valeurs par défaut du NAS100, sans historique.
+	 */
+	public static function to_nas100_b() {
+		if ( get_option( 'cx_nas100_b' ) ) {
+			return;
+		}
+		$v = get_option( CX_Tuning::OPT, null );
+		if ( null !== $v ) {
+			update_option( CX_Tuning::OPT . '_xau', $v, false );
+			delete_option( CX_Tuning::OPT );
+		}
+		update_option( 'cx_nas100_b', CX_Repo::clock(), false );
 	}
 
 	/**

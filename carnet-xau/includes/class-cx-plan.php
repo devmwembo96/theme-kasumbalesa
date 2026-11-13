@@ -496,7 +496,7 @@ class CX_Plan {
 		$price = (float) ( $snap['prix'] ?? 0 );
 		$atr   = (float) ( $snap['ut']['H1']['atr'] ?? 0 );
 		if ( $price > 0 && $atr > 0 && abs( $e - $price ) > 4 * $atr ) {
-			return 'Entrée à ' . $usd( abs( $e - $price ) ) . ' $ du prix, plus de 4 ATR H1 (' . $usd( 4 * $atr ) . ' $).';
+			return 'Entrée à ' . CX_Market::pts( abs( $e - $price ) ) . ' du prix, plus de 4 ATR H1 (' . CX_Market::pts( 4 * $atr ) . ').';
 		}
 		if ( empty( $p['zone_id'] ) ) {
 			return 'Pas de zone_id : chaque fiche part d’une zone calculée (B/structures).';

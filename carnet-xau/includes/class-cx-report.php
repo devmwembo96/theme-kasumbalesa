@@ -476,7 +476,7 @@ class CX_Report {
 						'achat' === $x['dir'] ? 'Achat' : 'Vente',
 						'hors' === $x['setup'] ? 'Hors' : ( $x['setup'] ? $x['setup'] : '—' ),
 						$x['level'] ? $x['level'] : '—',
-						null === $x['stop'] ? '—' : self::nf( $x['stop'] ) . ' $',
+						null === $x['stop'] ? '—' : CX_Market::pts( $x['stop'] ),
 						null === $x['lot'] ? '—' : self::nf( $x['lot'] ),
 						self::r( $x['r'] ),
 						null === $x['pnl'] ? '—' : self::nf( $x['pnl'] ) . ' $',

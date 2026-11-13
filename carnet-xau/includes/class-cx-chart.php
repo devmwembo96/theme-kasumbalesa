@@ -44,26 +44,6 @@ class CX_Chart {
 	}
 
 	/**
-	 * Risque par trade du compte actif, pour le lot affiché sur l'outil position.
-	 *
-	 * @return float
-	 */
-	private static function active_risk() {
-		foreach ( CX_Repo::accounts() as $a ) {
-			if ( ! $a['active'] ) {
-				continue;
-			}
-			$pa = $a['params'];
-			if ( 'propre' === ( $pa['kind'] ?? 'propfirm' ) ) {
-				$snap = ( (array) CX_Ingest::latest_snapshots() )[ $a['id'] ] ?? null;
-				return CX_Repo::own_risk( $snap ? (float) $snap['balance'] : (float) $a['size'], $pa )['risk'];
-			}
-			return (float) $pa['risk'];
-		}
-		return 0.0;
-	}
-
-	/**
 	 * Données du graphique d'une analyse.
 	 *
 	 * @param string $date Date.
@@ -198,7 +178,8 @@ class CX_Chart {
 				$raw[] = array( 'entry' => (float) $x['entry'], 'sl' => (float) $x['sl'], 'tp' => (float) $x['tp'] );
 			}
 		}
-		$risk = self::active_risk();
+		// Lot du compte actif, comme les fiches Telegram : risque ÷ (stop en points × valeur du point + commission).
+		$rk   = CX_Telegram::exec_risk();
 		$pos  = array();
 		foreach ( array_slice( $raw, 0, 3 ) as $i => $x ) {
 			$stop = abs( $x['entry'] - $x['sl'] );
@@ -211,7 +192,7 @@ class CX_Chart {
 				'tp'    => $x['tp'],
 				'stop'  => round( $stop, 2 ),
 				'rr'    => round( abs( $x['tp'] - $x['entry'] ) / $stop, 1 ),
-				'lot'   => $risk > 0 ? floor( $risk / ( $stop * 100 ) * 100 + 1e-9 ) / 100 : null,
+				'lot'   => $rk['risk'] > 0 ? floor( $rk['risk'] / ( $stop * $rk['contract'] + $rk['commission'] ) * 100 + 1e-9 ) / 100 : null,
 				'at'    => 3 + 30 * $i,
 				'len'   => 26,
 			);

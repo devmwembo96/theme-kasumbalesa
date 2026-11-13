@@ -143,6 +143,11 @@ class CX_Ingest {
 		if ( '' === $ticket || ! $open || null === $lots ) {
 			return 'ignored';
 		}
+		// Seul le Nasdaq 100 entre au journal : un trade d'un autre symbole (ancien EA de l'or…) est ignoré.
+		$sym = trim( (string) ( $t['symbol'] ?? '' ) );
+		if ( '' !== $sym && ! CX_Market::is_symbol( $sym ) ) {
+			return 'ignored';
+		}
 		// Préfixe du compte : deux courtiers peuvent utiliser le même numéro de ticket.
 		$ticket = mb_substr( $acc['id'] . ':' . $ticket, 0, 32 );
 		if ( $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $table WHERE ticket_mt5 = %s", $ticket ) ) ) { // phpcs:ignore WordPress.DB.PreparedSQL
@@ -153,7 +158,8 @@ class CX_Ingest {
 		$sl    = CX_Repo::num( $t['sl'] ?? null, 0, 1e6 );
 		$stop  = ( $entry && $sl ) ? round( abs( $entry - $sl ), 2 ) : null;
 		$pnl   = round( ( CX_Repo::num( $t['profit'] ?? 0, -1e7, 1e7 ) ?? 0 ) + ( CX_Repo::num( $t['commission'] ?? 0, -1e6, 1e6 ) ?? 0 ) + ( CX_Repo::num( $t['swap'] ?? 0, -1e6, 1e6 ) ?? 0 ), 2 );
-		$risk  = $stop ? round( $stop * $lots * (float) $acc['params']['contract'], 2 ) : null;
+		// Risque = stop en points × lots × valeur d'un point par lot (courtier, sinon réglage du compte).
+		$risk  = $stop ? round( $stop * $lots * CX_Market::point_value( (int) $acc['id'], (float) $acc['params']['contract'] ), 2 ) : null;
 		$r     = $risk > 0 ? max( -100, min( 100, round( $pnl / $risk, 2 ) ) ) : 0;
 		$side  = strtolower( (string) ( $t['side'] ?? '' ) );
 
