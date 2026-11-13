@@ -1,0 +1,547 @@
+//@version=5
+// CarnetNAS 1.00 : les éléments du Carnet NAS100 sur TradingView (Nasdaq 100, séance de New York).
+// - Niveaux de séance : nuit (ONH/ONL, 18:00 -> 09:30 New York), veille (PDH/PDL de 09:30 -> 16:00), IB (09:30 -> 10:30),
+//   VWAP de la séance, zone de valeur de la veille (POC, VAH, VAL à 70 %).
+// - Structures comme le carnet : pivots (2 bougies de chaque côté), BOS / CHoCH à la CLÔTURE, FVG (>= 0,25 ATR),
+//   order blocks (dernière bougie opposée avant une cassure avec déplacement), égaux (EQH / EQL), sweeps.
+// - Signaux des zones (setups 1 à 3), de 09:30 à 16:00 New York : touche d'une zone non cassée, puis
+//   setup 3 = clôture au-delà du FVG contraire (iFVG) ; sinon cassure du dernier pivot : setup 1 si une liquidité
+//   a été balayée, sinon setup 2 dans le sens de la structure. Stop derrière l'extrême + marge en ATR.
+// - Setup 4 (graphique M5 seulement), de 09:30 à 12:00 New York : sweep M15 -> CHoCH M5 -> FVG M5,
+//   ordre limite au premier tiers du FVG, stop au-delà de la mèche + 0,1 ATR M15, objectif 3R.
+// Signal seulement : aucun ordre n'est passé. Les zones du plan de Claude ne sont pas lues ici : les zones sont
+// celles que l'indicateur calcule lui-même (OB et FVG).
+indicator("CarnetNAS", "CarnetNAS", overlay = true, max_boxes_count = 300, max_lines_count = 400, max_labels_count = 400, max_bars_back = 500)
+
+// ───────────── Réglages ─────────────
+string G1 = "Affichage"
+bool showLv  = input.bool(true, "Niveaux de séance (ONH, ONL, PDH, PDL, IB)", group = G1)
+bool showVa  = input.bool(true, "VWAP et zone de valeur de la veille (POC, VAH, VAL)", group = G1)
+bool showSt  = input.bool(true, "Structure (BOS, CHoCH, égaux, sweeps)", group = G1)
+bool showZn  = input.bool(true, "Zones (order blocks et FVG)", group = G1)
+string G2 = "Structures (valeurs du carnet)"
+float fvgMin   = input.float(0.25, "FVG minimum (× ATR)", step = 0.05, group = G2)
+float dispMult = input.float(1.5, "Déplacement : corps cumulé (× ATR)", step = 0.1, group = G2)
+int   obLeg    = input.int(10, "Order block : bougies avant la cassure", group = G2)
+int   zoneAge  = input.int(288, "Durée de vie d'une zone (bougies)", group = G2)
+string G3 = "Signaux des zones (setups 1 à 3)"
+bool  sigOn     = input.bool(true, "Activer", group = G3)
+int   touchBars = input.int(30, "Bougies où chercher la touche", group = G3)
+int   swingBars = input.int(20, "Bougies avant l'extrême (pivot et FVG)", group = G3)
+float touchTol  = input.float(0.30, "Touche tolérée (× ATR)", step = 0.05, group = G3)
+float slBuf     = input.float(0.30, "Marge du stop (× ATR)", step = 0.05, group = G3)
+int   cooldown  = input.int(60, "Minutes sans nouveau signal sur la même zone", group = G3)
+string G4 = "Setup 4 : sweep M15, CHoCH M5, FVG M5 (graphique M5)"
+bool  sfOn     = input.bool(true, "Activer", group = G4)
+float sfBuf    = input.float(0.10, "Marge du stop (× ATR M15)", step = 0.05, group = G4)
+float sfFvg    = input.float(0.10, "FVG M5 minimum (× ATR M5)", step = 0.05, group = G4)
+int   sfChoch  = input.int(24, "Bougies M5 pour le CHoCH", group = G4)
+float sfRR     = input.float(3.0, "Objectif (R)", step = 0.5, group = G4)
+float spreadPt = input.float(1.5, "Spread ajouté au stop (points)", step = 0.5, group = "Coûts")
+
+// ───────────── Heure de New York ─────────────
+string TZ = "America/New_York"
+int  nyMin      = hour(time, TZ) * 60 + minute(time, TZ)
+bool inRth      = nyMin >= 570 and nyMin < 960
+bool inNight    = nyMin >= 1080 or nyMin < 570
+bool rthStart   = inRth and not inRth[1]
+bool nightStart = inNight and not inNight[1]
+float atr1 = nz(ta.atr(14)[1], ta.tr(true))
+
+// ───────────── Niveaux de séance ─────────────
+f_profile(array<float> aH, array<float> aL, array<float> aV) =>
+    float poc = na
+    float vah = na
+    float val = na
+    int m = array.size(aH)
+    if m > 0
+        float hi = array.max(aH)
+        float lo = array.min(aL)
+        float vs = array.sum(aV)
+        if vs > 0 and hi > lo
+            int n = 60
+            float w = (hi - lo) / n
+            array<float> bin = array.new_float(n, 0.0)
+            for i = 0 to m - 1
+                int a = math.max(0, math.min(n - 1, int(math.floor((array.get(aL, i) - lo) / w))))
+                int z = math.max(0, math.min(n - 1, int(math.floor((array.get(aH, i) - lo) / w))))
+                float part = array.get(aV, i) / (z - a + 1)
+                for j = a to z
+                    array.set(bin, j, array.get(bin, j) + part)
+            int p = array.indexof(bin, array.max(bin))
+            int li = p
+            int hj = p
+            float acc = array.get(bin, p)
+            while acc < 0.7 * vs and (li > 0 or hj < n - 1)
+                float up = hj < n - 1 ? array.get(bin, hj + 1) : -1.0
+                float dn = li > 0 ? array.get(bin, li - 1) : -1.0
+                if up >= dn
+                    hj += 1
+                    acc += array.get(bin, hj)
+                else
+                    li -= 1
+                    acc += array.get(bin, li)
+            poc := lo + (p + 0.5) * w
+            vah := lo + (hj + 1) * w
+            val := lo + li * w
+    [poc, vah, val]
+
+var float rthH = na
+var float rthL = na
+var float pdh = na
+var float pdl = na
+var float onh = na
+var float onl = na
+var float ibH = na
+var float ibL = na
+var float poc = na
+var float vah = na
+var float val = na
+var float pvSum = 0.0
+var float vSum = 0.0
+var bool pdhTaken = false
+var bool pdlTaken = false
+var bool onhTaken = false
+var bool onlTaken = false
+var array<float> sH = array.new_float()
+var array<float> sL = array.new_float()
+var array<float> sV = array.new_float()
+
+if rthStart
+    pdh := rthH
+    pdl := rthL
+    [p0, p1, p2] = f_profile(sH, sL, sV)
+    poc := p0
+    vah := p1
+    val := p2
+    array.clear(sH)
+    array.clear(sL)
+    array.clear(sV)
+    rthH := high
+    rthL := low
+    ibH := high
+    ibL := low
+    pvSum := 0.0
+    vSum := 0.0
+    onhTaken := false
+    onlTaken := false
+if inRth
+    rthH := math.max(nz(rthH, high), high)
+    rthL := math.min(nz(rthL, low), low)
+    if nyMin < 630
+        ibH := math.max(nz(ibH, high), high)
+        ibL := math.min(nz(ibL, low), low)
+    pvSum += hlc3 * nz(volume)
+    vSum += nz(volume)
+    array.push(sH, high)
+    array.push(sL, low)
+    array.push(sV, nz(volume))
+    if not na(onh) and high > onh
+        onhTaken := true
+    if not na(onl) and low < onl
+        onlTaken := true
+if nightStart
+    onh := high
+    onl := low
+    pdhTaken := false
+    pdlTaken := false
+else if inNight
+    onh := math.max(nz(onh, high), high)
+    onl := math.min(nz(onl, low), low)
+if not na(pdh) and high > pdh
+    pdhTaken := true
+if not na(pdl) and low < pdl
+    pdlTaken := true
+float vwap = inRth and vSum > 0 ? pvSum / vSum : na
+bool ibDone = inRth and nyMin >= 630
+
+plot(showLv ? pdh : na, "PDH", color.new(color.blue, 0), 1, plot.style_linebr)
+plot(showLv ? pdl : na, "PDL", color.new(color.blue, 0), 1, plot.style_linebr)
+plot(showLv ? onh : na, "ONH (haut de la nuit)", color.new(color.gray, 0), 1, plot.style_linebr)
+plot(showLv ? onl : na, "ONL (bas de la nuit)", color.new(color.gray, 0), 1, plot.style_linebr)
+plot(showLv and inRth ? ibH : na, "IBH", color.new(color.purple, 30), 1, plot.style_linebr)
+plot(showLv and inRth ? ibL : na, "IBL", color.new(color.purple, 30), 1, plot.style_linebr)
+plot(showVa ? vwap : na, "VWAP", color.new(color.orange, 0), 2, plot.style_linebr)
+plot(showVa ? poc : na, "POC veille", color.new(color.red, 30), 1, plot.style_linebr)
+plot(showVa ? vah : na, "VAH veille", color.new(color.teal, 30), 1, plot.style_linebr)
+plot(showVa ? val : na, "VAL veille", color.new(color.teal, 30), 1, plot.style_linebr)
+
+// ───────────── Structure : pivots, BOS / CHoCH, égaux ─────────────
+bool isPH = high[2] > high[3] and high[2] > high[4] and high[2] >= high[1] and high[2] >= high
+bool isPL = low[2] < low[3] and low[2] < low[4] and low[2] <= low[1] and low[2] <= low
+var float lastPH = na
+var int lastPHb = na
+var float lastPL = na
+var int lastPLb = na
+var float swH = na
+var int swHb = na
+var float swL = na
+var int swLb = na
+var float prevPH = na
+var int prevPHb = na
+var float prevPL = na
+var int prevPLb = na
+var int trend = 0
+float hi3 = ta.highest(high, 3)
+float lo3 = ta.lowest(low, 3)
+if isPH
+    if showSt and not na(prevPH) and bar_index - 2 - prevPHb >= 5 and math.abs(high[2] - prevPH) <= 0.1 * atr1 and hi3 <= math.max(high[2], prevPH)
+        line.new(prevPHb, math.max(high[2], prevPH), bar_index - 2, math.max(high[2], prevPH), color = color.new(color.gray, 0), style = line.style_dotted)
+        label.new(bar_index - 2, math.max(high[2], prevPH), "EQH", style = label.style_none, textcolor = color.gray, size = size.tiny)
+    prevPH := high[2]
+    prevPHb := bar_index - 2
+    lastPH := high[2]
+    lastPHb := bar_index - 2
+    swH := high[2]
+    swHb := bar_index - 2
+if isPL
+    if showSt and not na(prevPL) and bar_index - 2 - prevPLb >= 5 and math.abs(low[2] - prevPL) <= 0.1 * atr1 and lo3 >= math.min(low[2], prevPL)
+        line.new(prevPLb, math.min(low[2], prevPL), bar_index - 2, math.min(low[2], prevPL), color = color.new(color.gray, 0), style = line.style_dotted)
+        label.new(bar_index - 2, math.min(low[2], prevPL), "EQL", style = label.style_none, textcolor = color.gray, size = size.tiny)
+    prevPL := low[2]
+    prevPLb := bar_index - 2
+    lastPL := low[2]
+    lastPLb := bar_index - 2
+    swL := low[2]
+    swLb := bar_index - 2
+
+// Déplacement : 1 à 3 bougies de même couleur, corps >= 60 % de l'étendue, corps cumulé >= dispMult × ATR.
+f_disp(int dir) =>
+    float cum = 0.0
+    bool ok = false
+    bool run = true
+    for i = 0 to 2
+        float body = dir * (close[i] - open[i])
+        float rng = high[i] - low[i]
+        if run and body > 0 and rng > 0 and body >= 0.6 * rng
+            cum += body
+            if cum >= dispMult * atr1
+                ok := true
+        else
+            run := false
+    ok
+
+type Zone
+    float top
+    float bot
+    int dir
+    int born
+    box bx
+
+var array<Zone> zones = array.new<Zone>()
+f_addZone(float top, float bot, int dir, string kind) =>
+    box b = showZn ? box.new(bar_index - 1, top, bar_index + 5, bot, border_color = color.new(dir == 1 ? color.teal : color.red, 40), bgcolor = color.new(dir == 1 ? color.teal : color.red, 88), text = kind, text_size = size.tiny, text_color = color.new(color.gray, 0), text_halign = text.align_right) : na
+    array.push(zones, Zone.new(top, bot, dir, bar_index, b))
+    if array.size(zones) > 40
+        Zone old = array.shift(zones)
+        box.delete(old.bx)
+
+bool bosUp = barstate.isconfirmed and not na(lastPH) and close > lastPH
+bool bosDn = barstate.isconfirmed and not na(lastPL) and close < lastPL
+if bosUp
+    if showSt
+        line.new(lastPHb, lastPH, bar_index, lastPH, color = color.new(color.teal, 0), style = line.style_dashed)
+        label.new(int((lastPHb + bar_index) / 2), lastPH, trend == -1 ? "CHoCH" : "BOS", style = label.style_none, textcolor = color.teal, size = size.tiny)
+    // Order block : dernière bougie baissière avant la cassure, avec déplacement.
+    if f_disp(1)
+        bool found = false
+        for j = 1 to obLeg
+            if not found and close[j] < open[j]
+                found := true
+                f_addZone(open[j], low[j], 1, "OB")
+    trend := 1
+    lastPH := na
+if bosDn
+    if showSt
+        line.new(lastPLb, lastPL, bar_index, lastPL, color = color.new(color.red, 0), style = line.style_dashed)
+        label.new(int((lastPLb + bar_index) / 2), lastPL, trend == 1 ? "CHoCH" : "BOS", style = label.style_none, textcolor = color.red, size = size.tiny)
+    if f_disp(-1)
+        bool found = false
+        for j = 1 to obLeg
+            if not found and close[j] > open[j]
+                found := true
+                f_addZone(high[j], open[j], -1, "OB")
+    trend := -1
+    lastPL := na
+
+// FVG : trou entre la bougie i-2 et la bougie i, bougie centrale de déplacement.
+float body1 = math.abs(close[1] - open[1])
+float rng1 = high[1] - low[1]
+bool fvgUp = barstate.isconfirmed and low > high[2] and low - high[2] >= fvgMin * atr1 and rng1 > 0 and body1 >= 0.6 * rng1
+bool fvgDn = barstate.isconfirmed and high < low[2] and low[2] - high >= fvgMin * atr1 and rng1 > 0 and body1 >= 0.6 * rng1
+var float bearFvgTop = na
+var int bearFvgBar = na
+var float bullFvgBot = na
+var int bullFvgBar = na
+if fvgUp
+    f_addZone(low, high[2], 1, "FVG")
+    bullFvgBot := high[2]
+    bullFvgBar := bar_index
+if fvgDn
+    f_addZone(low[2], high, -1, "FVG")
+    bearFvgTop := low[2]
+    bearFvgBar := bar_index
+
+// Zones : cassée (clôture au-delà) ou expirée -> retirée.
+if array.size(zones) > 0
+    for i = array.size(zones) - 1 to 0
+        Zone z = array.get(zones, i)
+        bool dead = z.dir == 1 ? close < z.bot : close > z.top
+        if dead or bar_index - z.born > zoneAge
+            box.delete(z.bx)
+            array.remove(zones, i)
+        else if not na(z.bx)
+            box.set_right(z.bx, bar_index + 5)
+
+// Sweeps : mèche au-delà d'un niveau puis clôture de retour.
+f_swLow(float L) => not na(L) and low < L and close > L
+f_swHigh(float L) => not na(L) and high > L and close < L
+bool lowSweep = f_swLow(onl) or f_swLow(pdl) or (ibDone and f_swLow(ibL)) or f_swLow(lastPL)
+bool highSweep = f_swHigh(onh) or f_swHigh(pdh) or (ibDone and f_swHigh(ibH)) or f_swHigh(lastPH)
+var int lowSweepBar = na
+var int highSweepBar = na
+if lowSweep
+    lowSweepBar := bar_index
+if highSweep
+    highSweepBar := bar_index
+plotshape(showSt and lowSweep, "Sweep bas", shape.triangleup, location.belowbar, color.new(color.teal, 0), size = size.tiny)
+plotshape(showSt and highSweep, "Sweep haut", shape.triangledown, location.abovebar, color.new(color.red, 0), size = size.tiny)
+
+// ───────────── Tracé d'un signal ─────────────
+f_signal(bool buy, string txt, float entry, float sl, float tp) =>
+    color c = buy ? color.teal : color.red
+    float stop = math.abs(entry - sl)
+    float rr = stop > 0 ? math.abs(tp - entry) / stop : 0.0
+    label.new(bar_index, buy ? low : high, txt + "\nEntrée " + str.tostring(entry, format.mintick) + "\nStop " + str.tostring(sl, format.mintick) + " (" + str.tostring(stop, "#.0") + " pts)\nObjectif " + str.tostring(tp, format.mintick) + " (" + str.tostring(rr, "#.0") + "R)", style = buy ? label.style_label_up : label.style_label_down, color = c, textcolor = color.white, size = size.small)
+    line.new(bar_index, entry, bar_index + 20, entry, color = color.new(color.gray, 0))
+    line.new(bar_index, sl, bar_index + 20, sl, color = color.new(color.red, 0), style = line.style_dashed)
+    line.new(bar_index, tp, bar_index + 20, tp, color = color.new(color.teal, 0), style = line.style_dashed)
+    alert("CarnetNAS " + txt + " · entrée " + str.tostring(entry, format.mintick) + " · stop " + str.tostring(sl, format.mintick) + " · objectif " + str.tostring(tp, format.mintick), alert.freq_once_per_bar_close)
+
+// Objectif : prochain niveau dans le sens du trade à au moins 2R, sinon 3R.
+f_target(bool buy, float entry, float risk) =>
+    array<float> lv = array.from(onh, onl, pdh, pdl, ibH, ibL, vah, val, poc)
+    float best = na
+    for i = 0 to array.size(lv) - 1
+        float L = array.get(lv, i)
+        if not na(L)
+            float d = buy ? L - entry : entry - L
+            if d >= 2 * risk and (na(best) or d < math.abs(best - entry))
+                best := L
+    na(best) ? (buy ? entry + 3 * risk : entry - 3 * risk) : best
+
+// ───────────── Signaux des zones (setups 1 à 3) ─────────────
+var array<int> tBar = array.new_int(2, na)
+var array<float> tExt = array.new_float(2, na)
+var array<int> tExtBar = array.new_int(2, na)
+var array<float> tTop = array.new_float(2, na)
+var array<float> tBot = array.new_float(2, na)
+var array<int> tId = array.new_int(2, na)
+var array<int> sigId = array.new_int(2, na)
+var array<int> sigTime = array.new_int(2, na)
+bool sigBuy = false
+bool sigSell = false
+if sigOn and barstate.isconfirmed
+    float tol = touchTol * atr1
+    for d = 0 to 1
+        int dir = d == 0 ? 1 : -1
+        // Nouvelle touche d'une zone non cassée.
+        if array.size(zones) > 0
+            for i = 0 to array.size(zones) - 1
+                Zone z = array.get(zones, i)
+                if z.dir == dir and z.born < bar_index - 1
+                    bool touch = dir == 1 ? (low <= z.top + tol and close >= z.bot) : (high >= z.bot - tol and close <= z.top)
+                    if touch and (na(array.get(tBar, d)) or array.get(tId, d) != z.born)
+                        array.set(tBar, d, bar_index)
+                        array.set(tExt, d, dir == 1 ? low : high)
+                        array.set(tExtBar, d, bar_index)
+                        array.set(tTop, d, z.top)
+                        array.set(tBot, d, z.bot)
+                        array.set(tId, d, z.born)
+        if not na(array.get(tBar, d))
+            int tb = array.get(tBar, d)
+            if dir == 1 ? low < array.get(tExt, d) : high > array.get(tExt, d)
+                array.set(tExt, d, dir == 1 ? low : high)
+                array.set(tExtBar, d, bar_index)
+            float ext = array.get(tExt, d)
+            bool broken = dir == 1 ? close < array.get(tBot, d) : close > array.get(tTop, d)
+            if broken or bar_index - tb > touchBars
+                array.set(tBar, d, na)
+            else if inRth
+                float refP = dir == 1 ? swH : swL
+                int refB = dir == 1 ? swHb : swLb
+                bool brk = not na(refP) and refB < array.get(tExtBar, d) and array.get(tExtBar, d) - refB <= swingBars + touchBars and (dir == 1 ? close > refP : close < refP)
+                bool ifvg = dir == 1 ? (not na(bearFvgTop) and bearFvgBar >= tb - swingBars and close > bearFvgTop and close[1] <= bearFvgTop) : (not na(bullFvgBot) and bullFvgBar >= tb - swingBars and close < bullFvgBot and close[1] >= bullFvgBot)
+                bool swept = dir == 1 ? ((not na(lowSweepBar) and lowSweepBar >= tb - 3) or ext < array.get(tBot, d)) : ((not na(highSweepBar) and highSweepBar >= tb - 3) or ext > array.get(tTop, d))
+                int setup = ifvg ? 3 : brk ? (swept ? 1 : (trend == dir ? 2 : 0)) : 0
+                bool cool = not na(array.get(sigId, d)) and array.get(sigId, d) == array.get(tId, d) and time - array.get(sigTime, d) < cooldown * 60000
+                if setup > 0 and not cool
+                    float entry = close
+                    float sl = dir == 1 ? ext - slBuf * atr1 - spreadPt : ext + slBuf * atr1 + spreadPt
+                    float risk = math.abs(entry - sl)
+                    float tp = f_target(dir == 1, entry, risk)
+                    f_signal(dir == 1, (dir == 1 ? "BUY NOW" : "SELL NOW") + " · setup " + str.tostring(setup) + (setup == 3 ? " (iFVG)" : ""), entry, sl, tp)
+                    array.set(sigId, d, array.get(tId, d))
+                    array.set(sigTime, d, time)
+                    array.set(tBar, d, na)
+                    if dir == 1
+                        sigBuy := true
+                    else
+                        sigSell := true
+
+// ───────────── Setup 4 : sweep M15 -> CHoCH M5 -> FVG M5 (graphique M5) ─────────────
+bool isM5 = timeframe.isminutes and timeframe.multiplier == 5
+float atr5 = nz(ta.sma(ta.tr(true), 14)[1], ta.tr(true))
+bool pdhT3 = nz(pdhTaken[3], false)
+bool pdlT3 = nz(pdlTaken[3], false)
+bool onhT3 = nz(onhTaken[3], false)
+bool onlT3 = nz(onlTaken[3], false)
+var array<float> qH = array.new_float()
+var array<float> qL = array.new_float()
+var array<float> qC = array.new_float()
+var array<bool> sfActive = array.new_bool(2, false)
+var array<float> sfExt = array.new_float(2, na)
+var array<float> sfAtr = array.new_float(2, na)
+var array<int> sfX = array.new_int(2, na)
+var array<int> sfLast = array.new_int(2, na)
+var array<string> sfSrc = array.new_string(2, "")
+
+// Égaux M15 : deux pivots à 0,1 ATR près, 5 bougies d'écart au moins, pas encore pris.
+f_eq(bool hi, float atr) =>
+    float res = na
+    array<float> q = hi ? qH : qL
+    int n = array.size(q)
+    for a = 3 to 19
+        if na(res)
+            float pa = array.get(q, a)
+            bool piva = hi ? (pa > math.max(array.get(q, a + 1), array.get(q, a + 2)) and pa >= math.max(array.get(q, a - 1), array.get(q, a - 2))) : (pa < math.min(array.get(q, a + 1), array.get(q, a + 2)) and pa <= math.min(array.get(q, a - 1), array.get(q, a - 2)))
+            if piva
+                bool done = false
+                for b = a + 5 to 20
+                    if not done and b + 2 < n
+                        float pb = array.get(q, b)
+                        bool pivb = hi ? (pb > math.max(array.get(q, b + 1), array.get(q, b + 2)) and pb >= math.max(array.get(q, b - 1), array.get(q, b - 2))) : (pb < math.min(array.get(q, b + 1), array.get(q, b + 2)) and pb <= math.min(array.get(q, b - 1), array.get(q, b - 2)))
+                        if pivb and math.abs(pa - pb) <= 0.1 * atr
+                            float L = hi ? math.max(pa, pb) : math.min(pa, pb)
+                            bool taken = false
+                            for j = 1 to a - 1
+                                if hi ? array.get(q, j) > L : array.get(q, j) < L
+                                    taken := true
+                            if not taken
+                                res := L
+                            done := true
+    res
+
+// Dernier pivot M5 (2 bougies de chaque côté) avant l'extrême du sweep.
+f_ref(bool sell, int xOff) =>
+    float r = na
+    for off = xOff + 1 to xOff + 80
+        if na(r) and off >= 2
+            bool piv = sell ? (low[off] < math.min(low[off + 1], low[off + 2]) and low[off] <= math.min(low[off - 1], low[off - 2])) : (high[off] > math.max(high[off + 1], high[off + 2]) and high[off] >= math.max(high[off - 1], high[off - 2]))
+            if piv
+                r := sell ? low[off] : high[off]
+    r
+
+bool sf4Buy = false
+bool sf4Sell = false
+if sfOn and isM5 and barstate.isconfirmed
+    int closeMin = nyMin + 5
+    // Bougie M15 reconstruite à partir des 3 dernières bougies M5.
+    if closeMin % 15 == 0
+        array.unshift(qH, math.max(high, high[1], high[2]))
+        array.unshift(qL, math.min(low, low[1], low[2]))
+        array.unshift(qC, close)
+        if array.size(qH) > 60
+            array.pop(qH)
+            array.pop(qL)
+            array.pop(qC)
+        if array.size(qH) >= 40 and closeMin >= 570 and closeMin < 720
+            float atr15 = 0.0
+            for i = 1 to 14
+                atr15 += math.max(array.get(qH, i), array.get(qC, i + 1)) - math.min(array.get(qL, i), array.get(qC, i + 1))
+            atr15 /= 14
+            for s = 0 to 1
+                bool hi = s == 0
+                float e20 = hi ? array.get(qH, 1) : array.get(qL, 1)
+                for j = 1 to 20
+                    e20 := hi ? math.max(e20, array.get(qH, j)) : math.min(e20, array.get(qL, j))
+                float l1 = hi ? (pdhT3 ? na : pdh) : (pdlT3 ? na : pdl)
+                float l2 = hi ? (onhT3 ? na : onh) : (onlT3 ? na : onl)
+                float l3 = f_eq(hi, atr15)
+                array<float> lv = array.from(e20, l1, l2, l3)
+                array<string> nm = array.from(hi ? "plus haut 20 M15" : "plus bas 20 M15", hi ? "PDH" : "PDL", hi ? "haut de la nuit" : "bas de la nuit", hi ? "EQH" : "EQL")
+                float wick = hi ? array.get(qH, 0) : array.get(qL, 0)
+                float best = na
+                string src = ""
+                for k = 0 to 3
+                    float L = array.get(lv, k)
+                    if not na(L)
+                        float pen = hi ? wick - L : L - wick
+                        bool back = hi ? close < L : close > L
+                        if back and pen >= 0.05 * atr15 and pen < atr15 and (na(best) or (hi ? L > best : L < best))
+                            best := L
+                            src := array.get(nm, k)
+                if not na(best)
+                    int xo = 2
+                    if hi ? high[1] > high[xo] : low[1] < low[xo]
+                        xo := 1
+                    if hi ? high > high[xo] : low < low[xo]
+                        xo := 0
+                    array.set(sfActive, s, true)
+                    array.set(sfExt, s, wick)
+                    array.set(sfAtr, s, atr15)
+                    array.set(sfX, s, bar_index - xo)
+                    array.set(sfLast, s, bar_index - xo)
+                    array.set(sfSrc, s, src)
+                    if showSt
+                        label.new(bar_index - xo, wick, "sweep " + src, style = hi ? label.style_label_down : label.style_label_up, color = color.new(color.orange, 20), textcolor = color.white, size = size.tiny)
+    // Suivi : CHoCH M5 puis FVG M5 dans l'impulsion.
+    for s = 0 to 1
+        if array.get(sfActive, s)
+            bool sell = s == 0
+            int xB = array.get(sfX, s)
+            float ext = array.get(sfExt, s)
+            int c = array.get(sfLast, s) + 1
+            while c <= bar_index and array.get(sfActive, s)
+                int o = bar_index - c
+                if sell ? high[o] > ext : low[o] < ext
+                    array.set(sfActive, s, false)
+                else if c - xB > sfChoch
+                    array.set(sfActive, s, false)
+                else
+                    float ref = f_ref(sell, bar_index - xB)
+                    bool choch = not na(ref) and (sell ? close[o] < ref : close[o] > ref)
+                    if choch
+                        array.set(sfActive, s, false)
+                        float ftop = na
+                        float fbot = na
+                        int p = o
+                        while p <= bar_index - xB - 2 and na(ftop)
+                            if sell and low[p + 2] > high[p] and low[p + 2] - high[p] >= sfFvg * atr5
+                                ftop := low[p + 2]
+                                fbot := high[p]
+                            if not sell and low[p] > high[p + 2] and low[p] - high[p + 2] >= sfFvg * atr5
+                                ftop := low[p]
+                                fbot := high[p + 2]
+                            p += 1
+                        if not na(ftop) and closeMin >= 570 and closeMin < 720
+                            float entry = sell ? fbot + (ftop - fbot) / 3.0 : ftop - (ftop - fbot) / 3.0
+                            float sl = sell ? ext + sfBuf * array.get(sfAtr, s) + spreadPt : ext - sfBuf * array.get(sfAtr, s) - spreadPt
+                            float stop = math.abs(entry - sl)
+                            bool inFvg = sell ? close >= entry : close <= entry
+                            if stop > 0 and not inFvg
+                                float tp = sell ? entry - sfRR * stop : entry + sfRR * stop
+                                box.new(bar_index - 2, ftop, bar_index + 12, fbot, border_color = color.new(color.orange, 0), bgcolor = color.new(color.orange, 85), text = "FVG M5", text_size = size.tiny, text_color = color.orange)
+                                f_signal(not sell, (sell ? "SELL LIMIT" : "BUY LIMIT") + " · setup 4 (sweep " + array.get(sfSrc, s) + " + FVG)", entry, sl, tp)
+                                if sell
+                                    sf4Sell := true
+                                else
+                                    sf4Buy := true
+                c += 1
+            array.set(sfLast, s, bar_index)
+
+// ───────────── Alertes simples (en plus de alert()) ─────────────
+alertcondition(sigBuy, "CarnetNAS : achat (setups 1 à 3)", "CarnetNAS : signal d'achat sur zone")
+alertcondition(sigSell, "CarnetNAS : vente (setups 1 à 3)", "CarnetNAS : signal de vente sur zone")
+alertcondition(sf4Buy, "CarnetNAS : achat limite (setup 4)", "CarnetNAS : BUY LIMIT setup 4")
+alertcondition(sf4Sell, "CarnetNAS : vente limite (setup 4)", "CarnetNAS : SELL LIMIT setup 4")
