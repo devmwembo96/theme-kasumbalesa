@@ -623,7 +623,8 @@ class CX_Telegram {
 		$z  = array();
 		foreach ( $zones as $x ) {
 			if ( null !== ( $x['low'] ?? null ) && null !== ( $x['high'] ?? null ) ) {
-				$z[ $n( min( $x['low'], $x['high'] ) ) . '-' . $n( max( $x['low'], $x['high'] ) ) . '-' . ( 'vente' === ( $x['side'] ?? '' ) ? 's' : 'b' ) ] = 1;
+				$name = trim( preg_replace( '/[^A-Za-z0-9]+/', '_', trim( ( $x['type'] ?? '' ) . ( in_array( $x['tf'] ?? '', array( 'W', 'D', 'H4', 'H1', 'M15' ), true ) && false === strpos( (string) ( $x['type'] ?? '' ), (string) $x['tf'] ) ? ' ' . $x['tf'] : '' ) ) ), '_' );
+				$z[ $n( min( $x['low'], $x['high'] ) ) . '-' . $n( max( $x['low'], $x['high'] ) ) . '-' . ( 'vente' === ( $x['side'] ?? '' ) ? 's' : 'b' ) ] = $name;
 			}
 		}
 		$l = array();
@@ -632,7 +633,7 @@ class CX_Telegram {
 				$l[ $n( $x['price'] ) ] = $n( $x['price'] ) . ':' . preg_replace( '/[^A-Za-z0-9]/', '', strtok( (string) ( $x['type'] ?? '' ), ' ' ) );
 			}
 		}
-		return 'CN1|' . $bias . '|' . $n( $pr['invalidation'] ?? 0 ) . '|' . $n( $pr['range_low'] ?? 0 ) . '|' . $n( $pr['range_high'] ?? 0 ) . '|' . implode( ',', array_keys( $z ) ) . '|' . implode( ',', array_slice( $l, 0, 14 ) );
+		return 'CN1|' . $bias . '|' . $n( $pr['invalidation'] ?? 0 ) . '|' . $n( $pr['range_low'] ?? 0 ) . '|' . $n( $pr['range_high'] ?? 0 ) . '|' . implode( ',', array_map( fn( $k, $v ) => '' === $v ? $k : $k . '-' . $v, array_keys( $z ), $z ) ) . '|' . implode( ',', array_slice( $l, 0, 14 ) );
 	}
 
 	/** Message Telegram du code TradingView, envoyé après chaque plan. */
