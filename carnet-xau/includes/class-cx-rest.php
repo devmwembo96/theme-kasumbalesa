@@ -79,6 +79,7 @@ class CX_Rest {
 	 */
 	public static function routes() {
 		self::route( '/bootstrap', 'GET', 'bootstrap' );
+		self::route( '/tv-code', 'GET', 'tv_code' );
 
 		self::route( '/accounts', 'GET', 'list_accounts' );
 		self::route( '/accounts', 'POST', 'create_account' );
@@ -151,6 +152,11 @@ class CX_Rest {
 	 *
 	 * @return WP_REST_Response
 	 */
+	/** GET /tv-code : code du plan à coller dans l'indicateur TradingView CarnetNAS. */
+	public static function tv_code() {
+		return self::out( array( 'code' => CX_Telegram::tv_code( CX_Live::week() ) ) );
+	}
+
 	public static function bootstrap() {
 		return self::out(
 			array(

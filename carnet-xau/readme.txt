@@ -1,7 +1,7 @@
 === Carnet NAS100 ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 3.0.3
+Stable tag: 3.0.4
 
 Carnet de trading Nasdaq 100 (NAS100), séance de New York, pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -66,6 +66,10 @@ selon le courtier), séance de New York seulement (09:30 → 16:00 New York).
 * Version 3.0.3 (13/11/2026) : niveaux du journal propres au Nasdaq 100 (PWH, PWL, ONH, ONL, IBH, IBL,
   VWAP, VAH, VAL, POC), repris automatiquement du plan quand l'entrée est à moins de 0,075 % du prix
   d'un niveau (la limite était de 3 $, calibrée pour l'or) ; texte d'aide du rejeu des zones corrigé.
+* Version 3.0.4 (13/11/2026) : indicateur TradingView « CarnetNAS » (assets/tradingview/CarnetNAS.pine) :
+  zones détectées avec les règles du carnet, signaux portés de l'EA. Code du plan à coller dans
+  l'indicateur : GET /tv-code, bouton « Copier » en tête de l'onglet Plan, message Telegram après chaque
+  plan de la semaine et chaque plan de New York.
 Les sections qui suivent décrivent l'histoire du carnet (ère de l'or) ; ce qui y touche à l'or ne
 s'applique plus.
 

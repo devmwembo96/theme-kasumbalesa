@@ -539,6 +539,8 @@ function renderPlanView(p){
   if(!p){box.replaceChildren(el("div",{class:"empty",text:"Le plan de cette semaine n’a pas encore été publié par Claude."}));
     const g=box._g=(box._g||0)+1;scoreCard().then(sc=>{if(box._g===g&&sc)box.append(sc)});return}
   let c=p.content;
+  // Code du plan pour l'indicateur TradingView CarnetNAS : un appui le copie.
+  const tvG=box._tv=(box._tv||0)+1;api("tv-code").then(d=>{if(box._tv!==tvG||!d||!d.code)return;const b=el("button",{type:"button",class:"btn sm",text:"Copier"});b.addEventListener("click",()=>{navigator.clipboard&&navigator.clipboard.writeText(d.code);b.textContent="Copié"});box.prepend(el("div",{class:"panel",style:"margin-bottom:12px"},el("div",{class:"row"},el("b",{text:"Code TradingView (CarnetNAS)"}),b),el("p",{class:"hint",style:"word-break:break-all;margin-top:6px",text:d.code})))}).catch(()=>{});
   if(!c){ // plan d'origine (avant le plan élargi)
     const lv=(p.levels||[]).filter(x=>x.price);
     box.replaceChildren(card("Plan (ancien format)",el("div",null,"Biais : ",el("span",{class:"bias "+(p.bias||"n"),text:BIAS_L[p.bias]||"Non défini"})),

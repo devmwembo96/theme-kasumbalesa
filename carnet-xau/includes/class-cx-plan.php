@@ -567,10 +567,18 @@ class CX_Plan {
 		// Les relectures du soir partent le lendemain à 7 h (CX_Telegram::morning).
 		if ( isset( $in['prediction'] ) && ! isset( $in['update'] ) && ! isset( $in['session'] ) && empty( $req->get_param( 'silent' ) ) ) {
 			CX_Telegram::send( CX_Telegram::plan_summary( $week ) );
+			$tv = CX_Telegram::tv_message( $week );
+			if ( '' !== $tv ) {
+				CX_Telegram::send( $tv );
+			}
 		}
 		// Analyse de séance : envoyée dès sa publication (elle sert à l'exécution).
 		if ( isset( $in['session'] ) && empty( $req->get_param( 'silent' ) ) ) {
 			CX_Telegram::send( CX_Telegram::session_summary( self::prepare_session( $in['session'] ) ) );
+			$tv = CX_Telegram::tv_message( $week );
+			if ( '' !== $tv ) {
+				CX_Telegram::send( $tv );
+			}
 		}
 		$rej = isset( $in['session'] ) ? self::prepare_session( $in['session'] )['rejected'] : array();
 		return new WP_REST_Response(

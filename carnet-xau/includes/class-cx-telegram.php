@@ -594,6 +594,54 @@ class CX_Telegram {
 	}
 
 	/**
+	 * Code du plan pour l'indicateur TradingView « CarnetNAS » : biais, invalidation, range, zones et niveaux
+	 * que l'EA surveille (plan de la semaine, puis plan de New York du jour), en une ligne à coller.
+	 * « CN1|H|invalidation|bas|haut|bas-haut-b,bas-haut-s|prix:NOM,prix:NOM ».
+	 *
+	 * @param string $week Lundi.
+	 * @return string Vide sans plan.
+	 */
+	public static function tv_code( $week ) {
+		$p = CX_Repo::plan( $week );
+		$c = is_array( $p['content'] ?? null ) ? $p['content'] : array();
+		if ( empty( $c['prediction'] ) && empty( $c['sessions'] ) ) {
+			return '';
+		}
+		$n     = fn( $v ) => rtrim( rtrim( number_format( (float) $v, 2, '.', '' ), '0' ), '.' );
+		$pr    = (array) ( $c['prediction'] ?? array() );
+		$bias  = (int) ( $pr['bull'] ?? 0 ) > (int) ( $pr['bear'] ?? 0 ) ? 'H' : ( (int) ( $pr['bear'] ?? 0 ) > (int) ( $pr['bull'] ?? 0 ) ? 'B' : 'N' );
+		$today = CX_Repo::clock( 'Y-m-d' );
+		$zones = (array) ( $c['zones'] ?? array() );
+		$lv    = array();
+		foreach ( (array) ( $c['sessions'] ?? array() ) as $s ) {
+			if ( $s['date'] === $today && 'us' === $s['kind'] ) {
+				$zones = array_merge( $zones, (array) ( $s['zones'] ?? array() ) );
+				$lv    = (array) ( $s['levels'] ?? array() );
+			}
+		}
+		$lv = array_merge( $lv, (array) ( $c['levels'] ?? array() ) );
+		$z  = array();
+		foreach ( $zones as $x ) {
+			if ( null !== ( $x['low'] ?? null ) && null !== ( $x['high'] ?? null ) ) {
+				$z[ $n( min( $x['low'], $x['high'] ) ) . '-' . $n( max( $x['low'], $x['high'] ) ) . '-' . ( 'vente' === ( $x['side'] ?? '' ) ? 's' : 'b' ) ] = 1;
+			}
+		}
+		$l = array();
+		foreach ( $lv as $x ) {
+			if ( null !== ( $x['price'] ?? null ) ) {
+				$l[ $n( $x['price'] ) ] = $n( $x['price'] ) . ':' . preg_replace( '/[^A-Za-z0-9]/', '', strtok( (string) ( $x['type'] ?? '' ), ' ' ) );
+			}
+		}
+		return 'CN1|' . $bias . '|' . $n( $pr['invalidation'] ?? 0 ) . '|' . $n( $pr['range_low'] ?? 0 ) . '|' . $n( $pr['range_high'] ?? 0 ) . '|' . implode( ',', array_keys( $z ) ) . '|' . implode( ',', array_slice( $l, 0, 14 ) );
+	}
+
+	/** Message Telegram du code TradingView, envoyé après chaque plan. */
+	public static function tv_message( $week ) {
+		$code = self::tv_code( $week );
+		return '' === $code ? '' : "📋 <b>Code TradingView (CarnetNAS)</b>\nÀ coller dans les réglages de l’indicateur, champ « Code du plan » :\n<code>" . esc_html( $code ) . '</code>';
+	}
+
+	/**
 	 * Prix de l'indice (points, deux décimales) : jamais suivi de « $ ».
 	 *
 	 * @param float $v Prix.
