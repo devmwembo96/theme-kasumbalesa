@@ -1,5 +1,5 @@
 //@version=5
-// CarnetNAS 3.00 : le système du Carnet NAS100 sur TradingView, graphique épuré.
+// CarnetNAS 3.01 : le système du Carnet NAS100 sur TradingView, graphique épuré.
 //
 // 1. Sans rien coller : l'indicateur détecte lui-même les zones avec les règles du carnet (celles que Claude
 //    lit dans le carnet) : pivots à 2 bougies, BOS / CHoCH à la clôture, déplacement (corps >= 60 % de
@@ -407,11 +407,15 @@ if sigOn and barstate.isconfirmed and bar_index > need + 2 and closeNy >= 570 an
             int e = -1
             for k = 1 to gTouch
                 if low[k] <= zhi + tol and high[k] >= zlo - tol
-                    if e < 0 or (buy ? low[k] < low[e] : high[k] > high[e])
+                    if e < 0
+                        e := k
+                    else if buy ? low[k] < low[e] : high[k] > high[e]
                         e := k
             bool ok = e >= 1
-            float extreme = ok ? (buy ? low[e] : high[e]) : na
-            if ok and (buy ? close[e] < zlo : close[e] > zhi)
+            // Indice sûr : Pine évalue les deux côtés d'un « or » et d'un « ?: ».
+            e := math.max(e, 1)
+            float extreme = buy ? low[e] : high[e]
+            if buy ? close[e] < zlo : close[e] > zhi
                 ok := false
             int setup = 0
             if ok
@@ -510,17 +514,17 @@ f_sf() =>
     bool night = nm >= 1080 or nm < 570
     var float rH = na
     var float rL = na
-    var float pdh = na
-    var float pdl = na
-    var float onh = na
-    var float onl = na
+    var float mpdh = na
+    var float mpdl = na
+    var float monh = na
+    var float monl = na
     var bool pdhTk = false
     var bool pdlTk = false
     var bool onhTk = false
     var bool onlTk = false
     if rth and not rth[1]
-        pdh := rH
-        pdl := rL
+        mpdh := rH
+        mpdl := rL
         rH := high
         rL := low
         onhTk := false
@@ -528,21 +532,21 @@ f_sf() =>
     if rth
         rH := math.max(nz(rH, high), high)
         rL := math.min(nz(rL, low), low)
-        if not na(onh) and high > onh
+        if not na(monh) and high > monh
             onhTk := true
-        if not na(onl) and low < onl
+        if not na(monl) and low < monl
             onlTk := true
     if night and not night[1]
-        onh := high
-        onl := low
+        monh := high
+        monl := low
         pdhTk := false
         pdlTk := false
     else if night
-        onh := math.max(nz(onh, high), high)
-        onl := math.min(nz(onl, low), low)
-    if not na(pdh) and high > pdh
+        monh := math.max(nz(monh, high), high)
+        monl := math.min(nz(monl, low), low)
+    if not na(mpdh) and high > mpdh
         pdhTk := true
-    if not na(pdl) and low < pdl
+    if not na(mpdl) and low < mpdl
         pdlTk := true
     bool pdhT3 = nz(pdhTk[3], false)
     bool pdlT3 = nz(pdlTk[3], false)
@@ -584,8 +588,8 @@ f_sf() =>
                     float e20 = hi ? array.get(qH, 1) : array.get(qL, 1)
                     for j = 1 to 20
                         e20 := hi ? math.max(e20, array.get(qH, j)) : math.min(e20, array.get(qL, j))
-                    float l1 = hi ? (pdhT3 ? na : pdh) : (pdlT3 ? na : pdl)
-                    float l2 = hi ? (onhT3 ? na : onh) : (onlT3 ? na : onl)
+                    float l1 = hi ? (pdhT3 ? na : mpdh) : (pdlT3 ? na : mpdl)
+                    float l2 = hi ? (onhT3 ? na : monh) : (onlT3 ? na : monl)
                     float l3 = f_eq(hi ? qH : qL, hi, atr15)
                     array<float> lv = array.from(e20, l1, l2, l3)
                     float wick = hi ? array.get(qH, 0) : array.get(qL, 0)
