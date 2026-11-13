@@ -1,5 +1,27 @@
 # Plan de test NAS100 (version 1.1, 13/11/2026)
 
+> **Statut au 13/11/2026 : SUSPENDU.** Bernard a ordonné l'arrêt immédiat des backtests (13/11, vers
+> 14:55 à Lubumbashi). Rien n'a été lancé : ni téléchargement, ni code, ni passage dans MT5. La campagne
+> XAUUSD/GER40 de `strategie-pa` est elle aussi en pause (commit `0f5b063`, rien de supprimé). Ce plan ne
+> reprend que sur un ordre de Bernard.
+>
+> **Avant toute reprise**, trancher les 15 points soulevés par l'agent de `strategie-pa` (13/11) :
+> 1. coûts proportionnels au prix plutôt qu'en points fixes (l'indice valait 4 000 en 2015) ;
+> 2. critère « exécutable » : sur 6 000 $ à 0,5 % de risque, un stop de plus de 300 points n'est pas
+>    prenable au lot minimum de 0,01 ;
+> 3. VWAP et zone de valeur dépendent du volume de la source : mesurer l'écart entre les deux sources ;
+> 4. parité en deux tests : le code (mêmes bougies exportées de MT5), puis l'écart entre flux ;
+> 5. plateau C1 défini sur les seuls paramètres ordonnés ;
+> 6. témoin T1 en entrée au marché à minute aléatoire ; T0 simple repère ;
+> 7. remplissage des ordres avec le bon côté du prix (bid ou ask) plus un tick ;
+> 8. sortie à 15:59 pour la famille C, 15:55 pour les autres ;
+> 9. E1 : un seul trade par jour, le premier signal ;
+> 10. ATR de Wilder, nuit comprise ; 11. nuit du lundi = dimanche 18:00 → 09:29, veille = vendredi ;
+> 12. zone de valeur : extension standard par paires de tranches ;
+> 13. jours fériés NYSE codés, annonces fournies en CSV (sinon confluence 7 retirée) ;
+> 14. tests unilatéraux, blocs d'une semaine calendaire ;
+> 15. « aucune année > 60 % du gain » aussi en Découverte.
+
 Plan pré-enregistré : tout ce qui suit est écrit **avant** de regarder un seul résultat. Il est exécuté
 par l'agent de code du dépôt `devmwembo96/shin` (`strategie-pa`), avec Bernard pour les passages dans le
 Testeur MT5. Auteur : la session du Carnet NAS100. La version 1.1 coule le plan dans le circuit de

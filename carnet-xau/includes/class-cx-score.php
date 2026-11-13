@@ -1029,11 +1029,11 @@ class CX_Score {
 					break;
 				}
 			}
-			// Niveau de liquidité du plan le plus proche (3 $ au plus).
+			// Niveau de liquidité du plan le plus proche (0,075 % du prix au plus : ≈ 21 pts à 28 000).
 			$near = null;
 			foreach ( (array) ( $c['levels'] ?? array() ) as $l ) {
 				$d = abs( (float) $l['price'] - $entry );
-				if ( $d <= 3 && in_array( $l['type'] ?? '', CX_Repo::LEVELS, true ) && ( ! $near || $d < $near[0] ) ) {
+				if ( $d <= max( 3.0, 0.00075 * $entry ) && in_array( $l['type'] ?? '', CX_Repo::LEVELS, true ) && ( ! $near || $d < $near[0] ) ) {
 					$near = array( $d, $l['type'] );
 				}
 			}

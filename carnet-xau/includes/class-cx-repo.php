@@ -17,7 +17,8 @@ class CX_Repo {
 
 	const STATUSES = array( 'phase1', 'phase2', 'finance', 'echoue', 'retire' );
 	const SETUPS   = array( '1', '2', '3', 'hors' );
-	const LEVELS   = array( 'EQL', 'EQH', '2 Bottom Liq', '2 Top Liq', 'PDH', 'PDL', 'Session fermée', 'BoS', 'Autre' );
+	// Niveaux du journal : liquidité (égaux, veille, semaine), séance du Nasdaq 100 (nuit, IB, VWAP, zone de valeur).
+	const LEVELS   = array( 'EQL', 'EQH', '2 Bottom Liq', '2 Top Liq', 'PDH', 'PDL', 'PWH', 'PWL', 'ONH', 'ONL', 'IBH', 'IBL', 'VWAP', 'VAH', 'VAL', 'POC', 'Session fermée', 'BoS', 'Autre' );
 	const EMOTIONS = array( 'calme', 'presse', 'revanche', 'fatigue' );
 
 	/* ------------------------------------------------------------------

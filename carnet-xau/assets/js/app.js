@@ -532,7 +532,7 @@ async function scoreCard(){
     les.length?el("ul",null,...les.map(x=>el("li",{class:x.verdict==="eviter"?"ko":"ok",text:x.text}))):el("p",{class:"hint",text:"Pas encore assez de cas : une leçon apparaît dès 8 fiches ou 8 zones de la même famille."}),
     el("h4",{class:"sub",text:"Biais des analyses de séance"}),
     n?table(["Analyse","Notées","Biais justes","Réussite"],rows):el("p",{class:"hint",text:"Pas encore d’analyse notée : chaque plan de New York est noté par le carnet après la clôture de 16:00 New York ("+tzAt("America/New_York",16,0)+" à Lubumbashi)."}),
-    el("p",{class:"hint",style:"margin-top:8px",text:"Biais : mouvement entre la publication et la fin de la séance visée. Au-delà de ± "+fmt(100*d.neutral,0)+" % de l’ATR journalier il est haussier ou baissier, sinon neutre. Zone : entrée au bord touché en premier, stop 1 $ derrière l’autre bord ; elle « réagit » si le prix fait 2R avant le stop."}));
+    el("p",{class:"hint",style:"margin-top:8px",text:"Biais : mouvement entre la publication et la fin de la séance visée. Au-delà de ± "+fmt(100*d.neutral,0)+" % de l’ATR journalier il est haussier ou baissier, sinon neutre. Zone : entrée au bord touché en premier, stop derrière l’autre bord (0,02 % du prix, 2 pts au moins) ; elle « réagit » si le prix fait 2R avant le stop."}));
 }
 function renderPlanView(p){
   const box=$("#plan-view");

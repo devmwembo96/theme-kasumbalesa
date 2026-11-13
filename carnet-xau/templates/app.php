@@ -155,7 +155,7 @@ defined( 'ABSPATH' ) || exit;
 			<label class="f">Setup<select id="tf-setup"><option value="1">Setup 1 — liquidité</option><option value="2">Setup 2 — continuation</option><option value="3">Setup 3 — iFVG</option><option value="hors">Hors setup</option></select></label>
 			<label class="f">Niveau ou déclencheur<select id="tf-level">
 				<option value="EQL">EQL</option><option value="EQH">EQH</option><option value="2 Bottom Liq">2 Bottom Liq</option><option value="2 Top Liq">2 Top Liq</option>
-				<option value="PDH">PDH</option><option value="PDL">PDL</option><option value="Session fermée">Extrême de session fermée</option><option value="BoS">BoS / MSB</option><option value="Autre">Autre</option></select></label>
+				<option value="PDH">PDH</option><option value="PDL">PDL</option><option value="PWH">PWH</option><option value="PWL">PWL</option><option value="ONH">ONH (haut de la nuit)</option><option value="ONL">ONL (bas de la nuit)</option><option value="IBH">IBH (haut de l’IB)</option><option value="IBL">IBL (bas de l’IB)</option><option value="VWAP">VWAP</option><option value="VAH">VAH</option><option value="VAL">VAL</option><option value="POC">POC</option><option value="Session fermée">Extrême de session fermée</option><option value="BoS">BoS / MSB</option><option value="Autre">Autre</option></select></label>
 			<label class="f">Stop (pts)<input id="tf-stop" type="number" step="0.1" inputmode="decimal"></label>
 			<label class="f">Lot<input id="tf-lot" type="number" step="0.01" inputmode="decimal"></label>
 			<label class="f">Risque ($)<input id="tf-risk" type="number" step="0.01" inputmode="decimal"></label>
