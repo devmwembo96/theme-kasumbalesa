@@ -1,5 +1,5 @@
 //@version=5
-// CarnetNAS 3.20 : le système du Carnet NAS100 sur TradingView, graphique épuré.
+// CarnetNAS 3.21 : le système du Carnet NAS100 sur TradingView, graphique épuré.
 //
 // 1. Sans rien coller : l'indicateur détecte lui-même les zones avec les règles du carnet (celles que Claude
 //    lit dans le carnet) : pivots à 2 bougies, BOS / CHoCH à la clôture, déplacement (corps >= 60 % de
@@ -137,7 +137,10 @@ f_delZone(int i) =>
     array.remove(zTouch, i)
     array.remove(zBox, i)
 
-if barstate.isfirst
+// Le code du plan donne des prix du Nasdaq 100 : il n'est lu que sur un graphique NAS100 (US100, USTEC, NDX, NQ).
+string symU = str.upper(syminfo.ticker)
+bool isNas = str.contains(symU, "NAS100") or str.contains(symU, "US100") or str.contains(symU, "USTEC") or str.contains(symU, "NDX") or str.contains(symU, "NQ")
+if barstate.isfirst and isNas
     array<string> pp = str.split(str.replace_all(inCode, " ", ""), "|")
     if array.size(pp) >= 6 and array.get(pp, 0) == "CN1"
         usePlan := true
