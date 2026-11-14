@@ -1,0 +1,925 @@
+//@version=6
+// CarnetNAS + Smart Money Fluid : deux indicateurs indépendants dans un seul script.
+// - Panneau du bas : Smart Money Fluid [JOAT], code d'origine inchangé (© OfficialJackOfAllTrades, MPL 2.0).
+// - Graphique des prix : CarnetNAS (zones, niveaux et signaux du carnet), tracé avec force_overlay.
+// Aucune variable ni aucun calcul n'est partagé entre les deux parties.
+indicator("CarnetNAS + Smart Money Fluid [JOAT]", shorttitle = "CarnetNAS + SMF", overlay = false, max_boxes_count = 200, max_lines_count = 200, max_labels_count = 200, max_bars_back = 600)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── PARTIE 1 : Smart Money Fluid [JOAT] (panneau du bas), code d'origine inchangé ───
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © OfficialJackOfAllTrades
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── DESCRIPTION ───────────────────────────────────────────────────────────────
+// Smart Money Fluid tracks institutional-style accumulation and distribution
+// using a combination of price action, volume analysis, and money flow metrics.
+// Designed to reveal whether "smart money" is accumulating or distributing.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── INPUTS ────────────────────────────────────────────────────────────────────
+string GRP_CALC = "Calculation Settings"
+int mfLength        = input.int(14, "Money Flow Length", minval = 5, maxval = 50, group = GRP_CALC)
+int smoothLength    = input.int(5, "Smoothing Length", minval = 1, maxval = 20, group = GRP_CALC)
+int divergeLength   = input.int(5, "Divergence Lookback", minval = 2, maxval = 20, group = GRP_CALC)
+
+string GRP_SENS = "Sensitivity"
+float accumThresh   = input.float(60, "Accumulation Threshold", minval = 50, maxval = 90, group = GRP_SENS)
+float distThresh    = input.float(40, "Distribution Threshold", minval = 10, maxval = 50, group = GRP_SENS)
+float volMult       = input.float(1.5, "High Volume Multiplier", minval = 1.0, maxval = 3.0, step = 0.1, group = GRP_SENS)
+
+string GRP_VIS = "Visual Settings"
+color accumColor    = input.color(#00E676, "Accumulation Color", group = GRP_VIS)
+color distColor     = input.color(#FF5252, "Distribution Color", group = GRP_VIS)
+color neutralColor  = input.color(#9E9E9E, "Neutral Color", group = GRP_VIS)
+bool showHistogram  = input.bool(true, "Show Flow Histogram", group = GRP_VIS)
+bool showDivergence = input.bool(true, "Show Divergences", group = GRP_VIS)
+bool showDashboard  = input.bool(true, "Show Dashboard", group = GRP_VIS)
+bool showZones      = input.bool(true, "Show Zone Background", group = GRP_VIS)
+
+string GRP_ALERTS = "Alerts"
+bool awaitConfirm   = input.bool(true, "Await Bar Confirmation", group = GRP_ALERTS)
+
+// ─── CALCULATIONS ──────────────────────────────────────────────────────────────
+// Typical Price
+float typicalPrice = hlc3
+
+// Raw Money Flow
+float rawMF = typicalPrice * volume
+
+// Positive and Negative Money Flow
+float posMF = typicalPrice > typicalPrice[1] ? rawMF : 0
+float negMF = typicalPrice < typicalPrice[1] ? rawMF : 0
+
+// Money Flow Ratio
+float posMFSum = math.sum(posMF, mfLength)
+float negMFSum = math.sum(negMF, mfLength)
+float mfRatio = negMFSum != 0 ? posMFSum / negMFSum : 1
+
+// Money Flow Index (0-100)
+float mfi = 100 - (100 / (1 + mfRatio))
+
+// Volume-Weighted Price Strength
+float vwap = ta.vwap(typicalPrice)
+float priceVsVWAP = (close - vwap) / vwap * 100
+
+// Chaikin Money Flow
+float mfMultiplier = ((close - low) - (high - close)) / (high - low)
+float mfVolume = mfMultiplier * volume
+float cmf = math.sum(mfVolume, mfLength) / math.sum(volume, mfLength) * 100
+
+// Volume Analysis
+float avgVol = ta.sma(volume, mfLength)
+float volRatio = volume / avgVol
+bool highVolume = volRatio > volMult
+
+// Composite Smart Money Flow
+float rawSMF = (mfi * 0.4 + (cmf + 50) * 0.3 + (50 + priceVsVWAP * 5) * 0.3)
+float smf = ta.ema(rawSMF, smoothLength)
+float smfSignal = ta.ema(smf, smoothLength * 2)
+
+// SMF Momentum
+float smfMom = smf - smfSignal
+float smfAccel = smfMom - smfMom[1]
+
+// ─── ACCUMULATION/DISTRIBUTION STATE ───────────────────────────────────────────
+bool isAccumulating = smf > accumThresh
+bool isDistributing = smf < distThresh
+bool isNeutral = not isAccumulating and not isDistributing
+
+// Strong signals with high volume
+bool strongAccum = isAccumulating and highVolume and smfMom > 0
+bool strongDist = isDistributing and highVolume and smfMom < 0
+
+// State changes
+bool accumStart = isAccumulating and not isAccumulating[1]
+bool distStart = isDistributing and not isDistributing[1]
+
+// ─── DIVERGENCE DETECTION ──────────────────────────────────────────────────────
+// Price pivots
+float priceHigh = ta.pivothigh(high, divergeLength, divergeLength)
+float priceLow = ta.pivotlow(low, divergeLength, divergeLength)
+
+// SMF pivots
+float smfHigh = ta.pivothigh(smf, divergeLength, divergeLength)
+float smfLow = ta.pivotlow(smf, divergeLength, divergeLength)
+
+// Bearish divergence: price higher high, SMF lower high
+var bool bearishDiv = false
+if not na(priceHigh) and not na(smfHigh)
+    if priceHigh > ta.valuewhen(not na(priceHigh), priceHigh, 1)
+        if smfHigh < ta.valuewhen(not na(smfHigh), smfHigh, 1)
+            bearishDiv := true
+    else
+        bearishDiv := false
+else
+    bearishDiv := false
+
+// Bullish divergence: price lower low, SMF higher low
+var bool bullishDiv = false
+if not na(priceLow) and not na(smfLow)
+    if priceLow < ta.valuewhen(not na(priceLow), priceLow, 1)
+        if smfLow > ta.valuewhen(not na(smfLow), smfLow, 1)
+            bullishDiv := true
+    else
+        bullishDiv := false
+else
+    bullishDiv := false
+
+// ─── COLORING ──────────────────────────────────────────────────────────────────
+color smfColor = smf >= accumThresh ? accumColor : smf <= distThresh ? distColor : 
+     color.from_gradient(smf, distThresh, accumThresh, distColor, accumColor)
+
+color histColor = smfMom > 0 ? (smfAccel > 0 ? accumColor : color.new(accumColor, 50)) : 
+     (smfAccel < 0 ? distColor : color.new(distColor, 50))
+
+color bgColor = showZones ? (isAccumulating ? color.new(accumColor, 92) : 
+     isDistributing ? color.new(distColor, 92) : na) : na
+
+// ─── PLOTTING ──────────────────────────────────────────────────────────────────
+// Background zones
+bgcolor(bgColor, title = "Zone Background")
+
+// SMF Line with glow
+plot(smf, "SMF Glow", color.new(smfColor, 60), 6)
+plot(smf, "Smart Money Flow", smfColor, 2)
+plot(smfSignal, "Signal Line", color.new(color.white, 50), 1)
+
+// Histogram
+plot(showHistogram ? smfMom * 2 : na, "Flow Momentum", histColor, 2, plot.style_columns, histbase = 0)
+
+// Reference levels
+hline(accumThresh, "Accumulation", color.new(accumColor, 50), hline.style_dashed)
+hline(50, "Neutral", color.new(color.white, 70), hline.style_dotted)
+hline(distThresh, "Distribution", color.new(distColor, 50), hline.style_dashed)
+
+// Fill zones
+accumLine = hline(100, display = display.none)
+accumThreshLine = hline(accumThresh, display = display.none)
+distThreshLine = hline(distThresh, display = display.none)
+distLine = hline(0, display = display.none)
+
+fill(accumLine, accumThreshLine, color.new(accumColor, 92), title = "Accumulation Zone")
+fill(distLine, distThreshLine, color.new(distColor, 92), title = "Distribution Zone")
+
+// Signal markers
+plotshape(strongAccum, "Strong Accumulation", shape.triangleup, location.bottom, accumColor, size = size.tiny)
+plotshape(strongDist, "Strong Distribution", shape.triangledown, location.top, distColor, size = size.tiny)
+
+// Divergence markers
+plotshape(showDivergence and bullishDiv, "Bullish Divergence", shape.labelup, location.bottom, accumColor, 
+     text = "DIV", textcolor = color.white, size = size.tiny, offset = -divergeLength)
+plotshape(showDivergence and bearishDiv, "Bearish Divergence", shape.labeldown, location.top, distColor, 
+     text = "DIV", textcolor = color.white, size = size.tiny, offset = -divergeLength)
+
+// ─── DASHBOARD ─────────────────────────────────────────────────────────────────
+if showDashboard and barstate.islast
+    var table dash = table.new(position.top_right, 2, 7,
+         bgcolor = color.new(#1E1E1E, 10),
+         frame_width = 1,
+         frame_color = color.new(color.white, 80),
+         border_width = 1)
+    
+    // Title
+    color dashColor = isAccumulating ? accumColor : isDistributing ? distColor : neutralColor
+    table.cell(dash, 0, 0, "Smart Money", text_color = color.white, text_size = size.normal, bgcolor = color.new(dashColor, 40))
+    table.cell(dash, 1, 0, str.tostring(smf, "#.#"), text_color = dashColor, text_size = size.normal, bgcolor = color.new(dashColor, 40))
+    
+    // State
+    string stateText = isAccumulating ? "ACCUMULATING" : isDistributing ? "DISTRIBUTING" : "NEUTRAL"
+    table.cell(dash, 0, 1, "State", text_color = color.gray, text_size = size.small)
+    table.cell(dash, 1, 1, stateText, text_color = dashColor, text_size = size.small)
+    
+    // Flow Momentum
+    table.cell(dash, 0, 2, "Flow", text_color = color.gray, text_size = size.small)
+    table.cell(dash, 1, 2, (smfMom > 0 ? "Up " : "Down ") + str.tostring(math.abs(smfMom), "#.#"), 
+         text_color = smfMom > 0 ? accumColor : distColor, text_size = size.small)
+    
+    // MFI
+    table.cell(dash, 0, 3, "MFI", text_color = color.gray, text_size = size.small)
+    table.cell(dash, 1, 3, str.tostring(mfi, "#.#"), text_color = color.white, text_size = size.small)
+    
+    // CMF
+    table.cell(dash, 0, 4, "CMF", text_color = color.gray, text_size = size.small)
+    table.cell(dash, 1, 4, str.tostring(cmf, "#.#") + "%", text_color = cmf > 0 ? accumColor : distColor, text_size = size.small)
+    
+    // Volume
+    string volText = highVolume ? "High" : "Normal"
+    table.cell(dash, 0, 5, "Volume", text_color = color.gray, text_size = size.small)
+    table.cell(dash, 1, 5, volText, text_color = highVolume ? #FF9800 : color.white, text_size = size.small)
+    
+    // Divergence
+    string divText = bullishDiv ? "Bullish" : bearishDiv ? "Bearish" : "None"
+    table.cell(dash, 0, 6, "Divergence", text_color = color.gray, text_size = size.small)
+    table.cell(dash, 1, 6, divText, text_color = bullishDiv ? accumColor : bearishDiv ? distColor : color.white, text_size = size.small)
+
+// ─── ALERTS ────────────────────────────────────────────────────────────────────
+bool confirmed = awaitConfirm ? barstate.isconfirmed : true
+
+alertcondition(accumStart and confirmed, "SMF Accumulation Started", "Smart Money Flow entered ACCUMULATION zone on {{ticker}}")
+alertcondition(distStart and confirmed, "SMF Distribution Started", "Smart Money Flow entered DISTRIBUTION zone on {{ticker}}")
+alertcondition(strongAccum and confirmed, "SMF Strong Accumulation", "Strong accumulation signal with high volume on {{ticker}}")
+alertcondition(strongDist and confirmed, "SMF Strong Distribution", "Strong distribution signal with high volume on {{ticker}}")
+alertcondition(bullishDiv and confirmed, "SMF Bullish Divergence", "Bullish divergence detected on {{ticker}}")
+alertcondition(bearishDiv and confirmed, "SMF Bearish Divergence", "Bearish divergence detected on {{ticker}}")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── PARTIE 2 : CarnetNAS (graphique des prix) ───
+// CarnetNAS 3.20 : le système du Carnet NAS100 sur TradingView, graphique épuré.
+//
+// 1. Sans rien coller : l'indicateur détecte lui-même les zones avec les règles du carnet (celles que Claude
+//    lit dans le carnet) : pivots à 2 bougies, BOS / CHoCH à la clôture, déplacement (corps >= 60 % de
+//    l'étendue, corps cumulé >= 1,5 ATR), FVG >= 0,25 ATR, order block = dernière bougie opposée (10 bougies
+//    au plus) avant une cassure avec déplacement. Unité de temps des zones : M15 par défaut.
+//    Niveaux : haut et bas de la nuit (18:00 -> 09:30 New York), de la veille (09:30 -> 16:00), POC, VAH, VAL.
+//    Biais : sens de la dernière cassure de structure.
+// 2. Après le plan de Claude : coller le « Code du plan » donné par le carnet et par Telegram. Les zones, les
+//    niveaux, le biais et l'invalidation deviennent ceux du plan, comme dans l'EA MT5.
+//
+// Signaux : portage de l'EA « Carnet NAS100 » 3.00 (CheckSignals et stratégie autonome).
+//   Setups 1 à 3, de 09:30 à 16:00 New York (graphique M1, comme l'EA) : touche d'une zone non cassée,
+//   iFVG (setup 3) ou cassure fraîche du dernier pivot (setup 1 si un niveau ou le bord de la zone a été
+//   balayé, sinon setup 2 dans le sens du biais), stop derrière l'extrême + 0,3 ATR + spread, objectif sur la
+//   prochaine zone ou le prochain niveau opposé (sinon 3R), refus sous 2R.
+//   Setup 4, de 09:30 à 12:00 New York : sweep M15 -> CHoCH M5 -> FVG M5, limite au premier tiers, 3R.
+// Non repris de l'EA : filtre des annonces, limites du jour du compte, calcul du lot.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ───────────── Plan de Claude (facultatif) ─────────────
+string GP = "Plan de Claude (facultatif)"
+string inCode   = input.string("", "Code du plan (carnet ou Telegram)", group = GP, tooltip = "Laisser vide : l'indicateur détecte lui-même les zones. Après le plan de Claude, coller ici le code « CN1|… ».")
+bool   planOnly = input.bool(true, "Avec un code : zones du plan seulement (comme l'EA)", group = GP)
+string GD = "Détection automatique des zones"
+string zoneTf   = input.timeframe("15", "Unité de temps des zones", group = GD)
+int    maxAuto  = input.int(5, "Zones automatiques gardées", minval = 2, maxval = 20, group = GD)
+float  maxSize  = input.float(1.0, "Taille maximale d'une zone (× ATR de son unité de temps)", step = 0.25, group = GD)
+bool   showLv   = input.bool(true, "Tracer les niveaux (nuit, veille)", group = GD)
+bool   showVa   = input.bool(false, "Tracer la zone de valeur de la veille (POC, VAH, VAL)", group = GD)
+// ───────────── Réglages de l'EA ─────────────
+string GE = "Réglages de l'EA (setups 1 à 3)"
+bool  sigOn     = input.bool(true, "Signaux des zones", group = GE)
+int   gTouch    = input.int(30, "Bougies où chercher la touche", group = GE)
+int   gSwing    = input.int(20, "Bougies avant l'extrême (pivot et FVG)", group = GE)
+float gFvg      = input.float(0.30, "FVG minimum (× ATR)", step = 0.05, group = GE)
+float gSlBuf    = input.float(0.30, "Marge du stop (× ATR)", step = 0.05, group = GE)
+float gTol      = input.float(0.30, "Touche tolérée (× ATR)", step = 0.05, group = GE)
+float gStopAtr  = input.float(0.50, "Stop minimum (× ATR)", step = 0.05, group = GE)
+float gStopMin  = input.float(2.0, "Stop minimum (points)", group = GE)
+float gStopMax  = input.float(100000.0, "Stop maximum (points)", group = GE)
+float gSpreadPc = input.float(15.0, "Spread maximum (% du stop)", group = GE)
+int   gCooldown = input.int(60, "Minutes sans signal sur la même zone", group = GE)
+string GS = "Setup 4 : sweep M15, CHoCH M5, FVG M5"
+bool  sfOn    = input.bool(true, "Stratégie autonome", group = GS)
+float sfBuf   = input.float(0.10, "Marge du stop (× ATR M15)", step = 0.05, group = GS)
+float sfFvg   = input.float(0.10, "FVG M5 minimum (× ATR M5)", step = 0.05, group = GS)
+int   sfChoch = input.int(24, "Bougies M5 pour le CHoCH", group = GS)
+float sfRR    = input.float(3.0, "Objectif (R)", step = 0.5, group = GS)
+string GA = "Affichage"
+float spreadPt = input.float(1.5, "Spread (points)", step = 0.5, group = GA)
+int   keepSig  = input.int(3, "Signaux gardés à l'écran", minval = 1, maxval = 10, group = GA)
+bool  showPlan = input.bool(true, "Tracer les zones", group = GA)
+bool  rmTouched = input.bool(true, "Retirer une zone touchée ou comblée (après la fenêtre du signal)", group = GA)
+
+// ───────────── Outils ─────────────
+string TZ = "America/New_York"
+int nyMin   = hour(time, TZ) * 60 + minute(time, TZ)
+int tfMin   = timeframe.isminutes ? timeframe.multiplier : 1440
+int closeNy = nyMin + tfMin
+bool m15Close = barstate.isconfirmed and tfMin <= 15 and closeNy % 15 == 0
+float atr1 = ta.sma(ta.tr(true), 14)
+
+var array<box> dBox = array.new<box>()
+var array<line> dLine = array.new<line>()
+var array<label> dLab = array.new<label>()
+
+// Outil position : zone de gain, zone de risque, entrée et une seule étiquette.
+f_pos(bool buy, string title, float entry, float sl, float tp) =>
+    float stop = math.abs(entry - sl)
+    float rr = stop > 0 ? math.abs(tp - entry) / stop : 0.0
+    int x2 = bar_index + 25
+    array.push(dBox, box.new(bar_index, math.max(entry, tp), x2, math.min(entry, tp), border_color = na, bgcolor = color.new(#089981, 85), force_overlay = true))
+    array.push(dBox, box.new(bar_index, math.max(entry, sl), x2, math.min(entry, sl), border_color = na, bgcolor = color.new(#f23645, 85), force_overlay = true))
+    array.push(dLine, line.new(bar_index, entry, x2, entry, color = color.new(#787b86, 0), force_overlay = true))
+    string txt = title + " · " + str.tostring(rr, "#.0") + "R\nEntrée " + str.tostring(entry, format.mintick) + " · Stop " + str.tostring(sl, format.mintick) + " (" + str.tostring(stop, "#.0") + " pts) · Objectif " + str.tostring(tp, format.mintick)
+    array.push(dLab, label.new(bar_index, sl, txt, style = buy ? label.style_label_up : label.style_label_down, color = buy ? #089981 : #f23645, textcolor = color.white, size = size.small, textalign = text.align_left, force_overlay = true))
+    while array.size(dBox) > 2 * keepSig
+        box.delete(array.shift(dBox))
+    while array.size(dLine) > keepSig
+        line.delete(array.shift(dLine))
+    while array.size(dLab) > keepSig
+        label.delete(array.shift(dLab))
+    alert("CarnetNAS " + title + " · entrée " + str.tostring(entry, format.mintick) + " · stop " + str.tostring(sl, format.mintick) + " · objectif " + str.tostring(tp, format.mintick), alert.freq_once_per_bar_close)
+
+// ───────────── Code du plan : « CN1|H|invalidation|bas|haut|zones|niveaux » ─────────────
+var bool usePlan = false
+var int planBias = 0
+var float inInval = 0.0
+var float inRlo = 0.0
+var float inRhi = 0.0
+var array<float> zLo = array.new_float()
+var array<float> zHi = array.new_float()
+var array<bool> zBuy = array.new_bool()
+var array<bool> zDead = array.new_bool()
+var array<bool> zPlan = array.new_bool()
+var array<int> zLast = array.new_int()
+var array<int> zBorn = array.new_int()
+var array<int> zTouch = array.new_int()
+var array<box> zBox = array.new<box>()
+var array<label> zTagT = array.new<label>()
+var array<label> zTagB = array.new<label>()
+var array<float> planLv = array.new_float()
+var array<string> planLvName = array.new_string()
+
+f_tag(float p, color c) =>
+    showPlan ? label.new(bar_index + 31, p, str.tostring(p, "#.00"), style = label.style_label_left, color = c, textcolor = color.white, size = size.tiny, force_overlay = true) : na
+
+f_addZone(float lo, float hi, bool isBuy, bool isPlan, string name) =>
+    array.push(zLo, lo)
+    array.push(zHi, hi)
+    array.push(zBuy, isBuy)
+    array.push(zDead, false)
+    array.push(zPlan, isPlan)
+    array.push(zLast, 0)
+    array.push(zBorn, bar_index)
+    array.push(zTouch, na)
+    color zc = isBuy ? #089981 : #f23645
+    array.push(zBox, showPlan ? box.new(bar_index, hi, bar_index + 30, lo, border_color = color.new(zc, 20), bgcolor = color.new(zc, 78), text = name, text_size = size.tiny, text_color = zc, text_halign = text.align_center, text_valign = text.align_center, force_overlay = true) : na)
+    array.push(zTagT, f_tag(hi, zc))
+    array.push(zTagB, f_tag(lo, zc))
+
+f_delZone(int i) =>
+    box.delete(array.get(zBox, i))
+    label.delete(array.get(zTagT, i))
+    label.delete(array.get(zTagB, i))
+    array.remove(zTagT, i)
+    array.remove(zTagB, i)
+    array.remove(zLo, i)
+    array.remove(zHi, i)
+    array.remove(zBuy, i)
+    array.remove(zDead, i)
+    array.remove(zPlan, i)
+    array.remove(zLast, i)
+    array.remove(zBorn, i)
+    array.remove(zTouch, i)
+    array.remove(zBox, i)
+
+if barstate.isfirst
+    array<string> pp = str.split(str.replace_all(inCode, " ", ""), "|")
+    if array.size(pp) >= 6 and array.get(pp, 0) == "CN1"
+        usePlan := true
+        planBias := array.get(pp, 1) == "H" ? 1 : array.get(pp, 1) == "B" ? -1 : 0
+        inInval := nz(str.tonumber(array.get(pp, 2)))
+        inRlo := nz(str.tonumber(array.get(pp, 3)))
+        inRhi := nz(str.tonumber(array.get(pp, 4)))
+        array<string> zs = str.split(array.get(pp, 5), ",")
+        if array.size(zs) > 0
+            for i = 0 to array.size(zs) - 1
+                array<string> f = str.split(array.get(zs, i), "-")
+                if array.size(f) >= 3
+                    float a = str.tonumber(array.get(f, 0))
+                    float b = str.tonumber(array.get(f, 1))
+                    if not na(a) and not na(b)
+                        f_addZone(math.min(a, b), math.max(a, b), array.get(f, 2) != "s", true, array.size(f) > 3 ? str.replace_all(array.get(f, 3), "_", " ") : "")
+        if array.size(pp) >= 7
+            array<string> ls = str.split(array.get(pp, 6), ",")
+            if array.size(ls) > 0
+                for i = 0 to array.size(ls) - 1
+                    array<string> f = str.split(array.get(ls, i), ":")
+                    float p = str.tonumber(array.get(f, 0))
+                    if not na(p)
+                        array.push(planLv, p)
+                        array.push(planLvName, array.size(f) > 1 ? array.get(f, 1) : "")
+
+// ───────────── Détecteurs du carnet, calculés dans l'unité de temps des zones ─────────────
+f_disp(int dir, float atr) =>
+    float cum = 0.0
+    bool ok = false
+    bool run = true
+    for i = 0 to 2
+        float body = dir * (close[i] - open[i])
+        float rng = high[i] - low[i]
+        if run and body > 0 and rng > 0 and body >= 0.6 * rng
+            cum += body
+            if cum >= 1.5 * atr
+                ok := true
+        else
+            run := false
+    ok
+
+f_det() =>
+    float atr = nz(ta.atr(14)[1], ta.tr(true))
+    var float lastPH = na
+    var float lastPL = na
+    var int trend = 0
+    var int fId = 0
+    var float fTop = na
+    var float fBot = na
+    var int fDir = 0
+    var int oId = 0
+    var float oTop = na
+    var float oBot = na
+    var int oDir = 0
+    if barstate.isconfirmed
+        if high[2] > high[3] and high[2] > high[4] and high[2] >= high[1] and high[2] >= high
+            lastPH := high[2]
+        if low[2] < low[3] and low[2] < low[4] and low[2] <= low[1] and low[2] <= low
+            lastPL := low[2]
+        if not na(lastPH) and close > lastPH
+            if f_disp(1, atr)
+                bool found = false
+                for j = 1 to 10
+                    if not found and close[j] < open[j]
+                        found := true
+                        oId := time
+                        oTop := open[j]
+                        oBot := low[j]
+                        oDir := 1
+            trend := 1
+            lastPH := na
+        if not na(lastPL) and close < lastPL
+            if f_disp(-1, atr)
+                bool found = false
+                for j = 1 to 10
+                    if not found and close[j] > open[j]
+                        found := true
+                        oId := time
+                        oTop := high[j]
+                        oBot := open[j]
+                        oDir := -1
+            trend := -1
+            lastPL := na
+        float body1 = math.abs(close[1] - open[1])
+        float rng1 = high[1] - low[1]
+        if rng1 > 0 and body1 >= 0.6 * rng1
+            if low > high[2] and low - high[2] >= 0.25 * atr
+                fId := time
+                fTop := low
+                fBot := high[2]
+                fDir := 1
+            if high < low[2] and low[2] - high >= 0.25 * atr
+                fId := time
+                fTop := low[2]
+                fBot := high
+                fDir := -1
+    [fId, fTop, fBot, fDir, oId, oTop, oBot, oDir, trend, atr]
+
+[dfId, dfTop, dfBot, dfDir, doId, doTop, doBot, doDir, dTrend, dAtr] = request.security(syminfo.tickerid, zoneTf, f_det(), lookahead = barmerge.lookahead_off)
+bool autoOn = not (usePlan and planOnly)
+if autoOn and barstate.isconfirmed
+    string tfName = (timeframe.in_seconds(zoneTf) >= 3600 ? "H" + str.tostring(timeframe.in_seconds(zoneTf) / 3600) : "M" + str.tostring(timeframe.in_seconds(zoneTf) / 60))
+    if dfId != 0 and dfId != nz(dfId[1]) and dfTop - dfBot <= maxSize * dAtr
+        f_addZone(dfBot, dfTop, dfDir == 1, false, "FVG " + tfName)
+    if doId != 0 and doId != nz(doId[1]) and doTop - doBot <= maxSize * dAtr
+        f_addZone(doBot, doTop, doDir == 1, false, "OB " + tfName)
+    // Les plus anciennes zones automatiques sortent quand il y en a trop.
+    int nAuto = 0
+    if array.size(zPlan) > 0
+        for i = 0 to array.size(zPlan) - 1
+            if not array.get(zPlan, i)
+                nAuto += 1
+    while nAuto > maxAuto
+        int idx = array.indexof(zPlan, false)
+        f_delZone(idx)
+        nAuto -= 1
+int dom = usePlan ? planBias : nz(dTrend)
+
+// ───────────── Niveaux de séance du carnet (nuit, veille, zone de valeur) ─────────────
+f_profile(array<float> aH, array<float> aL, array<float> aV) =>
+    float poc = na
+    float vah = na
+    float val = na
+    int m = array.size(aH)
+    if m > 0
+        float hi = array.max(aH)
+        float lo = array.min(aL)
+        float vs = array.sum(aV)
+        if vs > 0 and hi > lo
+            int n = 60
+            float w = (hi - lo) / n
+            array<float> bin = array.new_float(n, 0.0)
+            for i = 0 to m - 1
+                int a = math.max(0, math.min(n - 1, int(math.floor((array.get(aL, i) - lo) / w))))
+                int z = math.max(0, math.min(n - 1, int(math.floor((array.get(aH, i) - lo) / w))))
+                float part = array.get(aV, i) / (z - a + 1)
+                for j = a to z
+                    array.set(bin, j, array.get(bin, j) + part)
+            int p = array.indexof(bin, array.max(bin))
+            int li = p
+            int hj = p
+            float acc = array.get(bin, p)
+            while acc < 0.7 * vs and (li > 0 or hj < n - 1)
+                float up = hj < n - 1 ? array.get(bin, hj + 1) : -1.0
+                float dn = li > 0 ? array.get(bin, li - 1) : -1.0
+                if up >= dn
+                    hj += 1
+                    acc += array.get(bin, hj)
+                else
+                    li -= 1
+                    acc += array.get(bin, li)
+            poc := lo + (p + 0.5) * w
+            vah := lo + (hj + 1) * w
+            val := lo + li * w
+    [poc, vah, val]
+
+bool inRth = nyMin >= 570 and nyMin < 960
+bool inNight = nyMin >= 1080 or nyMin < 570
+var float rthH = na
+var float rthL = na
+var float pdh = na
+var float pdl = na
+var float onh = na
+var float onl = na
+var float poc = na
+var float vah = na
+var float val = na
+var array<float> sH = array.new_float()
+var array<float> sL = array.new_float()
+var array<float> sV = array.new_float()
+if inRth and not inRth[1]
+    pdh := rthH
+    pdl := rthL
+    [p0, p1, p2] = f_profile(sH, sL, sV)
+    poc := p0
+    vah := p1
+    val := p2
+    array.clear(sH)
+    array.clear(sL)
+    array.clear(sV)
+    rthH := high
+    rthL := low
+if inRth
+    rthH := math.max(nz(rthH, high), high)
+    rthL := math.min(nz(rthL, low), low)
+    array.push(sH, high)
+    array.push(sL, low)
+    array.push(sV, nz(volume))
+if inNight and not inNight[1]
+    onh := high
+    onl := low
+else if inNight
+    onh := math.max(nz(onh, high), high)
+    onl := math.min(nz(onl, low), low)
+// Niveaux utilisés par les signaux : ceux du plan s'il y a un code, sinon ceux du carnet.
+array<float> lvP = usePlan ? planLv : array.from(pdh, pdl, onh, onl, poc, vah, val)
+array<string> lvN = usePlan ? planLvName : array.from("PDH", "PDL", "ONH", "ONL", "POC", "VAH", "VAL")
+// Tracé comme l'EA : un trait sur toute la largeur, le nom au milieu, le prix à droite.
+var array<line> lvLine = array.new<line>()
+var array<label> lvLab = array.new<label>()
+var array<label> lvTag = array.new<label>()
+if barstate.islast and showLv
+    while array.size(lvLine) > 0
+        line.delete(array.pop(lvLine))
+        label.delete(array.pop(lvLab))
+        label.delete(array.pop(lvTag))
+    if array.size(lvP) > 0
+        for i = 0 to array.size(lvP) - 1
+            float p = array.get(lvP, i)
+            string nmL = array.get(lvN, i)
+            bool isVa = nmL == "POC" or nmL == "VAH" or nmL == "VAL"
+            if not na(p) and (usePlan or showVa or not isVa)
+                color lc = nmL == "PDH" or nmL == "PDL" or nmL == "PWH" or nmL == "PWL" ? #2962ff : #787b86
+                array.push(lvLine, line.new(bar_index - 300, p, bar_index + 30, p, color = color.new(lc, 20), width = 1, force_overlay = true))
+                array.push(lvLab, label.new(bar_index - 60, p, nmL, style = label.style_none, textcolor = lc, size = size.tiny, force_overlay = true))
+                array.push(lvTag, label.new(bar_index + 31, p, str.tostring(p, "#.00"), style = label.style_label_left, color = lc, textcolor = color.white, size = size.tiny, force_overlay = true))
+    if usePlan and inInval > 0
+        array.push(lvLine, line.new(bar_index - 300, inInval, bar_index + 30, inInval, color = color.new(#f23645, 0), style = line.style_dashed, force_overlay = true))
+        array.push(lvLab, label.new(bar_index - 30, inInval, "INVALIDATION", style = label.style_none, textcolor = #f23645, size = size.tiny, force_overlay = true))
+        array.push(lvTag, label.new(bar_index + 31, inInval, str.tostring(inInval, "#.00"), style = label.style_label_left, color = #f23645, textcolor = color.white, size = size.tiny, force_overlay = true))
+
+// Plan invalidé : sur clôture M15, comme l'EA.
+var bool invalidated = false
+if m15Close and not invalidated and inInval > 0 and ((dom == 1 and close < inInval) or (dom == -1 and close > inInval))
+    invalidated := true
+// Une zone disparaît quand elle est invalidée (clôture M15 au-delà) ou, après avoir été touchée ou comblée,
+// une fois la fenêtre du signal passée. Les zones du plan ne sont suivies que sur la journée en cours.
+bool liveDay = time >= timenow - 16 * 3600000
+if barstate.isconfirmed and array.size(zLo) > 0
+    for i = array.size(zLo) - 1 to 0
+        if not array.get(zPlan, i) or liveDay
+            bool zb = array.get(zBuy, i)
+            bool inv = m15Close and (zb ? close < array.get(zLo, i) : close > array.get(zHi, i))
+            if na(array.get(zTouch, i)) and (array.get(zPlan, i) or bar_index > array.get(zBorn, i)) and low <= array.get(zHi, i) and high >= array.get(zLo, i)
+                array.set(zTouch, i, bar_index)
+            bool spent = rmTouched and not na(array.get(zTouch, i)) and bar_index - array.get(zTouch, i) > gTouch
+            if inv or spent
+                f_delZone(i)
+if barstate.islast and array.size(zBox) > 0
+    for i = 0 to array.size(zBox) - 1
+        if not na(array.get(zBox, i))
+            box.set_right(array.get(zBox, i), bar_index + 30)
+            label.set_x(array.get(zTagT, i), bar_index + 31)
+            label.set_x(array.get(zTagB, i), bar_index + 31)
+            if array.get(zPlan, i)
+                box.set_left(array.get(zBox, i), bar_index - 300)
+
+// Prochaine zone ou niveau opposé au-delà de l'entrée (NextTarget de l'EA).
+f_next(bool buy, float entry) =>
+    float best = 0.0
+    if array.size(zLo) > 0
+        for i = 0 to array.size(zLo) - 1
+            if not array.get(zDead, i) and array.get(zBuy, i) != buy
+                float p = buy ? array.get(zLo, i) : array.get(zHi, i)
+                if (buy ? p > entry : p < entry) and (best == 0 or (buy ? p < best : p > best))
+                    best := p
+    if array.size(lvP) > 0
+        for i = 0 to array.size(lvP) - 1
+            float p = array.get(lvP, i)
+            if not na(p) and (buy ? p > entry : p < entry) and (best == 0 or (buy ? p < best : p > best))
+                best := p
+    float r = buy ? inRhi : inRlo
+    if r > 0 and (buy ? r > entry : r < entry) and (best == 0 or (buy ? r < best : r > best))
+        best := r
+    best
+
+// L'extrême a-t-il balayé un niveau (ou le bord de la zone) avant de revenir ? (Swept de l'EA)
+f_swept(bool buy, float extreme, float cl, float edge) =>
+    bool s = buy ? (extreme < edge and cl > edge) : (extreme > edge and cl < edge)
+    if not s and array.size(lvP) > 0
+        for i = 0 to array.size(lvP) - 1
+            float p = array.get(lvP, i)
+            if not na(p) and (buy ? (extreme < p and cl > p) : (extreme > p and cl < p))
+                s := true
+    s
+
+// ───────────── Setups 1 à 3 : portage de CheckSignals ─────────────
+var int lastSignal = 0
+bool sigBuy = false
+bool sigSell = false
+int need = gTouch + gSwing + 4
+if sigOn and barstate.isconfirmed and bar_index > need + 2 and closeNy >= 570 and closeNy < 960 and atr1 > 0 and time - lastSignal >= 600000 and array.size(zLo) > 0
+    float tol = gTol * atr1
+    float fvgMin = gFvg * atr1
+    float slBuf = gSlBuf * atr1
+    float stopMin = math.max(gStopMin, gStopAtr * atr1)
+    bool done = false
+    for i = 0 to array.size(zLo) - 1
+        bool buy = array.get(zBuy, i)
+        int dir = buy ? 1 : -1
+        float zlo = array.get(zLo, i)
+        float zhi = array.get(zHi, i)
+        bool skip = done or array.get(zDead, i) or time - array.get(zLast, i) < gCooldown * 60000 or (invalidated and dir == dom)
+        if not skip
+            // Extrême de la touche.
+            int e = -1
+            for k = 1 to gTouch
+                if low[k] <= zhi + tol and high[k] >= zlo - tol
+                    if e < 0
+                        e := k
+                    else if buy ? low[k] < low[e] : high[k] > high[e]
+                        e := k
+            bool ok = e >= 1
+            // Indice sûr : Pine évalue les deux côtés d'un « or » et d'un « ?: ».
+            e := math.max(e, 1)
+            float extreme = buy ? low[e] : high[e]
+            if buy ? close[e] < zlo : close[e] > zhi
+                ok := false
+            int setup = 0
+            if ok
+                bool sweep = f_swept(buy, extreme, close[e], buy ? zlo : zhi)
+                // Setup 3 : iFVG, le FVG contraire le plus récent de la jambe.
+                bool found = false
+                for k = e to e + gSwing
+                    if not found and k + 2 < need
+                        float top = buy ? low[k + 2] : low[k]
+                        float bot = buy ? high[k] : high[k + 2]
+                        if top - bot >= fvgMin
+                            found := true
+                            bool used = false
+                            if k > 1
+                                for j = 1 to k - 1
+                                    if buy ? close[j] > top : close[j] < bot
+                                        used := true
+                            if not used and (buy ? (close > top and close[1] <= top) : (close < bot and close[1] >= bot))
+                                setup := 3
+                if setup == 0
+                    // Cassure : dernier pivot avant l'extrême, à défaut le plus haut (bas) des bougies.
+                    float swing = buy ? 0.0 : 1e12
+                    bool piv = false
+                    for k = e + 2 to e + gSwing
+                        if not piv and k + 2 < need
+                            if buy ? (high[k] > high[k - 1] and high[k] > high[k - 2] and high[k] >= high[k + 1] and high[k] >= high[k + 2]) : (low[k] < low[k - 1] and low[k] < low[k - 2] and low[k] <= low[k + 1] and low[k] <= low[k + 2])
+                                swing := buy ? high[k] : low[k]
+                                piv := true
+                    if not piv
+                        for k = e + 1 to e + gSwing
+                            if k < need
+                                swing := buy ? math.max(swing, high[k]) : math.min(swing, low[k])
+                    bool brk = buy ? (close > swing and close[1] <= swing) : (close < swing and close[1] >= swing)
+                    if brk
+                        setup := sweep ? 1 : (dir == dom ? 2 : 0)
+            if setup > 0
+                float entry = buy ? close + spreadPt : close
+                float sl = buy ? extreme - slBuf - spreadPt : extreme + slBuf + spreadPt
+                float stop = math.abs(entry - sl)
+                string kind = "NOW"
+                if stop > gStopMax
+                    entry := buy ? sl + gStopMax : sl - gStopMax
+                    stop := gStopMax
+                    kind := "LIMIT"
+                float target = f_next(buy, entry)
+                float tp = target > 0 ? target : (buy ? entry + 3 * stop : entry - 3 * stop)
+                float rr = stop > 0 ? math.abs(tp - entry) / stop : 0.0
+                bool refused = stop < stopMin or spreadPt > stop * gSpreadPc / 100.0 or rr < 2.0
+                array.set(zLast, i, time)
+                if not refused
+                    f_pos(buy, (buy ? "BUY " : "SELL ") + kind + " · setup " + str.tostring(setup) + (setup == 3 ? " (iFVG)" : ""), entry, sl, tp)
+                    lastSignal := time
+                    done := true
+                    if buy
+                        sigBuy := true
+                    else
+                        sigSell := true
+
+// ───────────── Setup 4 : calculé en M5 (sweep M15 -> CHoCH M5 -> FVG M5) ─────────────
+f_eq(array<float> q, bool hi, float atr) =>
+    float res = na
+    int n = array.size(q)
+    for a = 3 to 19
+        if na(res)
+            float pa = array.get(q, a)
+            bool piva = hi ? (pa > math.max(array.get(q, a + 1), array.get(q, a + 2)) and pa >= math.max(array.get(q, a - 1), array.get(q, a - 2))) : (pa < math.min(array.get(q, a + 1), array.get(q, a + 2)) and pa <= math.min(array.get(q, a - 1), array.get(q, a - 2)))
+            if piva
+                bool stopB = false
+                for b = a + 5 to 20
+                    if not stopB and b + 2 < n
+                        float pb = array.get(q, b)
+                        bool pivb = hi ? (pb > math.max(array.get(q, b + 1), array.get(q, b + 2)) and pb >= math.max(array.get(q, b - 1), array.get(q, b - 2))) : (pb < math.min(array.get(q, b + 1), array.get(q, b + 2)) and pb <= math.min(array.get(q, b - 1), array.get(q, b - 2)))
+                        if pivb and math.abs(pa - pb) <= 0.1 * atr
+                            float L = hi ? math.max(pa, pb) : math.min(pa, pb)
+                            bool taken = false
+                            for j = 1 to a - 1
+                                if hi ? array.get(q, j) > L : array.get(q, j) < L
+                                    taken := true
+                            if not taken
+                                res := L
+                            stopB := true
+    res
+
+f_ref(bool sell, int xOff) =>
+    float r = na
+    for off = xOff + 1 to xOff + 80
+        if na(r) and off >= 2
+            bool piv = sell ? (low[off] < math.min(low[off + 1], low[off + 2]) and low[off] <= math.min(low[off - 1], low[off - 2])) : (high[off] > math.max(high[off + 1], high[off + 2]) and high[off] >= math.max(high[off - 1], high[off - 2]))
+            if piv
+                r := sell ? low[off] : high[off]
+    r
+
+f_sf() =>
+    int nm = hour(time, TZ) * 60 + minute(time, TZ)
+    bool rth = nm >= 570 and nm < 960
+    bool night = nm >= 1080 or nm < 570
+    var float rH = na
+    var float rL = na
+    var float mpdh = na
+    var float mpdl = na
+    var float monh = na
+    var float monl = na
+    var bool pdhTk = false
+    var bool pdlTk = false
+    var bool onhTk = false
+    var bool onlTk = false
+    if rth and not rth[1]
+        mpdh := rH
+        mpdl := rL
+        rH := high
+        rL := low
+        onhTk := false
+        onlTk := false
+    if rth
+        rH := math.max(nz(rH, high), high)
+        rL := math.min(nz(rL, low), low)
+        if not na(monh) and high > monh
+            onhTk := true
+        if not na(monl) and low < monl
+            onlTk := true
+    if night and not night[1]
+        monh := high
+        monl := low
+        pdhTk := false
+        pdlTk := false
+    else if night
+        monh := math.max(nz(monh, high), high)
+        monl := math.min(nz(monl, low), low)
+    if not na(mpdh) and high > mpdh
+        pdhTk := true
+    if not na(mpdl) and low < mpdl
+        pdlTk := true
+    bool pdhT3 = pdhTk[3]
+    bool pdlT3 = pdlTk[3]
+    bool onhT3 = onhTk[3]
+    bool onlT3 = onlTk[3]
+    float atr5 = nz(ta.sma(ta.tr(true), 14)[1], ta.tr(true))
+    var array<float> qH = array.new_float()
+    var array<float> qL = array.new_float()
+    var array<float> qC = array.new_float()
+    var array<bool> act = array.new_bool(2, false)
+    var array<float> aExt = array.new_float(2, na)
+    var array<float> aAtr = array.new_float(2, na)
+    var array<int> aX = array.new_int(2, na)
+    var array<int> aLast = array.new_int(2, na)
+    var int sid = 0
+    var int sdir = 0
+    var float sEntry = na
+    var float sSl = na
+    var float sTp = na
+    var float sTop = na
+    var float sBot = na
+    int closeMin = nm + 5
+    if barstate.isconfirmed
+        if closeMin % 15 == 0
+            array.unshift(qH, math.max(high, high[1], high[2]))
+            array.unshift(qL, math.min(low, low[1], low[2]))
+            array.unshift(qC, close)
+            if array.size(qH) > 60
+                array.pop(qH)
+                array.pop(qL)
+                array.pop(qC)
+            if array.size(qH) >= 40 and closeMin >= 570 and closeMin < 720
+                float atr15 = 0.0
+                for i = 1 to 14
+                    atr15 += math.max(array.get(qH, i), array.get(qC, i + 1)) - math.min(array.get(qL, i), array.get(qC, i + 1))
+                atr15 /= 14
+                for s = 0 to 1
+                    bool hi = s == 0
+                    float e20 = hi ? array.get(qH, 1) : array.get(qL, 1)
+                    for j = 1 to 20
+                        e20 := hi ? math.max(e20, array.get(qH, j)) : math.min(e20, array.get(qL, j))
+                    float l1 = hi ? (pdhT3 ? na : mpdh) : (pdlT3 ? na : mpdl)
+                    float l2 = hi ? (onhT3 ? na : monh) : (onlT3 ? na : monl)
+                    float l3 = f_eq(hi ? qH : qL, hi, atr15)
+                    array<float> lv = array.from(e20, l1, l2, l3)
+                    float wick = hi ? array.get(qH, 0) : array.get(qL, 0)
+                    float best = na
+                    for k = 0 to 3
+                        float L = array.get(lv, k)
+                        if not na(L)
+                            float pen = hi ? wick - L : L - wick
+                            bool back = hi ? close < L : close > L
+                            if back and pen >= 0.05 * atr15 and pen < atr15 and (na(best) or (hi ? L > best : L < best))
+                                best := L
+                    if not na(best)
+                        int xo = 2
+                        if hi ? high[1] > high[xo] : low[1] < low[xo]
+                            xo := 1
+                        if hi ? high > high[xo] : low < low[xo]
+                            xo := 0
+                        array.set(act, s, true)
+                        array.set(aExt, s, wick)
+                        array.set(aAtr, s, atr15)
+                        array.set(aX, s, bar_index - xo)
+                        array.set(aLast, s, bar_index - xo)
+        for s = 0 to 1
+            if array.get(act, s)
+                bool sell = s == 0
+                int xB = array.get(aX, s)
+                float ext = array.get(aExt, s)
+                int c = array.get(aLast, s) + 1
+                while c <= bar_index and array.get(act, s)
+                    int o = bar_index - c
+                    if sell ? high[o] > ext : low[o] < ext
+                        array.set(act, s, false)
+                    else if c - xB > sfChoch
+                        array.set(act, s, false)
+                    else
+                        float ref = f_ref(sell, bar_index - xB)
+                        bool choch = not na(ref) and (sell ? close[o] < ref : close[o] > ref)
+                        if choch
+                            array.set(act, s, false)
+                            float ftop = na
+                            float fbot = na
+                            int p = o
+                            while p <= bar_index - xB - 2 and na(ftop)
+                                if sell and low[p + 2] > high[p] and low[p + 2] - high[p] >= sfFvg * atr5
+                                    ftop := low[p + 2]
+                                    fbot := high[p]
+                                if not sell and low[p] > high[p + 2] and low[p] - high[p + 2] >= sfFvg * atr5
+                                    ftop := low[p]
+                                    fbot := high[p + 2]
+                                p += 1
+                            if not na(ftop) and closeMin >= 570 and closeMin < 720
+                                float entry = sell ? fbot + (ftop - fbot) / 3.0 : ftop - (ftop - fbot) / 3.0
+                                float sl = sell ? ext + sfBuf * array.get(aAtr, s) + spreadPt : ext - sfBuf * array.get(aAtr, s) - spreadPt
+                                float stop = math.abs(entry - sl)
+                                bool inFvg = sell ? close >= entry : close <= entry
+                                if stop > 0 and not inFvg
+                                    sid := time
+                                    sdir := sell ? -1 : 1
+                                    sEntry := entry
+                                    sSl := sl
+                                    sTp := sell ? entry - sfRR * stop : entry + sfRR * stop
+                                    sTop := ftop
+                                    sBot := fbot
+                    c += 1
+                array.set(aLast, s, bar_index)
+    [sid, sdir, sEntry, sSl, sTp, sTop, sBot]
+
+[s4id, s4dir, s4e, s4sl, s4tp, s4top, s4bot] = request.security(syminfo.tickerid, "5", f_sf(), lookahead = barmerge.lookahead_off)
+bool sf4 = sfOn and barstate.isconfirmed and tfMin <= 5 and s4id != 0 and s4id != nz(s4id[1])
+if sf4
+    array.push(dBox, box.new(bar_index - 3, s4top, bar_index + 25, s4bot, border_color = color.new(#ff9800, 40), bgcolor = color.new(#ff9800, 88), force_overlay = true))
+    f_pos(s4dir == 1, (s4dir == 1 ? "BUY LIMIT" : "SELL LIMIT") + " · setup 4 (sweep + FVG)", s4e, s4sl, s4tp)
+
+// ───────────── Alertes ─────────────
+alertcondition(sigBuy, "CarnetNAS : BUY (setups 1 à 3)", "CarnetNAS : signal d'achat")
+alertcondition(sigSell, "CarnetNAS : SELL (setups 1 à 3)", "CarnetNAS : signal de vente")
+alertcondition(sf4 and s4dir == 1, "CarnetNAS : BUY LIMIT (setup 4)", "CarnetNAS : BUY LIMIT setup 4")
+alertcondition(sf4 and s4dir == -1, "CarnetNAS : SELL LIMIT (setup 4)", "CarnetNAS : SELL LIMIT setup 4")

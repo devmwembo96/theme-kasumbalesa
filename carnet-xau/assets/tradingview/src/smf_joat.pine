@@ -1,0 +1,216 @@
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── PARTIE 1 : Smart Money Fluid [JOAT] (panneau du bas), code d'origine inchangé ───
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © OfficialJackOfAllTrades
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── DESCRIPTION ───────────────────────────────────────────────────────────────
+// Smart Money Fluid tracks institutional-style accumulation and distribution
+// using a combination of price action, volume analysis, and money flow metrics.
+// Designed to reveal whether "smart money" is accumulating or distributing.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── INPUTS ────────────────────────────────────────────────────────────────────
+string GRP_CALC = "Calculation Settings"
+int mfLength        = input.int(14, "Money Flow Length", minval = 5, maxval = 50, group = GRP_CALC)
+int smoothLength    = input.int(5, "Smoothing Length", minval = 1, maxval = 20, group = GRP_CALC)
+int divergeLength   = input.int(5, "Divergence Lookback", minval = 2, maxval = 20, group = GRP_CALC)
+
+string GRP_SENS = "Sensitivity"
+float accumThresh   = input.float(60, "Accumulation Threshold", minval = 50, maxval = 90, group = GRP_SENS)
+float distThresh    = input.float(40, "Distribution Threshold", minval = 10, maxval = 50, group = GRP_SENS)
+float volMult       = input.float(1.5, "High Volume Multiplier", minval = 1.0, maxval = 3.0, step = 0.1, group = GRP_SENS)
+
+string GRP_VIS = "Visual Settings"
+color accumColor    = input.color(#00E676, "Accumulation Color", group = GRP_VIS)
+color distColor     = input.color(#FF5252, "Distribution Color", group = GRP_VIS)
+color neutralColor  = input.color(#9E9E9E, "Neutral Color", group = GRP_VIS)
+bool showHistogram  = input.bool(true, "Show Flow Histogram", group = GRP_VIS)
+bool showDivergence = input.bool(true, "Show Divergences", group = GRP_VIS)
+bool showDashboard  = input.bool(true, "Show Dashboard", group = GRP_VIS)
+bool showZones      = input.bool(true, "Show Zone Background", group = GRP_VIS)
+
+string GRP_ALERTS = "Alerts"
+bool awaitConfirm   = input.bool(true, "Await Bar Confirmation", group = GRP_ALERTS)
+
+// ─── CALCULATIONS ──────────────────────────────────────────────────────────────
+// Typical Price
+float typicalPrice = hlc3
+
+// Raw Money Flow
+float rawMF = typicalPrice * volume
+
+// Positive and Negative Money Flow
+float posMF = typicalPrice > typicalPrice[1] ? rawMF : 0
+float negMF = typicalPrice < typicalPrice[1] ? rawMF : 0
+
+// Money Flow Ratio
+float posMFSum = math.sum(posMF, mfLength)
+float negMFSum = math.sum(negMF, mfLength)
+float mfRatio = negMFSum != 0 ? posMFSum / negMFSum : 1
+
+// Money Flow Index (0-100)
+float mfi = 100 - (100 / (1 + mfRatio))
+
+// Volume-Weighted Price Strength
+float vwap = ta.vwap(typicalPrice)
+float priceVsVWAP = (close - vwap) / vwap * 100
+
+// Chaikin Money Flow
+float mfMultiplier = ((close - low) - (high - close)) / (high - low)
+float mfVolume = mfMultiplier * volume
+float cmf = math.sum(mfVolume, mfLength) / math.sum(volume, mfLength) * 100
+
+// Volume Analysis
+float avgVol = ta.sma(volume, mfLength)
+float volRatio = volume / avgVol
+bool highVolume = volRatio > volMult
+
+// Composite Smart Money Flow
+float rawSMF = (mfi * 0.4 + (cmf + 50) * 0.3 + (50 + priceVsVWAP * 5) * 0.3)
+float smf = ta.ema(rawSMF, smoothLength)
+float smfSignal = ta.ema(smf, smoothLength * 2)
+
+// SMF Momentum
+float smfMom = smf - smfSignal
+float smfAccel = smfMom - smfMom[1]
+
+// ─── ACCUMULATION/DISTRIBUTION STATE ───────────────────────────────────────────
+bool isAccumulating = smf > accumThresh
+bool isDistributing = smf < distThresh
+bool isNeutral = not isAccumulating and not isDistributing
+
+// Strong signals with high volume
+bool strongAccum = isAccumulating and highVolume and smfMom > 0
+bool strongDist = isDistributing and highVolume and smfMom < 0
+
+// State changes
+bool accumStart = isAccumulating and not isAccumulating[1]
+bool distStart = isDistributing and not isDistributing[1]
+
+// ─── DIVERGENCE DETECTION ──────────────────────────────────────────────────────
+// Price pivots
+float priceHigh = ta.pivothigh(high, divergeLength, divergeLength)
+float priceLow = ta.pivotlow(low, divergeLength, divergeLength)
+
+// SMF pivots
+float smfHigh = ta.pivothigh(smf, divergeLength, divergeLength)
+float smfLow = ta.pivotlow(smf, divergeLength, divergeLength)
+
+// Bearish divergence: price higher high, SMF lower high
+var bool bearishDiv = false
+if not na(priceHigh) and not na(smfHigh)
+    if priceHigh > ta.valuewhen(not na(priceHigh), priceHigh, 1)
+        if smfHigh < ta.valuewhen(not na(smfHigh), smfHigh, 1)
+            bearishDiv := true
+    else
+        bearishDiv := false
+else
+    bearishDiv := false
+
+// Bullish divergence: price lower low, SMF higher low
+var bool bullishDiv = false
+if not na(priceLow) and not na(smfLow)
+    if priceLow < ta.valuewhen(not na(priceLow), priceLow, 1)
+        if smfLow > ta.valuewhen(not na(smfLow), smfLow, 1)
+            bullishDiv := true
+    else
+        bullishDiv := false
+else
+    bullishDiv := false
+
+// ─── COLORING ──────────────────────────────────────────────────────────────────
+color smfColor = smf >= accumThresh ? accumColor : smf <= distThresh ? distColor : 
+     color.from_gradient(smf, distThresh, accumThresh, distColor, accumColor)
+
+color histColor = smfMom > 0 ? (smfAccel > 0 ? accumColor : color.new(accumColor, 50)) : 
+     (smfAccel < 0 ? distColor : color.new(distColor, 50))
+
+color bgColor = showZones ? (isAccumulating ? color.new(accumColor, 92) : 
+     isDistributing ? color.new(distColor, 92) : na) : na
+
+// ─── PLOTTING ──────────────────────────────────────────────────────────────────
+// Background zones
+bgcolor(bgColor, title = "Zone Background")
+
+// SMF Line with glow
+plot(smf, "SMF Glow", color.new(smfColor, 60), 6)
+plot(smf, "Smart Money Flow", smfColor, 2)
+plot(smfSignal, "Signal Line", color.new(color.white, 50), 1)
+
+// Histogram
+plot(showHistogram ? smfMom * 2 : na, "Flow Momentum", histColor, 2, plot.style_columns, histbase = 0)
+
+// Reference levels
+hline(accumThresh, "Accumulation", color.new(accumColor, 50), hline.style_dashed)
+hline(50, "Neutral", color.new(color.white, 70), hline.style_dotted)
+hline(distThresh, "Distribution", color.new(distColor, 50), hline.style_dashed)
+
+// Fill zones
+accumLine = hline(100, display = display.none)
+accumThreshLine = hline(accumThresh, display = display.none)
+distThreshLine = hline(distThresh, display = display.none)
+distLine = hline(0, display = display.none)
+
+fill(accumLine, accumThreshLine, color.new(accumColor, 92), title = "Accumulation Zone")
+fill(distLine, distThreshLine, color.new(distColor, 92), title = "Distribution Zone")
+
+// Signal markers
+plotshape(strongAccum, "Strong Accumulation", shape.triangleup, location.bottom, accumColor, size = size.tiny)
+plotshape(strongDist, "Strong Distribution", shape.triangledown, location.top, distColor, size = size.tiny)
+
+// Divergence markers
+plotshape(showDivergence and bullishDiv, "Bullish Divergence", shape.labelup, location.bottom, accumColor, 
+     text = "DIV", textcolor = color.white, size = size.tiny, offset = -divergeLength)
+plotshape(showDivergence and bearishDiv, "Bearish Divergence", shape.labeldown, location.top, distColor, 
+     text = "DIV", textcolor = color.white, size = size.tiny, offset = -divergeLength)
+
+// ─── DASHBOARD ─────────────────────────────────────────────────────────────────
+if showDashboard and barstate.islast
+    var table dash = table.new(position.top_right, 2, 7,
+         bgcolor = color.new(#1E1E1E, 10),
+         frame_width = 1,
+         frame_color = color.new(color.white, 80),
+         border_width = 1)
+    
+    // Title
+    color dashColor = isAccumulating ? accumColor : isDistributing ? distColor : neutralColor
+    table.cell(dash, 0, 0, "Smart Money", text_color = color.white, text_size = size.normal, bgcolor = color.new(dashColor, 40))
+    table.cell(dash, 1, 0, str.tostring(smf, "#.#"), text_color = dashColor, text_size = size.normal, bgcolor = color.new(dashColor, 40))
+    
+    // State
+    string stateText = isAccumulating ? "ACCUMULATING" : isDistributing ? "DISTRIBUTING" : "NEUTRAL"
+    table.cell(dash, 0, 1, "State", text_color = color.gray, text_size = size.small)
+    table.cell(dash, 1, 1, stateText, text_color = dashColor, text_size = size.small)
+    
+    // Flow Momentum
+    table.cell(dash, 0, 2, "Flow", text_color = color.gray, text_size = size.small)
+    table.cell(dash, 1, 2, (smfMom > 0 ? "Up " : "Down ") + str.tostring(math.abs(smfMom), "#.#"), 
+         text_color = smfMom > 0 ? accumColor : distColor, text_size = size.small)
+    
+    // MFI
+    table.cell(dash, 0, 3, "MFI", text_color = color.gray, text_size = size.small)
+    table.cell(dash, 1, 3, str.tostring(mfi, "#.#"), text_color = color.white, text_size = size.small)
+    
+    // CMF
+    table.cell(dash, 0, 4, "CMF", text_color = color.gray, text_size = size.small)
+    table.cell(dash, 1, 4, str.tostring(cmf, "#.#") + "%", text_color = cmf > 0 ? accumColor : distColor, text_size = size.small)
+    
+    // Volume
+    string volText = highVolume ? "High" : "Normal"
+    table.cell(dash, 0, 5, "Volume", text_color = color.gray, text_size = size.small)
+    table.cell(dash, 1, 5, volText, text_color = highVolume ? #FF9800 : color.white, text_size = size.small)
+    
+    // Divergence
+    string divText = bullishDiv ? "Bullish" : bearishDiv ? "Bearish" : "None"
+    table.cell(dash, 0, 6, "Divergence", text_color = color.gray, text_size = size.small)
+    table.cell(dash, 1, 6, divText, text_color = bullishDiv ? accumColor : bearishDiv ? distColor : color.white, text_size = size.small)
+
+// ─── ALERTS ────────────────────────────────────────────────────────────────────
+bool confirmed = awaitConfirm ? barstate.isconfirmed : true
+
+alertcondition(accumStart and confirmed, "SMF Accumulation Started", "Smart Money Flow entered ACCUMULATION zone on {{ticker}}")
+alertcondition(distStart and confirmed, "SMF Distribution Started", "Smart Money Flow entered DISTRIBUTION zone on {{ticker}}")
+alertcondition(strongAccum and confirmed, "SMF Strong Accumulation", "Strong accumulation signal with high volume on {{ticker}}")
+alertcondition(strongDist and confirmed, "SMF Strong Distribution", "Strong distribution signal with high volume on {{ticker}}")
+alertcondition(bullishDiv and confirmed, "SMF Bullish Divergence", "Bullish divergence detected on {{ticker}}")
+alertcondition(bearishDiv and confirmed, "SMF Bearish Divergence", "Bearish divergence detected on {{ticker}}")

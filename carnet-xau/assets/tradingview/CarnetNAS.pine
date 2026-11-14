@@ -1,5 +1,5 @@
 //@version=5
-// CarnetNAS 3.10 : le système du Carnet NAS100 sur TradingView, graphique épuré.
+// CarnetNAS 3.20 : le système du Carnet NAS100 sur TradingView, graphique épuré.
 //
 // 1. Sans rien coller : l'indicateur détecte lui-même les zones avec les règles du carnet (celles que Claude
 //    lit dans le carnet) : pivots à 2 bougies, BOS / CHoCH à la clôture, déplacement (corps >= 60 % de
@@ -52,6 +52,7 @@ string GA = "Affichage"
 float spreadPt = input.float(1.5, "Spread (points)", step = 0.5, group = GA)
 int   keepSig  = input.int(3, "Signaux gardés à l'écran", minval = 1, maxval = 10, group = GA)
 bool  showPlan = input.bool(true, "Tracer les zones", group = GA)
+bool  rmTouched = input.bool(true, "Retirer une zone touchée ou comblée (après la fenêtre du signal)", group = GA)
 
 // ───────────── Outils ─────────────
 string TZ = "America/New_York"
@@ -95,6 +96,8 @@ var array<bool> zBuy = array.new_bool()
 var array<bool> zDead = array.new_bool()
 var array<bool> zPlan = array.new_bool()
 var array<int> zLast = array.new_int()
+var array<int> zBorn = array.new_int()
+var array<int> zTouch = array.new_int()
 var array<box> zBox = array.new<box>()
 var array<label> zTagT = array.new<label>()
 var array<label> zTagB = array.new<label>()
@@ -111,6 +114,8 @@ f_addZone(float lo, float hi, bool isBuy, bool isPlan, string name) =>
     array.push(zDead, false)
     array.push(zPlan, isPlan)
     array.push(zLast, 0)
+    array.push(zBorn, bar_index)
+    array.push(zTouch, na)
     color zc = isBuy ? #089981 : #f23645
     array.push(zBox, showPlan ? box.new(bar_index, hi, bar_index + 30, lo, border_color = color.new(zc, 20), bgcolor = color.new(zc, 78), text = name, text_size = size.tiny, text_color = zc, text_halign = text.align_center, text_valign = text.align_center) : na)
     array.push(zTagT, f_tag(hi, zc))
@@ -128,6 +133,8 @@ f_delZone(int i) =>
     array.remove(zDead, i)
     array.remove(zPlan, i)
     array.remove(zLast, i)
+    array.remove(zBorn, i)
+    array.remove(zTouch, i)
     array.remove(zBox, i)
 
 if barstate.isfirst
@@ -353,24 +360,23 @@ if barstate.islast and showLv
         array.push(lvLab, label.new(bar_index - 30, inInval, "INVALIDATION", style = label.style_none, textcolor = #f23645, size = size.tiny))
         array.push(lvTag, label.new(bar_index + 31, inInval, str.tostring(inInval, "#.00"), style = label.style_label_left, color = #f23645, textcolor = color.white, size = size.tiny))
 
-// Zone cassée et plan invalidé : sur clôture M15, comme l'EA. Une zone automatique cassée disparaît.
+// Plan invalidé : sur clôture M15, comme l'EA.
 var bool invalidated = false
-if m15Close
-    if not invalidated and inInval > 0 and ((dom == 1 and close < inInval) or (dom == -1 and close > inInval))
-        invalidated := true
-    if array.size(zLo) > 0
-        for i = array.size(zLo) - 1 to 0
-            if not array.get(zDead, i) and (array.get(zBuy, i) ? close < array.get(zLo, i) : close > array.get(zHi, i))
-                if array.get(zPlan, i)
-                    array.set(zDead, i, true)
-                    if not na(array.get(zBox, i))
-                        box.set_bgcolor(array.get(zBox, i), color.new(#787b86, 92))
-                        box.set_border_color(array.get(zBox, i), color.new(#787b86, 60))
-                        box.set_text_color(array.get(zBox, i), #787b86)
-                        label.set_color(array.get(zTagT, i), #787b86)
-                        label.set_color(array.get(zTagB, i), #787b86)
-                else
-                    f_delZone(i)
+if m15Close and not invalidated and inInval > 0 and ((dom == 1 and close < inInval) or (dom == -1 and close > inInval))
+    invalidated := true
+// Une zone disparaît quand elle est invalidée (clôture M15 au-delà) ou, après avoir été touchée ou comblée,
+// une fois la fenêtre du signal passée. Les zones du plan ne sont suivies que sur la journée en cours.
+bool liveDay = time >= timenow - 16 * 3600000
+if barstate.isconfirmed and array.size(zLo) > 0
+    for i = array.size(zLo) - 1 to 0
+        if not array.get(zPlan, i) or liveDay
+            bool zb = array.get(zBuy, i)
+            bool inv = m15Close and (zb ? close < array.get(zLo, i) : close > array.get(zHi, i))
+            if na(array.get(zTouch, i)) and (array.get(zPlan, i) or bar_index > array.get(zBorn, i)) and low <= array.get(zHi, i) and high >= array.get(zLo, i)
+                array.set(zTouch, i, bar_index)
+            bool spent = rmTouched and not na(array.get(zTouch, i)) and bar_index - array.get(zTouch, i) > gTouch
+            if inv or spent
+                f_delZone(i)
 if barstate.islast and array.size(zBox) > 0
     for i = 0 to array.size(zBox) - 1
         if not na(array.get(zBox, i))
