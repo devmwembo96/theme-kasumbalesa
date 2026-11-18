@@ -208,8 +208,9 @@ class CX_Score {
 			'M15' => 900,
 			'M30' => 1800,
 			'H1'  => 3600,
+			'H4'  => 14400,
 		);
-		if ( ! preg_match( '/cl[ôo]ture\s+(M1|M5|M15|M30|H1)\b[^0-9]*?(au-dessus|au dessus|sous|en dessous|en-dessous)\s+(?:de\s+|du\s+)?([0-9][0-9\s\x{00A0}\x{202F}]*[.,]?[0-9]*)/iu', (string) $text, $m ) ) {
+		if ( ! preg_match( '/cl[ôo]ture\s+(M1|M5|M15|M30|H1|H4)\b[^0-9]*?(au-dessus|au dessus|sous|en dessous|en-dessous)\s+(?:de\s+|du\s+)?([0-9][0-9\s\x{00A0}\x{202F}]*[.,]?[0-9]*)/iu', (string) $text, $m ) ) {
 			return null;
 		}
 		$price = (float) str_replace( ',', '.', preg_replace( '/[\s\x{00A0}\x{202F}]/u', '', $m[3] ) );
@@ -224,7 +225,7 @@ class CX_Score {
 	 * @param bool  $buy  Achat.
 	 * @return float|null
 	 */
-	private static function entry_price( $v, $buy ) {
+	public static function entry_price( $v, $buy ) {
 		if ( is_numeric( $v ) ) {
 			return (float) $v;
 		}

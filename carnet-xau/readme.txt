@@ -1,7 +1,7 @@
 === Carnet NAS100 ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 3.0.5
+Stable tag: 3.1.0
 
 Carnet de trading Nasdaq 100 (NAS100), séance de New York, pour les challenges de prop firm : calcul du jour, plan
 hebdomadaire, journal, statistiques, comptes et retraits ; réception des trades MT5,
@@ -70,6 +70,13 @@ selon le courtier), séance de New York seulement (09:30 → 16:00 New York).
   zones détectées avec les règles du carnet, signaux portés de l'EA. Code du plan à coller dans
   l'indicateur : GET /tv-code, bouton « Copier » en tête de l'onglet Plan, message Telegram après chaque
   plan de la semaine et chaque plan de New York.
+* Version 3.1.0 (18/11/2026), EA Carnet NAS100 4.00 : les setups 1 à 4 sont supprimés ; l'EA passe
+  lui-même les ordres limites des plans de Claude (fiches du plan de New York du jour, scénarios du plan
+  de la semaine), envoyés par le carnet en lignes « O| » (id, sens, entrée, stop, objectif, validité,
+  condition d'annulation lue dans la fiche). Ordres posés seulement pendant la séance de New York,
+  supprimés à 16:00 New York, à la condition d'annulation ou quand la fiche quitte le plan ; une fiche
+  n'est exécutée qu'une fois. Limites du compte respectées (trades et pertes du jour, 80 % de la perte
+  journalière, plancher). Conditions d'annulation acceptées jusqu'au H4.
 Les sections qui suivent décrivent l'histoire du carnet (ère de l'or) ; ce qui y touche à l'or ne
 s'applique plus.
 

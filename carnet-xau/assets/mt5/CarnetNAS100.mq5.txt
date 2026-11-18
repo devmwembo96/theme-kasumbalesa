@@ -1,113 +1,48 @@
 //+------------------------------------------------------------------+
-//| CarnetNAS100.mq5 — version 3.00                                  |
+//| CarnetNAS100.mq5 — version 4.00                                  |
 //|                                                                  |
 //| NASDAQ 100 (CFD NAS100 chez FundedNext ; selon le courtier :     |
 //| NAS100, US100, USTEC, NDX ou NQ). Prix en points d'indice.       |
 //|                                                                  |
 //| 1. Envoie au Carnet NAS100 les trades fermés, le solde, l'équité, |
-//|    la perte du jour et les bougies du courtier (D1 à M1), toutes |
-//|    les 15 minutes, précédées de la fiche du symbole (ligne SPEC : |
-//|    décimales, point, tick, valeur du tick, contrat, lots) ;      |
-//|    chaque bougie porte son volume de ticks (VWAP de New York).   |
+//|    la perte du jour et les bougies du courtier (D1 à M1).        |
 //| 2. Lit le plan de Claude et le trace sur le graphique : zones,   |
-//|    niveaux, invalidation, range attendu. Redessine dès que le    |
-//|    plan change (relecture de 17 h New York, zone cassée…).       |
-//| 3. Surveille l'invalidation et les zones en temps réel (M15).    |
-//| 4. Signal BUY NOW / SELL NOW quand les conditions du plan sont   |
-//|    réunies, position longue ou courte dessinée, lot calculé avec |
-//|    la valeur d'un point par lot (tick_value / tick_size).        |
-//|    Alertes : fenêtre MT5, notification mobile, Telegram.         |
-//|                                                                  |
-//| SIGNAL SEULEMENT : l'EA n'ouvre, ne modifie et ne ferme aucune   |
-//| position. Vous décidez et passez l'ordre vous-même.              |
-//|                                                                  |
-//| Chaque signal est suivi comme un trade virtuel « Signal Claude » |
-//| (objectif ou stop, sans gestion) jusqu'à sa clôture ; le         |
-//| résultat en R part au carnet : taux de réussite propre aux       |
-//| signaux, séparé de vos trades.                                   |
-//|                                                                  |
-//| PC éteint : au redémarrage, l'EA relit les bougies manquées      |
-//| (7 jours au plus) pour clôturer les signaux en cours et mettre   |
-//| à jour zones et invalidation, et renvoie 30 jours de trades.     |
-//| Aucun signal n'est émis pour la période où MT5 était fermé.      |
+//|    niveaux, invalidation, range attendu.                         |
+//| 3. PASSE LES ORDRES DES PLANS DE CLAUDE, ET SEULEMENT CEUX-LÀ :  |
+//|    fiches du plan de New York du jour et scénarios du plan de la |
+//|    semaine (lignes « O| » envoyées par le carnet). Pour chacun : |
+//|    - ordre limite à l'entrée du plan, avec son stop et son       |
+//|      objectif, posé pendant la séance de New York (09:30–16:00) ; |
+//|    - supprimé à 16:00 New York (une fiche du jour ne revient pas, |
+//|      un scénario de la semaine revient le lendemain), quand sa   |
+//|      condition « annulé si » se produit (clôture au-delà d'un    |
+//|      prix) ou quand Claude retire la fiche du plan ;             |
+//|    - pas posé tant que le prix n'est pas du bon côté de l'entrée ; |
+//|    - une fiche n'est exécutée qu'une fois.                       |
+//|    Lot = risque du compte (carnet) ÷ (stop en points × valeur    |
+//|    d'un point par lot). Limites du compte respectées : trades et |
+//|    pertes du jour, 80 % de la perte journalière : au-delà, plus  |
+//|    aucun ordre et les ordres en attente sont supprimés.          |
+//|    Ni BE, ni trailing, ni sortie partielle : vous gérez.         |
+//|    Les setups 1 à 4 des versions 3 sont supprimés.               |
 //|                                                                  |
 //| Installation :                                                   |
 //| 1. Renommer ce fichier en CarnetNAS100.mq5, le placer dans       |
-//|    Fichier › Ouvrir le dossier des données › MQL5 › Experts,     |
-//|    l'ouvrir dans MetaEditor et compiler (F7).                    |
+//|    MQL5 › Experts, l'ouvrir dans MetaEditor et compiler (F7).    |
 //| 2. MT5 : Outils › Options › Expert Advisors : cocher             |
 //|    « Autoriser WebRequest pour les URL listées » et ajouter      |
-//|    https://revnefty.store                                        |
-//| 3. Notifications mobiles : Outils › Options › Notifications,     |
-//|    activer et saisir le MetaQuotes ID de l'application MT5.      |
-//| 4. Glisser l'EA sur un graphique NAS100 (M1 conseillé) et coller |
-//|    la clé MT5 du compte (onglet Comptes du carnet). Tout autre   |
-//|    graphique est refusé.                                         |
-//|                                                                  |
-//| Pont avec le Calculateur NAS100 (même compte, autre graphique) : |
-//| - chaque signal lui est transmis : touche C pour le charger,     |
-//|   Espace pour l'envoyer (l'ordre porte la référence du signal) ; |
-//| - il donne le risque du palier (lot des signaux) et son état :   |
-//|   à l'arrêt (pertes, plancher), le signal dit de ne pas prendre ; |
-//| - il reçoit du carnet le risque, les limites du jour, l'étape et |
-//|   l'objectif du compte (variables CarnetNAS_B…cx_*).             |
-//|                                                                  |
-//| Affichage façon TradingView : police Trebuchet MS, plan et       |
-//| signaux dessinés en CCanvas, mise à l'échelle de l'écran.        |
-//|                                                                  |
-//| Historique : 3.00 : Carnet NAS100.                               |
-//|                                                                  |
-//| Unités : distances en points d'indice (1 point = 1,00 de prix) ; |
-//| tolérances, FVG et marges en multiples de l'ATR(14) de l'unité   |
-//| (calculé dans l'EA : ATR M1 ≈ 10 à 25 points, M15 ≈ 30 à 70).    |
-//|                                                                  |
-//| Règles du signal des zones du plan (setups 1 à 3) :              |
-//| - seulement de 09:30 à 16:00 heure de New York (séance cash) ;   |
-//| - le prix touche une zone de Claude non cassée (touche tolérée   |
-//|   à 0,3 ATR M1 du bord) ; extrême dans la zone (mèche tolérée) ; |
-//| - setup 3 (iFVG) : une bougie M1 clôture au-delà du FVG          |
-//|   contraire (≥ 0,3 ATR M1) laissé par la jambe qui a amené le    |
-//|   prix dans la zone : le FVG inversé devient le support ;        |
-//| - sinon cassure de structure M1 : clôture au-delà du dernier     |
-//|   sommet pivot (achat) ou creux pivot (vente) avant l'extrême ;  |
-//|   setup 1 si l'extrême a balayé un niveau de liquidité de Claude |
-//|   (ou le bord de la zone), sinon setup 2, seulement dans le sens |
-//|   du biais dominant ;                                            |
-//| - stop derrière l'extrême + 0,3 ATR M1 + spread, au moins        |
-//|   0,5 ATR M1 et le plancher du carnet ; au-delà du maximum du    |
-//|   carnet : BUY LIMIT / SELL LIMIT où le stop revient au maximum ; |
-//| - au moins 2R de place jusqu'à la prochaine zone ou niveau       |
-//|   opposé (objectif = ce niveau, sinon 3R) ;                      |
-//| - entrée « retour FVG » suivie en parallèle (trade virtuel, sans |
-//|   alerte), même stop, 30 min ; le carnet compare les entrées ;   |
-//| - filtres : pas d'annonce USD dans 15 min (ni dans les 30 min    |
-//|   passées : CPI, NFP, FOMC, PCE…), spread ≤ spread max % du      |
-//|   stop, limites du jour (trades, pertes, 80 % de la perte        |
-//|   journalière), invalidation non touchée dans ce sens.           |
-//|                                                                  |
-//| Stratégie autonome (setup 4), 09:30–12:00 New York :             |
-//| - sweep M15 du plus haut / bas des N bougies, du haut / bas de   |
-//|   la nuit (18:00–09:30 New York), du PDH / PDL de la séance      |
-//|   précédente ou d'égaux : mèche de 0,05 à 1 ATR M15 au-delà,     |
-//|   clôture en deçà ;                                              |
-//| - CHoCH M5 puis FVG M5 (≥ 0,1 ATR M5) : limite au premier tiers  |
-//|   du FVG, stop au-delà de la mèche + 0,1 ATR M15 + spread,       |
-//|   objectif 3R, lot à 0,5 % du solde ;                            |
-//| - pas d'annonce forte USD à ±15 min (calendrier MT5).            |
+//|    https://revnefty.store ; activer « Algo Trading ».            |
+//| 3. Glisser l'EA sur un graphique NAS100 (M1 conseillé), coller   |
+//|    la clé MT5 du compte, cocher « Autoriser le trading algo ».   |
+//| 4. Sur un compte où l'EA ne doit pas trader (VPS de référence) : |
+//|    mettre « Passer les ordres des plans » à false.               |
 //+------------------------------------------------------------------+
 #property copyright "Carnet NAS100"
-#property version   "3.00"
-#property description "NASDAQ 100 : plan de Claude sur le graphique, signaux d'exécution (signal seulement) et synchronisation du Carnet NAS100."
+#property version   "4.00"
+#property description "NASDAQ 100 : plan de Claude sur le graphique, ordres automatiques des plans de Claude et synchronisation du Carnet NAS100."
 
 #include <Canvas\Canvas.mqh>
-
-//--- Stratégie des signaux : zones du plan de Claude (carnet), ou stratégie autonome sur les bougies.
-enum ENUM_CX_STRAT
-  {
-   STRAT_CARNET = 0, // Zones du plan de Claude (carnet)
-   STRAT_SWEEP  = 1, // Sweep M15 → CHoCH M5 → FVG M5 (autonome)
-   STRAT_BOTH   = 2  // Les deux (par défaut)
-  };
+#include <Trade\Trade.mqh>
 
 input string InpUrl         = "https://revnefty.store/wp-json/carnet-xau/v1/mt5"; // Adresse du carnet (nom technique de l'API)
 input string InpKey         = "";    // Clé MT5 du compte (onglet Comptes)
@@ -116,31 +51,10 @@ input int    InpDaysBack    = 3;     // Jours d'historique renvoyés à chaque s
 input int    InpSnapshotSec = 60;    // Intervalle de synchronisation, en secondes (15 minimum)
 input bool   InpDrawPlan    = true;  // Tracer le plan de Claude
 input bool   InpTVStyle     = true;  // Graphique au style TradingView clair (fond blanc, sans grille)
-input bool   InpSignals     = true;  // Calculer les signaux BUY NOW / SELL NOW
-input double InpSLBuffer    = 0.30;  // Marge du stop derrière l'extrême (× ATR M1, en plus du spread)
-input int    InpTouchBars   = 30;    // Bougies M1 où chercher la touche de zone
-input int    InpSwingBars   = 20;    // Bougies M1 avant l'extrême où chercher le sommet / creux pivot et le FVG
-input double InpFvgMin      = 0.30;  // Taille minimale d'un FVG (× ATR M1)
-input double InpTouchTol    = 0.30;  // Touche de zone tolérée à X × ATR M1 du bord (le prix s'arrête juste avant)
-input double InpStopMinAtr  = 0.50;  // Stop minimum (× ATR M1 ; le plancher du carnet s'applique aussi)
-input bool   InpRetest      = true;  // Suivre aussi l'entrée « retour FVG » (trade virtuel, sans alerte)
-input int    InpCooldownMin = 60;    // Minutes sans nouveau signal sur la même zone
-input bool   InpUseLimit    = true;  // Stop au-delà du maximum du carnet : proposer un ordre limite (stop ramené au maximum)
-input int    InpLimitMin    = 30;    // Validité d'un signal limite, en minutes
 input bool   InpAlertPopup  = true;  // Alerte : fenêtre et son MT5
 input bool   InpAlertPush   = true;  // Alerte : notification mobile MT5
-input bool   InpAlertCarnet = true;  // Alerte : carnet et Telegram
-input ENUM_CX_STRAT InpStrategy = STRAT_BOTH;   // Stratégie des signaux (les deux par défaut)
-input double InpSfRiskPct   = 0.5;   // Autonome : risque par trade (% du solde) pour le lot affiché
-input int    InpSfLookback  = 20;    // Autonome : bougies M15 du plus haut / plus bas balayé
-input double InpSfBuffer    = 0.10;  // Autonome : marge du stop au-delà de la mèche du sweep (× ATR M15, + spread)
-input double InpSfRR        = 3.0;   // Autonome : objectif en R (distance du stop × R)
-input int    InpSfChochBars = 24;    // Autonome : bougies M5 après le sweep pour le CHoCH (sinon abandon)
-input double InpSfFvgMin    = 0.10;  // Autonome : taille minimale du FVG M5 (× ATR M5)
-input int    InpSfLimitMin  = 60;    // Autonome : validité de l'ordre limite (minutes)
-input double InpSfStopMin   = 0.50;  // Autonome : stop minimum (× ATR M1)
-input double InpSfStopMax   = 0;     // Autonome : stop maximum (× ATR M15, 0 = aucun)
-input bool   InpSfNews      = true;  // Autonome : pas de signal à ±15 min d'une annonce forte USD (calendrier MT5)
+input bool   InpAutoTrade   = true;  // Passer les ordres des plans de Claude (false sur le VPS de référence)
+input long   InpMagic       = 26040; // Numéro magique des ordres de l'EA
 
 //--- Noms du NASDAQ 100 selon le courtier (graphique accepté par l'EA).
 #define NAS_NAMES "NAS100|US100|USTEC|NDX|NQ"
@@ -157,13 +71,29 @@ struct CxZone
    int    strength;
    string state;     // vierge, testee, cassee
    string origin;    // bougie d'origine « jj/mm hh:mm », heure du serveur (vide : carnet d'avant 2.15)
-   datetime lastSignal;
   };
 struct CxLevel { double price; string type; string origin; };
 //--- Scénario d'exécution de la dernière analyse de séance (outil position longue / courte).
 struct CxPos { bool buy; double entry; double sl; double tp; string label; };
 CxPos    g_pos[];
 double   g_sinv = 0;      // invalidation de la dernière analyse de séance
+//--- Ordres des plans de Claude (ligne « O| » du plan).
+struct CxOrder
+  {
+   string   id;
+   bool     buy;
+   double   entry;
+   double   sl;
+   double   tp;
+   datetime from;      // UTC : valable à partir de
+   datetime until;     // UTC : fin de validité (16:00 New York du jour, ou vendredi pour la semaine)
+   int      ctf;       // annulation : unité de temps de la clôture (secondes, 0 = aucune)
+   bool     cabove;    // annulation : clôture au-dessus (sinon en dessous)
+   double   cprice;    // annulation : prix
+   string   label;
+  };
+CxOrder g_orders[];
+CTrade  g_trade;
 
 CxZone   g_zones[];
 CxLevel  g_levels[];
@@ -184,33 +114,7 @@ double   g_goal = 0, g_gain = 0, g_weekStopR = 4;
 int      g_daysDone = 0, g_minDays = 0, g_weekLoss = 4;
 bool     g_ownKind = false, g_rOk = false;
 datetime g_planAt = 0;          // dernière lecture réussie du plan (heure locale)
-//--- Réglages des signaux : valeurs des paramètres d'entrée, remplacées par celles que Claude
-//    ajuste dans le carnet après le rejeu du soir (ligne « S| » du plan). fvg et slbuf : multiples de l'ATR M1.
-int      g_touch = 30, g_swing = 20, g_limitMin = 30, g_cooldown = 60;
-double   g_fvg = 0.30, g_slbuf = 0.30;
 bool     g_planOk = false;
-
-//--- Trade virtuel « Signal Claude » : chaque signal est suivi jusqu'à sa clôture, pris ou non,
-//    sans gestion : objectif ou stop, rien d'autre. Sauvegardé dans un fichier.
-struct CxTrack
-  {
-   string   ref;       // identifiant envoyé au carnet
-   string   id;        // préfixe des objets dessinés
-   string   label;
-   bool     buy;
-   double   entry;
-   double   sl;
-   double   tp;
-   double   stop;
-   int      status;    // 0 limite en attente, 1 ouvert, 2 terminé
-   bool     hit2r;
-   double   mfe;       // meilleur mouvement, en R
-   double   mae;       // pire mouvement, en R
-   datetime expires;   // fin de validité de la limite
-   datetime opened;
-  };
-CxTrack  g_tracks[];
-#define TRACK_FILE "CarnetNAS_signaux.csv"
 
 //--- Dessins des signaux (outil position de TradingView), gardés 7 jours dans un fichier : ils restent
 //    affichés après un changement d'unité de temps ou un redémarrage, comme les objets des versions 2.14.
@@ -229,17 +133,16 @@ struct CxDraw
   };
 CxDraw   g_draws[];
 #define DRAW_FILE "CarnetNAS_dessins.csv"
-#define TRACK_MAX_HOURS 24
 
 //--- État
 bool     g_dirty = true;
 bool     g_firstSync = true;   // premier envoi après le démarrage : 30 jours d'historique
-datetime g_lastFull = 0, g_lastCandles = 0, g_lastM1 = 0, g_lastSignal = 0;
+datetime g_lastFull = 0, g_lastCandles = 0, g_lastM1 = 0;
 datetime g_doneM1 = 0, g_doneM15 = 0;   // dernières bougies traitées (rattrapage après un arrêt du PC)
 string   GV_M1 = "", GV_M15 = "";         // noms des variables globales du terminal (par compte et symbole)
 #define CATCHUP_DAYS 7
 string   g_status = "";
-int      g_signalCount = 0;
+int      g_orderCount = 0;      // ordres posés aujourd'hui
 
 #define PFX_PLAN "CXP_"
 #define PFX_SIG  "CXS_"
@@ -273,12 +176,11 @@ int OnInit()
       return(INIT_FAILED);
      }
    EventSetTimer((int)MathMax(15, InpSnapshotSec));
-   g_touch = InpTouchBars; g_swing = InpSwingBars; g_fvg = InpFvgMin; g_slbuf = InpSLBuffer; g_limitMin = InpLimitMin; g_cooldown = InpCooldownMin;
    g_hash = "";                 // changement d'unité de temps : les variables restent, les objets non → tout redessiner
    g_lastM1 = 0;
-   LoadTracks();
    LoadDraws();
-   ObjectsDeleteAll(0, PFX_SIG);   // objets des signaux des versions 2.14 et avant : redessinés en canvas
+   ObjectsDeleteAll(0, PFX_SIG);   // objets des signaux des versions 2.14 et avant
+   g_trade.SetExpertMagicNumber((ulong)InpMagic);
    string gv = "CarnetNAS_" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "_" + _Symbol;
    GV_M1  = gv + "_M1";
    GV_M15 = gv + "_M15";
@@ -317,10 +219,11 @@ void OnTimer()
    if(ServerDayStart() != day)
      {
       day = ServerDayStart();
-      g_signalCount = 0;          // compteur « aujourd'hui »
+      g_orderCount = 0;
      }
    Sync();
    FetchPlan();
+   AutoTrade();
    PublishCarnet();
    if(TimeCurrent() - g_lastCandles >= 900)
       SendCandles();
@@ -366,180 +269,8 @@ void OnTick()
       DrawPlan();               // le scénario et les étiquettes suivent la dernière bougie
      }
    Monitor();                   // invalidation et zones sur clôture M15 (et rattrapage après un arrêt)
-   ProcessTracks();             // signaux en cours, bougie par bougie depuis la dernière traitée
    DrawPanel();                 // zones les plus proches du prix
-   // Les deux stratégies tournent côte à côte ; chacune n'est bloquée que par son propre ordre limite.
-   if(InpSignals && InpStrategy != STRAT_CARNET)
-      CheckSweepFvg();            // stratégie autonome : rien ne vient du carnet
-   if(InpSignals && InpStrategy != STRAT_SWEEP && g_planOk && !PendingLimit(false) && InNySession(TimeGMT()))
-      CheckSignals();             // zones du plan : seulement de 09:30 à 16:00 New York
-  }
-
-//+------------------------------------------------------------------+
-//| Suivi des signaux (trades virtuels)                               |
-//+------------------------------------------------------------------+
-//--- Ordre limite en attente d'une stratégie (sweep = autonome, repérée par « SFVG » dans le libellé).
-bool PendingLimit(bool sweep = false)
-  {
-   for(int i = 0; i < ArraySize(g_tracks); i++)
-      if(g_tracks[i].status == 0 && StringFind(g_tracks[i].label, "RETOUR") < 0
-         && (StringFind(g_tracks[i].label, "SFVG") >= 0) == sweep)
-         return true;                               // la variante « retour FVG » ne bloque rien
-   return false;
-  }
-
-void SaveTracks()
-  {
-   int h = FileOpen(TRACK_FILE, FILE_WRITE | FILE_CSV | FILE_ANSI, ';');
-   if(h == INVALID_HANDLE)
-      return;
-   for(int i = 0; i < ArraySize(g_tracks); i++)
-     {
-      CxTrack t = g_tracks[i];
-      if(t.status == 2)
-         continue;                               // seuls les signaux en cours sont gardés
-      FileWrite(h, t.ref, t.id, t.label, (int)t.buy, Num(t.entry, 2), Num(t.sl, 2), Num(t.tp, 2), Num(t.stop, 2),
-                t.status, (int)t.hit2r, Num(t.mfe, 2), Num(t.mae, 2), (long)t.expires, (long)t.opened);
-     }
-   FileClose(h);
-  }
-
-void LoadTracks()
-  {
-   ArrayResize(g_tracks, 0);
-   if(!FileIsExist(TRACK_FILE))
-      return;
-   int h = FileOpen(TRACK_FILE, FILE_READ | FILE_CSV | FILE_ANSI, ';');
-   if(h == INVALID_HANDLE)
-      return;
-   while(!FileIsEnding(h))
-     {
-      string ref = FileReadString(h);
-      if(ref == "")
-         break;
-      int k = ArraySize(g_tracks);
-      ArrayResize(g_tracks, k + 1);
-      g_tracks[k].ref     = ref;
-      g_tracks[k].id      = FileReadString(h);
-      g_tracks[k].label   = FileReadString(h);
-      g_tracks[k].buy     = (StringToInteger(FileReadString(h)) == 1);
-      g_tracks[k].entry   = StringToDouble(FileReadString(h));
-      g_tracks[k].sl      = StringToDouble(FileReadString(h));
-      g_tracks[k].tp      = StringToDouble(FileReadString(h));
-      g_tracks[k].stop    = StringToDouble(FileReadString(h));
-      g_tracks[k].status  = (int)StringToInteger(FileReadString(h));
-      g_tracks[k].hit2r   = (StringToInteger(FileReadString(h)) == 1);
-      g_tracks[k].mfe     = StringToDouble(FileReadString(h));
-      g_tracks[k].mae     = StringToDouble(FileReadString(h));
-      g_tracks[k].expires = (datetime)StringToInteger(FileReadString(h));
-      g_tracks[k].opened  = (datetime)StringToInteger(FileReadString(h));
-     }
-   FileClose(h);
-  }
-
-//--- t : heure du serveur de l'événement (clôture de la bougie), envoyée en UTC.
-void TrackEvent(int i, string status, string extra, datetime t)
-  {
-   SendEvent("{\"type\":\"signal_update\",\"ref\":" + JsonText(g_tracks[i].ref) + ",\"status\":\"" + status + "\"" + extra
-             + ",\"time\":" + IntegerToString((long)t - ServerOffset()) + "}");
-  }
-
-//--- Clôture d'un trade virtuel : résultat en R envoyé au carnet.
-void CloseTrack(int i, double r, string when, datetime t)
-  {
-   g_tracks[i].status = 2;
-   string st  = (r > 0.05) ? "gagne" : (r < -0.05 ? "perdu" : "be");
-   string res = (r >= 0 ? "+" : "-") + Fr(MathAbs(r), 1) + "R";
-   g_status = "Signal Claude " + g_tracks[i].label + " clôturé : " + res + when + ".";
-   DrawUpdate(g_tracks[i].id, g_tracks[i].label + " : résultat " + res, false);
-   TrackEvent(i, st, ",\"result_r\":" + Num(r, 2) + ",\"reached_2r\":" + (g_tracks[i].hit2r ? "true" : "false")
-              + ",\"mfe\":" + Num(g_tracks[i].mfe, 2) + ",\"mae\":" + Num(g_tracks[i].mae, 2), t);
-   ChartRedraw();
-   DrawPanel();
-  }
-
-//--- Bougies M1 clôturées depuis la dernière traitée (toutes, si le PC a été éteint), dans l'ordre.
-void ProcessTracks()
-  {
-   datetime last = iTime(_Symbol, PERIOD_M1, 1);
-   if(last == 0)
-      return;
-   bool open = false;
-   for(int i = 0; i < ArraySize(g_tracks); i++)
-      if(g_tracks[i].status != 2)
-         open = true;
-   if(open && g_doneM1 > 0 && last > g_doneM1)
-     {
-      datetime from = (datetime)MathMax((double)(g_doneM1 + 60), (double)(last - CATCHUP_DAYS * 86400));
-      MqlRates r[];
-      int n = CopyRates(_Symbol, PERIOD_M1, from, last, r);   // r[0] = la plus ancienne
-      for(int j = 0; j < n; j++)
-         if(r[j].time > g_doneM1)
-            ProcessBar(r[j].high, r[j].low, r[j].close, r[j].time + 60, last - r[j].time > 120);
-     }
-   if(last != g_doneM1)
-     {
-      g_doneM1 = last;
-      GlobalVariableSet(GV_M1, (double)g_doneM1);
-     }
-  }
-
-//--- Une bougie M1 clôturée (à l'heure t) : limite déclenchée ou annulée, puis stop ou objectif,
-//    sans sortie partielle ni stop déplacé ; clôture au bout de 24 h. late = bougie rattrapée après un arrêt.
-void ProcessBar(double hi, double lo, double cl, datetime t, bool late)
-  {
-   bool   changed = false;
-   string when = late ? " (pendant l'arrêt de MT5, à " + TimeToString(t, TIME_DATE | TIME_MINUTES) + ")" : "";
-   for(int i = 0; i < ArraySize(g_tracks); i++)
-     {
-      if(g_tracks[i].status == 2)
-         continue;
-      bool   buy = g_tracks[i].buy;
-      double e   = g_tracks[i].entry, st = g_tracks[i].stop;
-      if(g_tracks[i].status == 0)
-        {
-         if(t - 60 >= g_tracks[i].expires)
-           {
-            g_tracks[i].status = 2;
-            changed = true;
-            DrawUpdate(g_tracks[i].id, g_tracks[i].label + " annulé (prix non atteint en " + IntegerToString(StringFind(g_tracks[i].label, "SFVG") >= 0 ? InpSfLimitMin : g_limitMin) + " min)", true);
-            bool variant = StringFind(g_tracks[i].label, "RETOUR") >= 0;   // variante suivie sans alerte
-            if(!late && !variant)
-               Notify("Carnet NAS100 : " + g_tracks[i].label + " " + Fr(e, 2) + " annulé, prix non atteint en " + IntegerToString(StringFind(g_tracks[i].label, "SFVG") >= 0 ? InpSfLimitMin : g_limitMin) + " min.");
-            TrackEvent(i, "annule", "", t);
-            g_status = g_tracks[i].label + " annulé (délai écoulé).";
-            ChartRedraw();
-           }
-         else if(buy ? lo <= e : hi >= e)
-           {
-            g_tracks[i].status = 1;
-            g_tracks[i].opened = t - 60;
-            changed = true;
-            if(!late && StringFind(g_tracks[i].label, "RETOUR") < 0)
-               Notify("Carnet NAS100 : " + g_tracks[i].label + " atteint à " + Fr(e, 2) + " — conditions réunies, à vous de décider.");
-            TrackEvent(i, "ouvert", "", t);
-           }
-         continue;
-        }
-      // Position ouverte : mouvements en R depuis l'entrée.
-      double up   = buy ? (hi - e) / st : (e - lo) / st;   // meilleur mouvement de la bougie
-      double down = buy ? (lo - e) / st : (e - hi) / st;   // pire mouvement de la bougie
-      g_tracks[i].mfe = MathMax(g_tracks[i].mfe, up);
-      g_tracks[i].mae = MathMin(g_tracks[i].mae, down);
-      double rrTp = MathAbs(g_tracks[i].tp - e) / st;
-      changed = true;
-      if(up >= 2.0)
-         g_tracks[i].hit2r = true;                         // 2R atteint (information seulement)
-      if(down <= -1.0)
-         CloseTrack(i, -1.0, when, t);                        // stop touché (prudence : vérifié en premier)
-      else if(up >= rrTp)
-         CloseTrack(i, rrTp, when, t);                        // objectif atteint
-      // Au-delà de 24 h : clôture virtuelle au dernier cours.
-      if(g_tracks[i].status == 1 && t - g_tracks[i].opened > TRACK_MAX_HOURS * 3600)
-         CloseTrack(i, buy ? (cl - e) / st : (e - cl) / st, when, t);
-     }
-   if(changed)
-      SaveTracks();
+   AutoTrade();                 // ordres des plans de Claude
   }
 
 void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest &request, const MqlTradeResult &result)
@@ -921,18 +652,6 @@ void FetchPlan()
    if(head[1] == g_hash)
       return;                    // rien de nouveau
 
-   // Conserver l'heure du dernier signal par zone d'une version à l'autre.
-   string   oldKeys[];
-   datetime oldSig[];
-   int oz = ArraySize(g_zones);
-   ArrayResize(oldKeys, oz);
-   ArrayResize(oldSig, oz);
-   for(int i = 0; i < oz; i++)
-     {
-      oldKeys[i] = g_zones[i].key;
-      oldSig[i]  = g_zones[i].lastSignal;
-     }
-
    ArrayResize(g_zones, 0);
    ArrayResize(g_levels, 0);
    ArrayResize(g_pos, 0);
@@ -941,7 +660,7 @@ void FetchPlan()
    ArrayResize(g_newsName, 0);
    g_bull = 0; g_bear = 0; g_range = 0;
    g_inval = 0; g_rlo = 0; g_rhi = 0; g_ref = 0; g_invalidated = false;
-   string kl[];   // signaux de l'EA de référence (VPS), dessinés après la lecture du plan
+   ArrayResize(g_orders, 0);
 
    for(int i = 1; i < n; i++)
      {
@@ -976,10 +695,6 @@ void FetchPlan()
          g_zones[k].strength = (int)StringToInteger(f[7]);
          g_zones[k].state    = f[8];
          g_zones[k].origin   = c >= 10 ? f[9] : "";
-         g_zones[k].lastSignal = 0;
-         for(int j = 0; j < oz; j++)
-            if(oldKeys[j] == f[1])
-               g_zones[k].lastSignal = oldSig[j];
         }
       else if(f[0] == "L" && c >= 3)
         {
@@ -1036,107 +751,30 @@ void FetchPlan()
          g_weekStopR = StringToDouble(f[7]);
          g_ownKind   = (f[8] == "propre");
         }
-      else if(f[0] == "K" && c >= 10)
+      else if(f[0] == "O" && c >= 12)
         {
-         int k = ArraySize(kl);
-         ArrayResize(kl, k + 1);
-         kl[k] = lines[i];
-        }
-      else if(f[0] == "S" && c >= 7)
-        {
-         // Réglages ajustés par Claude (bornés par le carnet) ; fvg et slbuf en multiples de l'ATR M1.
-         g_touch    = (int)StringToInteger(f[1]);
-         g_swing    = (int)StringToInteger(f[2]);
-         g_fvg      = StringToDouble(f[3]);
-         g_slbuf    = StringToDouble(f[4]);
-         g_limitMin = (int)StringToInteger(f[5]);
-         g_cooldown = (int)StringToInteger(f[6]);
+         // Ordre du plan : id|achat ou vente|entrée|stop|objectif|début|fin (UTC)|UT d'annulation (s)|au-dessus|prix|libellé
+         int k = ArraySize(g_orders);
+         ArrayResize(g_orders, k + 1);
+         g_orders[k].id     = f[1];
+         g_orders[k].buy    = (f[2] != "vente");
+         g_orders[k].entry  = StringToDouble(f[3]);
+         g_orders[k].sl     = StringToDouble(f[4]);
+         g_orders[k].tp     = StringToDouble(f[5]);
+         g_orders[k].from   = (datetime)StringToInteger(f[6]);
+         g_orders[k].until  = (datetime)StringToInteger(f[7]);
+         g_orders[k].ctf    = (int)StringToInteger(f[8]);
+         g_orders[k].cabove = (f[9] == "1");
+         g_orders[k].cprice = StringToDouble(f[10]);
+         g_orders[k].label  = f[11];
         }
      }
-   RemoteSignals(kl);
    g_hash   = head[1];
    g_week   = head[2];
    g_planOk = (ArraySize(g_zones) > 0);
    g_status = g_planOk ? "Plan de Claude reçu (" + IntegerToString(ArraySize(g_zones)) + " zones)." : "Aucun plan publié pour la semaine.";
    if(InpDrawPlan)
       DrawPlan();
-  }
-
-//--- Signaux de l'EA de référence (VPS) des dernières 24 h : dessinés ici comme si cet EA avait tourné
-//    (PC éteint puis rallumé). Un signal déjà trouvé par cet EA (même sens, 5 min, 0,25 ATR M1) n'est pas doublé ;
-//    le résultat ou l'annulation mettent le texte à jour.
-//    Ligne K : ref|heure du serveur|buy ou sell|now ou limit|entrée|stop|objectif|statut|résultat R|setup
-void RemoteSignals(string &kl[])
-  {
-   bool changed = false;
-   double same = 0.25 * Atr(PERIOD_M1);           // même entrée à 0,25 ATR M1 près
-   if(same <= 0)
-      same = 5.0;
-   for(int i = 0; i < ArraySize(kl); i++)
-     {
-      string f[];
-      int c = StringSplit(kl[i], '|', f);
-      if(c < 10)
-         continue;
-      string   id   = PFX_SIG + "V" + f[1];
-      datetime t    = (datetime)StringToInteger(f[2]);
-      bool     buy  = (f[3] == "buy");
-      double   e    = StringToDouble(f[5]), sl = StringToDouble(f[6]), tp = StringToDouble(f[7]);
-      double   stop = MathAbs(e - sl);
-      if(e <= 0 || stop <= 0)
-         continue;
-      string label = (buy ? "BUY " : "SELL ") + (f[4] == "limit" ? "LIMIT" : "NOW") + " (VPS)";
-      string text  = label + " · SL " + Fr(sl, 2) + " · TP " + Fr(tp, 2) + " (" + Fr(MathAbs(tp - e) / stop, 1) + "R)" + (c >= 11 && f[10] != "" ? " S" + f[10] : "");
-      bool   grey  = (f[8] == "annule" || f[8] == "inconnu");
-      if(f[9] != "")
-        {
-         double r = StringToDouble(f[9]);
-         text = label + " : résultat " + (r >= 0 ? "+" : "-") + Fr(MathAbs(r), 1) + "R";
-        }
-      else if(f[8] == "annule")
-         text = label + " annulé (prix non atteint)";
-      int found = -1;
-      for(int j = 0; j < ArraySize(g_draws); j++)
-        {
-         if(g_draws[j].id == id)
-           {
-            found = j;
-            break;
-           }
-         if(g_draws[j].p2r != 0 && g_draws[j].buy == buy && MathAbs((double)(g_draws[j].t - t)) <= 300 && MathAbs(g_draws[j].entry - e) <= same)
-           {
-            found = -2;   // même signal trouvé par cet EA
-            break;
-           }
-        }
-      if(found == -2)
-         continue;
-      if(found >= 0)
-        {
-         if(g_draws[found].text != text || (grey && !g_draws[found].grey))
-           {
-            g_draws[found].text = text;
-            g_draws[found].grey = g_draws[found].grey || grey;
-            changed = true;
-           }
-         continue;
-        }
-      int k = ArraySize(g_draws);
-      ArrayResize(g_draws, k + 1);
-      g_draws[k].id    = id;
-      g_draws[k].t     = t;
-      g_draws[k].t2    = t + 60 * 60;
-      g_draws[k].buy   = buy;
-      g_draws[k].entry = e;
-      g_draws[k].sl    = sl;
-      g_draws[k].tp    = tp;
-      g_draws[k].p2r   = buy ? e + 2 * stop : e - 2 * stop;
-      g_draws[k].text  = text;
-      g_draws[k].grey  = grey;
-      changed = true;
-     }
-   if(changed)
-      SaveDraws();
   }
 
 //+------------------------------------------------------------------+
@@ -2093,8 +1731,8 @@ void DrawPanel()
    lab[3] = "Zones du plan";
    val[3] = g_planOk ? IntegerToString(ArraySize(g_zones)) : "aucun plan";
    vc[3]  = g_planOk ? UI_TEXT : UI_ORANGE;
-   lab[4] = "Signaux aujourd'hui";
-   val[4] = InpSignals ? IntegerToString(g_signalCount) + " · aucun ordre passé" : "désactivés";
+   lab[4] = "Ordres aujourd'hui";
+   val[4] = InpAutoTrade ? IntegerToString(g_orderCount) + " posé(s) · " + IntegerToString(ArraySize(g_orders)) + " au plan" : "ordres désactivés";
    vc[4]  = UI_TEXT;
    lab[5] = "Calculateur";
    val[5] = calc;
@@ -2129,8 +1767,6 @@ void DrawPanel()
 //+------------------------------------------------------------------+
 void SendEvent(string json)
   {
-   if(!InpAlertCarnet)
-      return;
    string resp;
    Http("POST", InpUrl + "/event", json, "application/json", resp);
   }
@@ -2272,26 +1908,6 @@ void PublishCarnet()
    GlobalVariableSet(Bridge("cx_on"), (double)TimeLocal());   // en dernier : les valeurs sont complètes
   }
 
-// Transmet le signal au Calculateur ; la référence est écrite en dernier (elle déclenche la lecture)
-void BridgeSignal(bool buy, string kind, string setup, double entry, double sl, double tp, string ref)
-  {
-   GlobalVariableSet(Bridge("sig_dir"), buy ? 1.0 : -1.0);
-   GlobalVariableSet(Bridge("sig_entry"), entry);
-   GlobalVariableSet(Bridge("sig_sl"), sl);
-   GlobalVariableSet(Bridge("sig_tp"), tp);
-   GlobalVariableSet(Bridge("sig_limit"), kind == "LIMIT" ? 1.0 : 0.0);
-   GlobalVariableSet(Bridge("sig_setup"), StringToDouble(setup));
-   GlobalVariableSet(Bridge("sig_exp"), (double)((long)TimeLocal() + (kind == "LIMIT" ? g_limitMin : 5) * 60));
-   GlobalVariableSet(Bridge("sig_ref"), StringToDouble(ref));
-   long ch = ChartFirst();
-   while(ch >= 0)
-     {
-      if(ch != ChartID())
-         EventChartCustom(ch, 101, buy ? 1 : -1, sl, ref);
-      ch = ChartNext(ch);
-     }
-  }
-
 void Notify(string msg)
   {
    if(InpAlertPopup)
@@ -2301,274 +1917,6 @@ void Notify(string msg)
   }
 
 //+------------------------------------------------------------------+
-//| Signaux                                                           |
-//+------------------------------------------------------------------+
-bool NewsBlocked(string &why)
-  {
-   datetime now = TimeGMT();
-   for(int i = 0; i < ArraySize(g_news); i++)
-     {
-      long dt = (long)g_news[i] - (long)now;
-      if(dt <= 15 * 60 && dt >= -30 * 60)
-        {
-         why = "annonce " + g_newsName[i];
-         return true;
-        }
-     }
-   return false;
-  }
-
-//--- Prochain objectif opposé au-delà du prix d'entrée (zone, niveau ou range attendu).
-double NextTarget(bool buy, double entry)
-  {
-   double best = 0;
-   for(int i = 0; i < ArraySize(g_zones); i++)
-     {
-      if(g_zones[i].state == "cassee" || g_zones[i].buy == buy)
-         continue;
-      double p = buy ? g_zones[i].lo : g_zones[i].hi;
-      if(buy ? p > entry : p < entry)
-         if(best == 0 || (buy ? p < best : p > best))
-            best = p;
-     }
-   for(int i = 0; i < ArraySize(g_levels); i++)
-     {
-      double p = g_levels[i].price;
-      if(buy ? p > entry : p < entry)
-         if(best == 0 || (buy ? p < best : p > best))
-            best = p;
-     }
-   double r = buy ? g_rhi : g_rlo;
-   if(r > 0 && (buy ? r > entry : r < entry))
-      if(best == 0 || (buy ? r < best : r > best))
-         best = r;
-   return best;
-  }
-
-//--- L'extrême a-t-il balayé un niveau de liquidité (ou le bord de la zone) avant de revenir ?
-bool Swept(bool buy, double extreme, double closeAtExtreme, double zoneEdge)
-  {
-   if(buy ? (extreme < zoneEdge && closeAtExtreme > zoneEdge) : (extreme > zoneEdge && closeAtExtreme < zoneEdge))
-      return true;
-   for(int i = 0; i < ArraySize(g_levels); i++)
-     {
-      double p = g_levels[i].price;
-      if(buy ? (extreme < p && closeAtExtreme > p) : (extreme > p && closeAtExtreme < p))
-         return true;
-     }
-   return false;
-  }
-
-void CheckSignals()
-  {
-   int need = g_touch + g_swing + 4;
-   MqlRates r[];
-   ArraySetAsSeries(r, true);
-   if(CopyRates(_Symbol, PERIOD_M1, 1, need, r) < need)
-      return;                                     // r[0] = dernière bougie M1 clôturée
-   if(TimeCurrent() - g_lastSignal < 600)
-      return;                                     // 10 minutes entre deux signaux
-   // Réglages en multiples de l'ATR M1 (points d'indice) : touche, FVG, marge et stop minimum.
-   double atr1 = Atr(PERIOD_M1);
-   if(atr1 <= 0)
-      return;
-   double tol     = InpTouchTol * atr1;
-   double fvgMin  = g_fvg * atr1;
-   double slBuf   = g_slbuf * atr1;
-   double stopMin = MathMax(g_stopMin, InpStopMinAtr * atr1);
-
-   int d = Dominant();
-   for(int i = 0; i < ArraySize(g_zones); i++)
-     {
-      CxZone z = g_zones[i];
-      if(z.state == "cassee")
-         continue;
-      if(TimeCurrent() - z.lastSignal < g_cooldown * 60)
-         continue;
-      bool buy = z.buy;
-      int  dir = buy ? 1 : -1;
-      if(g_invalidated && dir == d)
-         continue;                                // plan invalidé dans ce sens
-
-      // Extrême de la touche : plus bas (achat) ou plus haut (vente) des bougies qui ont touché la zone.
-      int e = -1;
-      for(int k = 1; k <= g_touch; k++)
-        {
-         // Touche tolérée à 0,3 ATR M1 du bord : un prix qui s'arrête juste avant le bord compte.
-         bool touched = (r[k].low <= z.hi + tol && r[k].high >= z.lo - tol);
-         if(!touched)
-            continue;
-         if(e < 0 || (buy ? r[k].low < r[e].low : r[k].high > r[e].high))
-            e = k;
-        }
-      if(e < 1)
-         continue;
-      double extreme = buy ? r[e].low : r[e].high;
-      // L'extrême peut déborder de la zone en mèche, mais pas clôturer au-delà.
-      if(buy ? r[e].close < z.lo : r[e].close > z.hi)
-         continue;
-
-      bool   sweep = Swept(buy, extreme, r[e].close, buy ? z.lo : z.hi);
-      string setup = "";
-      double retest = 0;                          // entrée « retour FVG » (0 = aucune)
-
-      // Setup 3, iFVG : le FVG contraire le plus récent de la jambe vers la zone (bougies e…e+N),
-      // jamais clôturé au-delà jusqu'ici, est franchi en clôture par la dernière bougie.
-      for(int k = e; k <= e + g_swing && k + 2 < need; k++)
-        {
-         double top = buy ? r[k + 2].low : r[k].low;    // achat : FVG baissier entre le bas de A et le haut de C
-         double bot = buy ? r[k].high : r[k + 2].high;  // vente : FVG haussier entre le haut de A et le bas de C
-         if(top - bot < fvgMin)
-            continue;
-         bool used = false;
-         for(int j = 1; j < k; j++)
-            if(buy ? r[j].close > top : r[j].close < bot)
-               used = true;                       // déjà inversé plus tôt
-         if(!used && (buy ? (r[0].close > top && r[1].close <= top) : (r[0].close < bot && r[1].close >= bot)))
-           {
-            setup  = "3";
-            retest = buy ? top : bot;             // retour sur le bord de l'iFVG
-           }
-         break;                                   // seul le FVG le plus récent compte
-        }
-
-      if(setup == "")
-        {
-         // Cassure de structure : dernier sommet pivot (achat) ou creux pivot (vente) avant l'extrême,
-         // à défaut le plus haut (plus bas) des N bougies.
-         double swing = buy ? 0 : DBL_MAX;
-         bool   piv   = false;
-         for(int k = e + 2; k <= e + g_swing && k + 2 < need; k++)
-           {
-            if(buy ? (r[k].high > r[k - 1].high && r[k].high > r[k - 2].high && r[k].high >= r[k + 1].high && r[k].high >= r[k + 2].high)
-                   : (r[k].low < r[k - 1].low && r[k].low < r[k - 2].low && r[k].low <= r[k + 1].low && r[k].low <= r[k + 2].low))
-              {
-               swing = buy ? r[k].high : r[k].low;
-               piv   = true;
-               break;
-              }
-           }
-         if(!piv)
-            for(int k = e + 1; k <= e + g_swing && k < need; k++)
-               swing = buy ? MathMax(swing, r[k].high) : MathMin(swing, r[k].low);
-         // Cassure fraîche : la dernière bougie clôture au-delà, la précédente non.
-         bool brk = buy ? (r[0].close > swing && r[1].close <= swing) : (r[0].close < swing && r[1].close >= swing);
-         if(!brk)
-            continue;
-         setup = sweep ? "1" : "2";
-         if(!sweep && dir != d)
-            continue;                             // setup 2 : seulement avec le biais
-         // Retour : bord du FVG le plus récent laissé par la cassure (bougies 0…e).
-         for(int k = 0; k + 2 <= e; k++)
-            if(buy ? (r[k].low - r[k + 2].high >= fvgMin) : (r[k + 2].low - r[k].high >= fvgMin))
-              {
-               retest = buy ? r[k].low : r[k].high;
-               break;
-              }
-        }
-
-      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      double spread = ask - bid;
-      double entry = buy ? ask : bid;
-      double sl    = buy ? extreme - slBuf - spread : extreme + slBuf + spread;
-      double stop  = MathAbs(entry - sl);
-      string kind  = "NOW";
-      if(stop > g_stopMax && InpUseLimit)
-        {
-         // Ordre limite : entrée au prix où le stop revient au maximum autorisé.
-         entry = buy ? sl + g_stopMax : sl - g_stopMax;
-         stop  = g_stopMax;
-         kind  = "LIMIT";
-        }
-      string why   = "";
-      if(stop < stopMin)
-         why = "stop " + Fr(stop, 1) + " pts sous le minimum de " + Fr(stopMin, 1) + " pts";
-      else if(stop > g_stopMax)
-         why = "stop " + Fr(stop, 1) + " pts au-delà du maximum de " + Fr(g_stopMax, 1) + " pts";
-      else if(spread > stop * g_spreadMax / 100.0)
-         why = "spread " + Fr(spread, 1) + " pts, plus de " + Fr(g_spreadMax, 0) + " % du stop";
-      else if(NewsBlocked(why))
-         why = why + " (15 min avant / 30 min après)";
-
-      double target = NextTarget(buy, entry);
-      double tp     = target > 0 ? target : (buy ? entry + 3 * stop : entry - 3 * stop);
-      double rr     = stop > 0 ? MathAbs(tp - entry) / stop : 0;
-      if(why == "" && rr < 2.0)
-         why = "moins de 2R de place (" + Fr(rr, 1) + "R)";
-
-      int trades, losses;
-      double pnl = TodayStats(trades, losses);
-      if(why == "" && trades >= g_maxTrades)
-         why = "limite de " + IntegerToString(g_maxTrades) + " trades atteinte";
-      if(why == "" && losses >= g_maxLoss)
-         why = IntegerToString(losses) + " pertes aujourd'hui";
-      if(why == "" && -pnl >= 0.8 * g_dailyLim)
-         why = "proche de la limite de perte journalière";
-
-      g_zones[i].lastSignal = TimeCurrent();
-      if(why != "")
-        {
-         g_status = "Signal " + (buy ? "achat" : "vente") + " ignoré sur " + z.type + " " + z.tf + " : " + why + ".";
-         DrawPanel();
-         continue;
-        }
-
-      // Lot : risque du palier donné par le Calculateur NAS100 s'il tourne sur ce compte ; sinon risque
-      // du carnet (réduit si le compte est à −seuil), plafonné à la marge − 5 $. Valeur d'un point
-      // par lot = tick_value / tick_size du courtier.
-      double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-      double risk = (balance - g_size <= -g_redAt) ? g_riskRed : g_risk;
-      if(CalcAlive() && GlobalVariableCheck(Bridge("calc_risk")) && GlobalVariableGet(Bridge("calc_risk")) > 0)
-         risk = GlobalVariableGet(Bridge("calc_risk"));
-      else
-        {
-         double margin = balance - g_floor;
-         if(risk > margin - 5)
-            risk = MathMax(0, margin - 5);
-        }
-      double lot  = LotFor(risk, stop);
-      double vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-      if(lot <= 0 || lot < vmin)
-        {
-         g_status = "Signal ignoré : lot inférieur au minimum du courtier (" + FrLot(vmin) + ").";
-         DrawPanel();
-         continue;
-        }
-      // Variante « retour FVG » : même stop et même objectif, entrée plus proche de l'extrême.
-      double vStop = retest > 0 ? MathAbs(retest - sl) : 0;
-      bool   vOk   = InpRetest && retest > 0 && kind == "NOW" && (buy ? retest < entry : retest > entry)
-                     && vStop >= stopMin && vStop <= g_stopMax && MathAbs(tp - retest) / vStop >= 2.0;
-      ShowSignal(buy, kind, setup, z, entry, sl, tp, rr, lot, stop, r[0].time, vOk ? retest : 0);
-      if(vOk)
-         ShowRetest(buy, setup, z, retest, sl, tp, MathAbs(tp - retest) / vStop,
-                    LotFor(risk, vStop), vStop, r[0].time);
-      g_lastSignal = TimeCurrent();
-      return;
-     }
-  }
-
-//+------------------------------------------------------------------+
-//| Stratégie autonome : Sweep M15 → CHoCH M5 → FVG M5 → limite M1    |
-//| Rien ne vient du carnet (ni zones, ni biais, ni réglages) : l'EA   |
-//| lit les bougies en temps réel, envoie l'alerte et trace la         |
-//| position comme pour les autres signaux. Il ne passe aucun ordre.   |
-//| Fenêtre : 09:30–12:00 New York (ouverture cash du NASDAQ 100),     |
-//| heure d'été américaine comprise. Distances en multiples d'ATR.     |
-//+------------------------------------------------------------------+
-struct CxSweep
-  {
-   bool     active;
-   double   level;     // niveau balayé (plus haut ou bas des N bougies, nuit, PDH/PDL, égaux)
-   double   ext;       // extrême de la mèche du sweep
-   datetime t0;        // ouverture de la bougie M15 du sweep (heure serveur)
-   datetime last;      // dernière bougie M5 examinée
-   string   src;
-   double   atr;       // ATR M15 au moment du sweep (marge du stop, stop maximum)
-  };
-CxSweep  g_sf[2];          // 0 : haut balayé (vente), 1 : bas balayé (achat)
-datetime g_sfM15 = 0;
-
 //--- N-ième dimanche du mois (00:00 UTC).
 datetime NthSunday(int year, int mon, int n)
   {
@@ -2602,39 +1950,11 @@ datetime NyTime(datetime server) { return NyFromUtc(server - (datetime)ServerOff
 //--- Début du jour (00:00) d'une heure.
 datetime DayOf(datetime t) { return (datetime)(((long)t / 86400) * 86400); }
 
-//--- Instant (UTC) dans la fenêtre de la stratégie autonome : 09:30–12:00 New York.
-bool InSfSession(datetime utc)
-  {
-   int ny = MinuteOfDay(NyFromUtc(utc));
-   return ny >= 9 * 60 + 30 && ny < 12 * 60;
-  }
-
-//--- Séance cash de New York (09:30–16:00 New York) : signaux des zones du plan.
+//--- Séance cash de New York (09:30–16:00 New York) : seule fenêtre où les ordres du plan sont posés.
 bool InNySession(datetime utc)
   {
    int ny = MinuteOfDay(NyFromUtc(utc));
    return ny >= 9 * 60 + 30 && ny < 16 * 60;
-  }
-
-//--- Annonce forte USD à ±15 min (CPI, NFP, FOMC, PCE… : calendrier économique de MT5, heure serveur).
-bool SfNewsNear(string &why)
-  {
-   if(!InpSfNews)
-      return false;
-   datetime now = TimeTradeServer();
-   MqlCalendarValue v[];
-   if(CalendarValueHistory(v, now - 15 * 60, now + 15 * 60, NULL, "USD") <= 0)
-      return false;
-   for(int i = 0; i < ArraySize(v); i++)
-     {
-      MqlCalendarEvent e;
-      if(CalendarEventById(v[i].event_id, e) && e.importance == CALENDAR_IMPORTANCE_HIGH)
-        {
-         why = "USD " + e.name;
-         return true;
-        }
-     }
-   return false;
   }
 
 //--- ATR simple (14) des bougies r[from..from+13] (séries : r[0] la plus récente).
@@ -2650,326 +1970,221 @@ double SfAtr(MqlRates &r[], int from)
    return n ? s / n : 0;
   }
 
-//--- Sweep sur la bougie M15 qui vient de clôturer (r[1]) : mèche au-delà d'un niveau, clôture en deçà.
-//    Niveaux : plus haut / bas des N bougies, haut / bas de la nuit (18:00–09:30 New York), PDH / PDL de la
-//    séance précédente (09:30–16:00 New York), égaux. Pénétration de 0,05 à 1 ATR M15.
-void SfDetectSweep()
+//+------------------------------------------------------------------+
+//| Ordres des plans de Claude                                        |
+//+------------------------------------------------------------------+
+
+//--- État d'un ordre du plan, gardé dans le terminal (PC éteint puis rallumé) : 0 jamais posé, 1 posé, 2 terminé.
+string OrdKey(string id) { return "CNO_" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "_" + id; }
+int    OrdState(string id) { string k = OrdKey(id); return GlobalVariableCheck(k) ? (int)GlobalVariableGet(k) : 0; }
+void   OrdSet(string id, int st) { GlobalVariableSet(OrdKey(id), st); }
+string OrdComment(string id) { return "CNAS " + id; }
+
+//--- Ordre en attente de l'EA pour cet id (0 : aucun).
+ulong OrdTicket(string id)
   {
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong t = OrderGetTicket(i);
+      if(t > 0 && OrderGetInteger(ORDER_MAGIC) == InpMagic && OrderGetString(ORDER_SYMBOL) == _Symbol
+         && OrderGetString(ORDER_COMMENT) == OrdComment(id))
+         return t;
+     }
+   return 0;
+  }
+
+//--- Ordres en attente de l'EA sur ce symbole.
+int OrdPending()
+  {
+   int n = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong t = OrderGetTicket(i);
+      if(t > 0 && OrderGetInteger(ORDER_MAGIC) == InpMagic && OrderGetString(ORDER_SYMBOL) == _Symbol)
+         n++;
+     }
+   return n;
+  }
+
+//--- Positions ouvertes aujourd'hui sur ce symbole (comptent dans la limite de trades du jour).
+int OpenToday()
+  {
+   int n = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong t = PositionGetTicket(i);
+      if(t > 0 && PositionGetString(POSITION_SYMBOL) == _Symbol && (datetime)PositionGetInteger(POSITION_TIME) >= ServerDayStart())
+         n++;
+     }
+   return n;
+  }
+
+ENUM_TIMEFRAMES TfOf(int sec)
+  {
+   if(sec <= 60)   return PERIOD_M1;
+   if(sec <= 300)  return PERIOD_M5;
+   if(sec <= 900)  return PERIOD_M15;
+   if(sec <= 1800) return PERIOD_M30;
+   if(sec <= 3600) return PERIOD_H1;
+   return PERIOD_H4;
+  }
+
+//--- Condition « annulé si » : une bougie close depuis le début de validité a clôturé au-delà du prix.
+bool OrdCancelled(CxOrder &o)
+  {
+   if(o.ctf <= 0 || o.cprice <= 0)
+      return false;
+   ENUM_TIMEFRAMES tf = TfOf(o.ctf);
+   datetime from = (datetime)((long)o.from + ServerOffset());
    MqlRates r[];
-   ArraySetAsSeries(r, true);
-   int need = (int)MathMax(InpSfLookback + 20, 400);   // environ 4 jours de M15 : nuit et séance précédente
-   int got  = CopyRates(_Symbol, PERIOD_M15, 0, need, r);
-   if(got < InpSfLookback + 20)
-      return;
-   need = got;
-   double atr = SfAtr(r, 2);
-   if(atr <= 0)
-      return;
-   datetime close_utc = r[1].time + 900 - (datetime)ServerOffset();
-   if(!InSfSession(close_utc))
-      return;
-   //--- Repères à l'heure de New York : 09:30 du jour, début de la nuit (18:00 la veille).
-   datetime nyDay = DayOf(NyTime(r[1].time));
-   datetime open  = nyDay + 9 * 3600 + 30 * 60;
-   datetime night = nyDay - 6 * 3600;
-   double   onh = 0, onl = 0, pdh = 0, pdl = 0;
-   datetime prev = 0;                              // jour de la séance précédente
-   for(int j = 2; j < need; j++)
+   int n = CopyRates(_Symbol, tf, from, TimeCurrent(), r);   // r[0] = la plus ancienne
+   for(int j = 0; j < n; j++)
      {
-      datetime t = NyTime(r[j].time);
-      datetime d = DayOf(t);
-      if(prev > 0 && d < prev)
-         break;
-      if(t >= night && t < open)
-        {
-         onh = (onh == 0) ? r[j].high : MathMax(onh, r[j].high);
-         onl = (onl == 0) ? r[j].low  : MathMin(onl, r[j].low);
-        }
-      int m = (int)((t - d) / 60);
-      if(d < nyDay && m >= 9 * 60 + 30 && m < 16 * 60)
-        {
-         if(prev == 0)
-            prev = d;
-         pdh = (pdh == 0) ? r[j].high : MathMax(pdh, r[j].high);
-         pdl = (pdl == 0) ? r[j].low  : MathMin(pdl, r[j].low);
-        }
+      if(r[j].time + PeriodSeconds(tf) > TimeCurrent())
+         continue;                                            // bougie en cours : pas encore close
+      if(o.cabove ? r[j].close > o.cprice : r[j].close < o.cprice)
+         return true;
      }
-   for(int side = 0; side < 2; side++)
-     {
-      bool   hi   = (side == 0);
-      double best = 0;
-      string src  = "";
-      // Plus haut (bas) des N bougies précédentes.
-      double ext = hi ? r[2].high : r[2].low;
-      for(int j = 2; j <= InpSfLookback + 1; j++)
-         ext = hi ? MathMax(ext, r[j].high) : MathMin(ext, r[j].low);
-      double lv[4];
-      string nm[4];
-      lv[0] = ext; nm[0] = (hi ? "plus haut " : "plus bas ") + IntegerToString(InpSfLookback) + " M15";
-      // Séance précédente : PDH / PDL pas encore pris depuis le début de la nuit, avant la bougie du sweep.
-      lv[1] = hi ? pdh : pdl; nm[1] = hi ? "PDH" : "PDL";
-      // Nuit : haut / bas de 18:00 à 09:30, pas encore pris depuis l'ouverture de 09:30.
-      lv[2] = hi ? onh : onl; nm[2] = hi ? "haut de la nuit" : "bas de la nuit";
-      for(int j = 2; j < need; j++)
-        {
-         datetime t = NyTime(r[j].time);
-         if(t < night)
-            break;
-         if(lv[1] > 0 && (hi ? r[j].high > lv[1] : r[j].low < lv[1]))
-            lv[1] = 0;
-         if(t >= open && lv[2] > 0 && (hi ? r[j].high > lv[2] : r[j].low < lv[2]))
-            lv[2] = 0;
-        }
-      // Égaux : deux pivots (2 bougies de chaque côté) à 0,1 ATR près, 5 bougies d'écart au moins.
-      lv[3] = 0; nm[3] = hi ? "EQH" : "EQL";
-      for(int a = 4; a <= InpSfLookback && lv[3] == 0; a++)
-        {
-         double pa = hi ? r[a].high : r[a].low;
-         bool piva = hi ? (pa > MathMax(r[a + 1].high, r[a + 2].high) && pa >= MathMax(r[a - 1].high, r[a - 2].high))
-                        : (pa < MathMin(r[a + 1].low, r[a + 2].low) && pa <= MathMin(r[a - 1].low, r[a - 2].low));
-         if(!piva)
-            continue;
-         for(int b = a + 5; b <= InpSfLookback + 1 && b + 2 < need; b++)
-           {
-            double pb = hi ? r[b].high : r[b].low;
-            bool pivb = hi ? (pb > MathMax(r[b + 1].high, r[b + 2].high) && pb >= MathMax(r[b - 1].high, r[b - 2].high))
-                           : (pb < MathMin(r[b + 1].low, r[b + 2].low) && pb <= MathMin(r[b - 1].low, r[b - 2].low));
-            if(pivb && MathAbs(pa - pb) <= 0.1 * atr)
-              {
-               double L = hi ? MathMax(pa, pb) : MathMin(pa, pb);
-               bool taken = false;
-               for(int j = 2; j < a; j++)
-                  if(hi ? r[j].high > L : r[j].low < L)
-                     taken = true;
-               if(!taken)
-                  lv[3] = L;
-               break;
-              }
-           }
-        }
-      for(int k = 0; k < 4; k++)
-        {
-         double L = lv[k];
-         if(L <= 0)
-            continue;
-         double pen = hi ? r[1].high - L : L - r[1].low;
-         bool   back = hi ? r[1].close < L : r[1].close > L;
-         if(back && pen >= 0.05 * atr && pen < atr && (best == 0 || (hi ? L > best : L < best)))
-           {
-            best = L;
-            src  = nm[k];
-           }
-        }
-      if(best > 0)
-        {
-         g_sf[side].active = true;
-         g_sf[side].level  = best;
-         g_sf[side].ext    = hi ? r[1].high : r[1].low;
-         g_sf[side].t0     = r[1].time;
-         g_sf[side].last   = r[1].time;
-         g_sf[side].src    = src;
-         g_sf[side].atr    = atr;
-         g_status = "Sweep " + src + " " + Fr(best, 2) + " à " + TimeToString(r[1].time + 900, TIME_MINUTES) + " : CHoCH M5 attendu.";
-        }
-     }
+   return false;
   }
 
-//--- CHoCH M5 puis FVG M5 dans l'impulsion : signal limite au premier tiers du FVG.
-void SfCheckChoch(int side)
+void OrdDelete(ulong ticket, string why)
   {
-   bool sell = (side == 0);
-   MqlRates r[];
-   ArraySetAsSeries(r, false);
-   datetime from = g_sf[side].t0 - 4 * 3600;
-   int n = CopyRates(_Symbol, PERIOD_M5, from, TimeCurrent(), r);
-   if(n < 10)
+   if(ticket == 0)
       return;
-   n--;                                    // la dernière bougie M5 n'est pas close
-   double atr5 = Atr(PERIOD_M5), atr1 = Atr(PERIOD_M1);
-   if(atr5 <= 0 || atr1 <= 0)
+   if(g_trade.OrderDelete(ticket))
+      g_status = "Ordre supprimé : " + why + ".";
+  }
+
+//--- Lot pour un stop en points : risque du carnet (réduit sous le seuil), plafonné à la marge − 5 $.
+double OrdLot(double stop)
+  {
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double risk = (balance - g_size <= -g_redAt) ? g_riskRed : g_risk;
+   double margin = balance - g_floor;
+   if(risk > margin - 5)
+      risk = MathMax(0, margin - 5);
+   return LotFor(risk, stop);
+  }
+
+//--- Pose, garde ou supprime les ordres des plans de Claude. Appelé à chaque bougie M1 et à chaque lecture du plan.
+void AutoTrade()
+  {
+   if(!InpAutoTrade || !g_rOk)
       return;
-   double fvgMin = InpSfFvgMin * atr5;     // FVG M5 d'au moins 0,1 ATR M5
-   int x = -1;                             // bougie M5 de l'extrême du sweep
-   for(int i = 0; i < n; i++)
-      if(r[i].time >= g_sf[side].t0 && r[i].time < g_sf[side].t0 + 900
-         && (x < 0 || (sell ? r[i].high > r[x].high : r[i].low < r[x].low)))
-         x = i;
-   if(x < 0)
-      return;
-   // Dernier creux (sommet) pivot M5 avant l'extrême, confirmé 2 bougies plus tard.
-   double ref = 0;
-   for(int j = x - 1; j >= 2 && ref == 0; j--)
-      if(j + 2 < n)
-        {
-         bool piv = sell ? (r[j].low < MathMin(r[j - 1].low, r[j - 2].low) && r[j].low <= MathMin(r[j + 1].low, r[j + 2].low))
-                         : (r[j].high > MathMax(r[j - 1].high, r[j - 2].high) && r[j].high >= MathMax(r[j + 1].high, r[j + 2].high));
-         if(piv)
-            ref = sell ? r[j].low : r[j].high;
-        }
-   if(ref == 0)
-      return;
-   for(int c = x + 1; c < n; c++)
+   datetime now = TimeGMT();
+   bool     session = InNySession(now);
+
+   //--- Ordres de l'EA qui ne sont plus au plan (fiche retirée ou plan remplacé) : supprimés.
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
      {
-      if(r[c].time <= g_sf[side].last)
+      ulong t = OrderGetTicket(i);
+      if(t == 0 || OrderGetInteger(ORDER_MAGIC) != InpMagic || OrderGetString(ORDER_SYMBOL) != _Symbol)
          continue;
-      g_sf[side].last = r[c].time;
-      // Mèche au-delà de l'extrême du sweep avant le CHoCH : scénario abandonné.
-      if(sell ? r[c].high > g_sf[side].ext : r[c].low < g_sf[side].ext)
+      string cm = OrderGetString(ORDER_COMMENT), id = StringSubstr(cm, 5);
+      bool known = false;
+      for(int k = 0; k < ArraySize(g_orders); k++)
+         if(g_orders[k].id == id)
+            known = true;
+      if(!known)
         {
-         g_sf[side].active = false;
-         return;
+         OrdDelete(t, "fiche retirée du plan");
+         OrdSet(id, 2);
         }
-      if(c - x > InpSfChochBars)
-        {
-         g_sf[side].active = false;
-         return;
-        }
-      bool choch = sell ? r[c].close < ref : r[c].close > ref;
-      if(!choch)
-         continue;
-      g_sf[side].active = false;
-      // FVG M5 de l'impulsion (de l'extrême au CHoCH) : le plus récent.
-      double ftop = 0, fbot = 0;
-      for(int i = c; i >= x + 2 && ftop == 0; i--)
-        {
-         if(sell && r[i - 2].low > r[i].high && r[i - 2].low - r[i].high >= fvgMin)
-           { ftop = r[i - 2].low; fbot = r[i].high; }
-         if(!sell && r[i].low > r[i - 2].high && r[i].low - r[i - 2].high >= fvgMin)
-           { ftop = r[i].low; fbot = r[i - 2].high; }
-        }
-      if(ftop == 0)
-         return;
-      string why = "";
-      datetime utc = TimeGMT();
-      if(!InSfSession(utc) || SfNewsNear(why))
-        {
-         g_status = "Setup sweep/FVG ignoré : " + (why != "" ? "annonce " + why : "hors de la fenêtre 09:30–12:00 New York") + ".";
-         return;
-        }
-      double spread = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      // Premier tiers du FVG, côté où le prix revient.
-      double entry = sell ? fbot + (ftop - fbot) / 3.0 : ftop - (ftop - fbot) / 3.0;
-      // Stop au-delà de la mèche + 0,1 ATR M15 + spread ; minimum 0,5 ATR M1, maximum en ATR M15 (0 = aucun).
-      double buf     = InpSfBuffer * g_sf[side].atr;
-      double sl      = sell ? g_sf[side].ext + buf + spread : g_sf[side].ext - buf - spread;
-      double stop    = MathAbs(entry - sl);
-      double bid     = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      double stopMin = InpSfStopMin * atr1, stopMax = InpSfStopMax * g_sf[side].atr;
-      if(stop < stopMin || (stopMax > 0 && stop > stopMax) || (sell ? bid >= entry : bid <= entry))
-        {
-         g_status = "Setup sweep/FVG ignoré : stop " + Fr(stop, 1) + " pts hors limites ou prix déjà dans le FVG.";
-         return;
-        }
-      double tp   = sell ? entry - InpSfRR * stop : entry + InpSfRR * stop;
-      double risk = AccountInfoDouble(ACCOUNT_BALANCE) * InpSfRiskPct / 100.0;
-      double lot  = MathMax(LotFor(risk, stop), SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN));   // tick_value / tick_size
-      CxZone z;
-      z.type = "Sweep " + g_sf[side].src + " + FVG";
-      z.tf   = "M5";
-      z.lo   = fbot;
-      z.hi   = ftop;
-      z.buy  = !sell;
-      ShowSignal(!sell, "LIMIT", "4", z, entry, sl, tp, InpSfRR, lot, stop, r[c].time, 0);
-      int k = ArraySize(g_tracks) - 1;
-      if(k >= 0)
-        {
-         g_tracks[k].expires = TimeCurrent() + InpSfLimitMin * 60;
-         SaveTracks();
-        }
+     }
+
+   //--- Limites du compte (carnet) : au-delà, plus aucun ordre et les ordres en attente sont supprimés.
+   int    trades, losses;
+   double pnl = TodayStats(trades, losses);
+   string stop = "";
+   if(losses >= g_maxLoss)
+      stop = IntegerToString(losses) + " pertes aujourd'hui";
+   else if(-pnl >= 0.8 * g_dailyLim)
+      stop = "proche de la limite de perte journalière";
+   else if(AccountInfoDouble(ACCOUNT_EQUITY) <= g_floor + 5)
+      stop = "plancher du compte";
+   if(stop != "")
+     {
+      for(int k = 0; k < ArraySize(g_orders); k++)
+         OrdDelete(OrdTicket(g_orders[k].id), stop);
+      g_status = "Ordres arrêtés : " + stop + ".";
       return;
      }
-  }
+   int used = trades + OpenToday() + OrdPending();
 
-void CheckSweepFvg()
-  {
-   datetime m15 = iTime(_Symbol, PERIOD_M15, 0);
-   if(m15 != g_sfM15)
+   for(int k = 0; k < ArraySize(g_orders); k++)
      {
-      g_sfM15 = m15;
-      SfDetectSweep();
+      CxOrder o = g_orders[k];
+      int     st = OrdState(o.id);
+      ulong   tk = OrdTicket(o.id);
+      if(st == 2)
+        {
+         OrdDelete(tk, o.label + " terminé");
+         continue;
+        }
+      // Posé puis disparu sans suppression de l'EA : rempli (position ouverte) ou supprimé à la main.
+      if(st == 1 && tk == 0)
+        {
+         OrdSet(o.id, 2);
+         continue;
+        }
+      if(now >= o.until || OrdCancelled(o))
+        {
+         OrdDelete(tk, o.label + (now >= o.until ? " expiré" : " annulé (condition du plan)"));
+         OrdSet(o.id, 2);
+         continue;
+        }
+      if(!session || now < o.from)
+        {
+         if(tk > 0)
+           {
+            OrdDelete(tk, o.label + " hors séance de New York");
+            OrdSet(o.id, 0);                      // scénario de la semaine : reposé à la prochaine séance
+           }
+         continue;
+        }
+      if(tk > 0)
+         continue;                                // déjà posé
+      double stopPts = MathAbs(o.entry - o.sl);
+      if(stopPts <= 0 || (o.buy ? !(o.sl < o.entry && o.entry < o.tp) : !(o.sl > o.entry && o.entry > o.tp)))
+        {
+         OrdSet(o.id, 2);
+         g_status = o.label + " ignoré : stop ou objectif du mauvais côté.";
+         continue;
+        }
+      if(used >= g_maxTrades)
+        {
+         g_status = "Limite de " + IntegerToString(g_maxTrades) + " trades du jour : " + o.label + " non posé.";
+         continue;
+        }
+      // Ordre limite : le prix doit être du bon côté de l'entrée (achat : au-dessus ; vente : en dessous).
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK), bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double lvl = (double)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * _Point;
+      if(o.buy ? ask <= o.entry + lvl : bid >= o.entry - lvl)
+         continue;                                // prix déjà au-delà : on attend qu'il revienne
+      double lot  = OrdLot(stopPts);
+      double vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+      if(lot < vmin)
+        {
+         g_status = o.label + " non posé : stop de " + Fr(stopPts, 1) + " pts trop large pour le risque du compte.";
+         continue;
+        }
+      double e = NormalizeDouble(o.entry, _Digits), sl = NormalizeDouble(o.sl, _Digits), tp = NormalizeDouble(o.tp, _Digits);
+      bool ok = o.buy ? g_trade.BuyLimit(lot, e, _Symbol, sl, tp, ORDER_TIME_GTC, 0, OrdComment(o.id))
+                      : g_trade.SellLimit(lot, e, _Symbol, sl, tp, ORDER_TIME_GTC, 0, OrdComment(o.id));
+      if(!ok)
+        {
+         g_status = o.label + " refusé par le courtier : " + g_trade.ResultRetcodeDescription() + ".";
+         continue;
+        }
+      OrdSet(o.id, 1);
+      used++;
+      g_orderCount++;
+      double rr = MathAbs(o.tp - o.entry) / stopPts;
+      string txt = (o.buy ? "BUY LIMIT " : "SELL LIMIT ") + FrLot(lot) + " lot · SL " + Fr(o.sl, 2) + " · TP " + Fr(o.tp, 2) + " (" + Fr(rr, 1) + "R)";
+      DrawAdd(PFX_SIG + o.id, TimeCurrent(), TimeCurrent() + 3 * 3600, o.buy, o.entry, o.sl, o.tp, o.buy ? o.entry + 2 * stopPts : o.entry - 2 * stopPts, txt);
+      g_status = txt + " · " + o.label;
+      Notify("Carnet NAS100 : ordre posé, " + txt + ", entrée " + Fr(o.entry, 2) + ", stop " + Fr(stopPts, 1) + " pts · " + o.label + ".");
      }
-   for(int side = 0; side < 2; side++)
-      if(g_sf[side].active && !PendingLimit(true))
-         SfCheckChoch(side);
-  }
-
-void ShowSignal(bool buy, string kind, string setup, CxZone &z, double entry, double sl, double tp, double rr, double lot, double stop, datetime t, double retest)
-  {
-   g_signalCount++;
-   // Stratégie autonome (setup 4) : libellé « SFVG » et référence à part, pour ne pas se mêler aux autres.
-   bool   sf = (setup == "4");
-   string id = PFX_SIG + IntegerToString((long)t) + (sf ? "s" : "");
-   datetime t2 = t + 60 * 60;
-   string label = (buy ? "BUY " : "SELL ") + kind + (sf ? " SFVG" : "");
-   string ref = IntegerToString((long)t) + (sf ? "s" : "");
-   int k = ArraySize(g_tracks);
-   ArrayResize(g_tracks, k + 1);
-   g_tracks[k].ref     = ref;
-   g_tracks[k].id      = id;
-   g_tracks[k].label   = label;
-   g_tracks[k].buy     = buy;
-   g_tracks[k].entry   = entry;
-   g_tracks[k].sl      = sl;
-   g_tracks[k].tp      = tp;
-   g_tracks[k].stop    = stop;
-   g_tracks[k].status  = (kind == "LIMIT") ? 0 : 1;
-   g_tracks[k].hit2r   = false;
-   g_tracks[k].mfe     = 0;
-   g_tracks[k].mae     = 0;
-   g_tracks[k].expires = TimeCurrent() + g_limitMin * 60;
-   g_tracks[k].opened  = (kind == "LIMIT") ? (datetime)0 : TimeCurrent();
-   SaveTracks();
-
-   // Position dessinée : objectif en vert, stop en rouge (comme l'outil position longue / courte).
-   double p2r = buy ? entry + 2 * stop : entry - 2 * stop;
-   DrawAdd(id, t, t2, buy, entry, sl, tp, p2r,
-           label + " " + FrLot(lot) + " lot · SL " + Fr(sl, 2) + " · TP " + Fr(tp, 2) + " (" + Fr(rr, 1) + "R) S" + setup);
-
-   int    block = CalcBlock();
-   string note  = block > 0 ? "Calculateur à l'arrêt (" + CalcBlockText(block) + ") : ne pas prendre."
-                            : (CalcAlive() ? "Calculateur : touche C pour charger le signal, Espace pour l'envoyer." : "");
-   string msg = "Carnet NAS100 : " + label + " " + _Symbol + " — " + z.type + " " + z.tf + ", entrée " + Fr(entry, 2) + ", stop " + Fr(sl, 2)
-                + ", objectif " + Fr(tp, 2) + " (" + Fr(rr, 1) + "R), stop " + Fr(stop, 1) + " pts, lot " + FrLot(lot)
-                + (kind == "LIMIT" ? ", valable " + IntegerToString(g_limitMin) + " min" : "") + ". Signal seulement : à vous de décider."
-                + (note != "" ? " " + note : "");
-   Notify(msg);
-   BridgeSignal(buy, kind, setup, entry, sl, tp, ref);
-   g_status = label + " " + TimeToString(TimeCurrent(), TIME_MINUTES) + " sur " + z.type + " " + z.tf + ".";
-   SendEvent("{\"type\":\"signal\",\"ref\":" + JsonText(ref) + ",\"kind\":\"" + (kind == "LIMIT" ? "limit" : "now") + "\",\"side\":\"" + (buy ? "buy" : "sell") + "\",\"setup\":\"" + setup + "\",\"zone\":"
-             + JsonText(z.type + " " + z.tf + " " + Num(z.lo, 2) + "-" + Num(z.hi, 2)) + ",\"entry\":" + Num(entry, 2) + ",\"sl\":" + Num(sl, 2)
-             + ",\"tp\":" + Num(tp, 2) + ",\"lot\":" + NumLot(lot) + ",\"rr\":" + Num(rr, 2) + ",\"stop\":" + Num(stop, 2)
-             + (retest > 0 ? ",\"retest\":" + Num(retest, 2) : "")
-             + (block > 0 ? ",\"note\":" + JsonText(note) : "")
-             + ",\"time\":" + IntegerToString((long)TimeGMT()) + "}");
    DrawPanel();
   }
-
-//--- Variante « retour FVG » : trade virtuel en ordre limite, suivi sans alerte pour comparer les entrées.
-void ShowRetest(bool buy, string setup, CxZone &z, double entry, double sl, double tp, double rr, double lot, double stop, datetime t)
-  {
-   string id = PFX_SIG + IntegerToString((long)t) + "r";
-   string ref = IntegerToString((long)t) + "r";
-   int k = ArraySize(g_tracks);
-   ArrayResize(g_tracks, k + 1);
-   g_tracks[k].ref     = ref;
-   g_tracks[k].id      = id;
-   g_tracks[k].label   = (buy ? "BUY " : "SELL ") + "RETOUR";
-   g_tracks[k].buy     = buy;
-   g_tracks[k].entry   = entry;
-   g_tracks[k].sl      = sl;
-   g_tracks[k].tp      = tp;
-   g_tracks[k].stop    = stop;
-   g_tracks[k].status  = 0;
-   g_tracks[k].hit2r   = false;
-   g_tracks[k].mfe     = 0;
-   g_tracks[k].mae     = 0;
-   g_tracks[k].expires = TimeCurrent() + g_limitMin * 60;
-   g_tracks[k].opened  = 0;
-   SaveTracks();
-   DrawAdd(id, t, t + 30 * 60, buy, entry, sl, tp, 0, "Retour FVG " + Fr(entry, 2));
-   SendEvent("{\"type\":\"signal\",\"variant\":true,\"ref\":" + JsonText(ref) + ",\"kind\":\"retest\",\"side\":\"" + (buy ? "buy" : "sell") + "\",\"setup\":\"" + setup + "\",\"zone\":"
-             + JsonText(z.type + " " + z.tf + " " + Num(z.lo, 2) + "-" + Num(z.hi, 2)) + ",\"entry\":" + Num(entry, 2) + ",\"sl\":" + Num(sl, 2)
-             + ",\"tp\":" + Num(tp, 2) + ",\"lot\":" + NumLot(lot) + ",\"rr\":" + Num(rr, 2) + ",\"stop\":" + Num(stop, 2)
-             + ",\"time\":" + IntegerToString((long)TimeGMT()) + "}");
-  }
-//+------------------------------------------------------------------+

@@ -307,6 +307,59 @@ class CX_Live {
 	}
 
 	/**
+	 * Ordres exécutables des plans de Claude : fiches du plan de New York du jour, puis scénarios du plan de
+	 * la semaine. Entrée, stop et objectif cohérents, condition d'annulation lue dans le texte de la fiche
+	 * (« Clôture M15 au-dessus de 21 165,80 »).
+	 *
+	 * @param array  $c    Contenu du plan.
+	 * @param string $week Lundi.
+	 * @return array[] {id, side, entry, sl, tp, from, until, ctf, above, cprice, label}
+	 */
+	public static function orders( $c, $week ) {
+		$ny    = new DateTimeZone( 'America/New_York' );
+		$out   = array();
+		$add   = function ( $kind, $side, $entry, $sl, $tp, $from, $until, $cancel, $label ) use ( &$out ) {
+			$buy = 'vente' !== $side;
+			if ( ! $entry || ! $sl || ! $tp || ( $buy ? ! ( $sl < $entry && $entry < $tp ) : ! ( $sl > $entry && $entry > $tp ) ) ) {
+				return;
+			}
+			$rule  = CX_Score::close_rule( (string) $cancel );
+			$out[] = array(
+				'id'     => $kind . substr( md5( implode( '|', array( $side, $entry, $sl, $tp, $from, $until, (string) $cancel ) ) ), 0, 8 ),
+				'side'   => $buy ? 'achat' : 'vente',
+				'entry'  => (float) $entry,
+				'sl'     => (float) $sl,
+				'tp'     => (float) $tp,
+				'from'   => (int) $from,
+				'until'  => (int) $until,
+				'ctf'    => $rule ? (int) $rule[0] : 0,
+				'above'  => $rule && $rule[1] ? 1 : 0,
+				'cprice' => $rule ? (float) $rule[2] : 0.0,
+				'label'  => $label,
+			);
+		};
+		$today = CX_Repo::clock( 'Y-m-d' );
+		foreach ( (array) ( $c['sessions'] ?? array() ) as $s ) {
+			if ( ( $s['date'] ?? '' ) !== $today || 'us' !== ( $s['kind'] ?? '' ) ) {
+				continue;
+			}
+			$from  = ! empty( $s['at'] ) ? ( new DateTimeImmutable( $s['at'], CX_Repo::tz() ) )->getTimestamp() : time();
+			$until = ( new DateTimeImmutable( $s['date'] . ' 16:00', $ny ) )->getTimestamp();
+			foreach ( array_slice( array_values( (array) ( $s['positions'] ?? array() ) ), 0, 3 ) as $i => $po ) {
+				$add( 'n', $po['side'] ?? '', (float) ( $po['entry'] ?? 0 ), (float) ( $po['sl'] ?? 0 ), (float) ( $po['tp'] ?? 0 ), $from, $until, $po['cancel'] ?? '', 'Plan NY ' . ( $i + 1 ) . ( empty( $po['label'] ) ? '' : ' · ' . $po['label'] ) );
+			}
+		}
+		$from  = ! empty( $c['publishedAt'] ) ? ( new DateTimeImmutable( $c['publishedAt'], CX_Repo::tz() ) )->getTimestamp() : ( new DateTimeImmutable( $week . ' 00:00', $ny ) )->getTimestamp();
+		$until = ( new DateTimeImmutable( $week . ' 16:00', $ny ) )->modify( '+4 days' )->getTimestamp();
+		foreach ( array_slice( array_values( (array) ( $c['scenarios'] ?? array() ) ), 0, 5 ) as $i => $sc ) {
+			$buy   = 'vente' !== ( $sc['side'] ?? '' );
+			$entry = CX_Score::entry_price( $sc['entry'] ?? '', $buy );
+			$add( 'w', $sc['side'] ?? '', (float) $entry, (float) ( $sc['sl'] ?? 0 ), (float) ( $sc['tp'] ?? 0 ), $from, $until, $sc['invalidation'] ?? '', 'Semaine ' . ( $i + 1 ) . ( empty( $sc['then'] ) ? '' : ' · ' . $sc['then'] ) );
+		}
+		return $out;
+	}
+
+	/**
 	 * Plan au format texte pour l'EA.
 	 *
 	 * @param WP_REST_Request $req Requête.
@@ -404,6 +457,13 @@ class CX_Live {
 					$out[] = 'P|' . ( 'vente' === $po['side'] ? 'vente' : 'achat' ) . '|' . self::n( $po['entry'] ) . '|' . self::n( $po['sl'] ) . '|' . self::n( $po['tp'] ) . '|' . self::t( $po['label'] ?? '' );
 				}
 			}
+		}
+		// Ordres des plans de Claude, passés par l'EA (4.00) : fiches du plan de New York du jour (valables
+		// jusqu'à 16:00 New York) et scénarios du plan de la semaine (valables jusqu'au vendredi 16:00 New York,
+		// reposés chaque séance). « O|id|sens|entrée|stop|objectif|début|fin (UTC)|UT d'annulation (s)|
+		// au-dessus|prix d'annulation|libellé ». L'id change si Claude change la fiche : l'EA retire l'ancien ordre.
+		foreach ( self::orders( $c, $week ) as $o ) {
+			$out[] = 'O|' . $o['id'] . '|' . $o['side'] . '|' . self::n( $o['entry'] ) . '|' . self::n( $o['sl'] ) . '|' . self::n( $o['tp'] ) . '|' . $o['from'] . '|' . $o['until'] . '|' . $o['ctf'] . '|' . $o['above'] . '|' . self::n( $o['cprice'] ) . '|' . self::t( $o['label'] );
 		}
 		// Annonces : heure exacte (UTC) calculée ici, l'EA n'a pas à lire de date. Celles du plan
 		// de Claude et les annonces USD à fort impact du calendrier automatique.
